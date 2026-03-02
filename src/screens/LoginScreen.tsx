@@ -1,68 +1,70 @@
 import { useState } from 'react';
-import LoginScreen from '../screens/LoginScreen';
-import { IdeScreen } from '../screens/IdeScreen';
-import { TeacherDashboard } from "../screens/TeacherDashboard";
-import { StudentDashboard } from "../screens/StudentDashboard";
-import '../App.css';
+import { supabase } from '../lib/supabase';
+import logoSimples from '../assets/LogoSimples.png';
 
-type UserRole = 'guest' | 'student' | 'teacher' | 'teacher-dashboard' | 'student-dashboard' | 'visitor';
-
-function App() {
-  const [currentRole, setCurrentRole] = useState<UserRole>('guest');
-  const [activeProjectId, setActiveProjectId] = useState<string | undefined>();
-
-  const handleLogin = (role: 'student' | 'teacher' | 'visitor') => {
-    if (role === 'teacher') setCurrentRole('teacher-dashboard');
-    else if (role === 'student') setCurrentRole('student-dashboard');
-    else setCurrentRole('visitor');
-  };
-
-  const handleLogout = () => {
-    setCurrentRole('guest');
-    setActiveProjectId(undefined);
-  };
-
-  // Corrigido: limpa o projectId antes de voltar
-  const handleBackToDashboard = () => {
-    setActiveProjectId(undefined);
-    if (currentRole === 'teacher') setCurrentRole('teacher-dashboard');
-    else if (currentRole === 'student') setCurrentRole('student-dashboard');
-    else handleLogout();
-  };
-
-  if (currentRole === 'guest') return <LoginScreen onLogin={handleLogin} />;
-
-  if (currentRole === 'teacher-dashboard') {
-    return (
-      <TeacherDashboard
-        onLogout={handleLogout}
-        onOpenIde={(projectId) => {
-          setActiveProjectId(projectId);
-          setCurrentRole('teacher');
-        }}
-      />
-    );
-  }
-
-  if (currentRole === 'student-dashboard') {
-    return (
-      <StudentDashboard
-        onLogout={handleLogout}
-        onOpenIde={(projectId) => {
-          setActiveProjectId(projectId);
-          setCurrentRole('student');
-        }}
-      />
-    );
-  }
-
-  return (
-    <IdeScreen
-      role={currentRole}
-      onBack={handleBackToDashboard}
-      projectId={activeProjectId}
-    />
-  );
+interface LoginScreenProps {
+  onLogin: (role: 'student' | 'teacher' | 'visitor') => void;
 }
 
-export default App;
+export function LoginScreen({ onLogin }: LoginScreenProps) {
+  const [view, setView] = useState<'options' | 'student' | 'teacher'>('options');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    setLoading(true);
+    setError('');
+
+    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (authError || !data.user) {
+      setError('Email ou senha incorretos.');
+      setLoading(false);
+      return;
+    }
+
+    const { data: perfil } = await supabase
+      .from('perfis')
+      .select('role')
+      .eq('id', data.user.id)
+      .single();
+
+    setLoading(false);
+
+    if (perfil?.role === 'teacher') onLogin('teacher');
+    else if (perfil?.role === 'student') onLogin('student');
+    else onLogin('visitor');
+  };
+
+  return (
+    <div className="login-container">
+      <div className="login-card">
+        <img src={logoSimples} alt="Oficina Code" style={{ height: '80px', marginBottom: '15px' }} />
+
+        {view === 'options' && (
+          <div className="login-options">
+            <p>Como você quer entrar?</p>
+            <button className="btn-primary" onClick={() => setView('student')}>🎒 Sou Aluno</button>
+            <button className="btn-secondary" onClick={() => setView('teacher')}>👨‍🏫 Sou Professor</button>
+            <button className="btn-text" onClick={() => onLogin('visitor')}>Entrar como Visitante</button>
+          </div>
+        )}
+
+        {(view === 'student' || view === 'teacher') && (
+          <div className="login-form">
+            <h3>{view === 'student' ? '🎒 Aluno' : '👨‍🏫 Professor'}</h3>
+            <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+            <input type="password" placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} />
+            {error && <p style={{ color: 'var(--danger)', fontWeight: 700 }}>{error}</p>}
+            <button className="btn-primary" onClick={handleLogin} disabled={loading}>
+              {loading ? 'Entrando...' : 'Entrar'}
+            </button>
+            <button className="btn-text" onClick={() => setView('options')}>← Voltar</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
