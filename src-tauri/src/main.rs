@@ -12,7 +12,6 @@ struct AppState {
     is_reading_serial: Arc<AtomicBool>,
 }
 
-// --- COMANDO 1: ENVIAR CÓDIGO (Sem Async, na Thread Correta) ---
 #[tauri::command]
 fn upload_code(codigo: String, placa: String, porta: String, state: tauri::State<AppState>) -> Result<String, String> {
     println!(">>> [1] Iniciando processo de envio...");
@@ -92,7 +91,6 @@ fn start_serial(porta: String, window: tauri::Window, state: tauri::State<AppSta
                     let pedaco = String::from_utf8_lossy(&serial_buf[..t]);
                     string_acumulada.push_str(&pedaco);
                     
-                    // SEGURANÇA 1: Impede a RAM do Rust de estourar se faltar quebra de linha
                     if string_acumulada.len() > 4000 {
                         string_acumulada.clear();
                     }
@@ -102,10 +100,6 @@ fn start_serial(porta: String, window: tauri::Window, state: tauri::State<AppSta
                         string_acumulada = string_acumulada[pos+1..].to_string();
                         
                         let _ = window.emit("serial-message", frase);
-                        
-                        // SEGURANÇA 2 (O FUNIL IPC): Força o Rust a dormir 20ms APÓS emitir.
-                        // Isso garante que o Linux receba NO MÁXIMO 50 mensagens por segundo.
-                        // Impossível dar Crash no WebKit agora, não importa a velocidade do Arduino!
                         std::thread::sleep(Duration::from_millis(20));
                     }
                 }
