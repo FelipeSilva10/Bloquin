@@ -64,7 +64,6 @@ fn upload_code(codigo: String, placa: String, porta: String, state: tauri::State
     Ok("Sucesso!".to_string())
 }
 
-// --- COMANDO 2: LIGAR O MONITOR SERIAL (COM ANTI-SPAM) ---
 #[tauri::command]
 fn start_serial(porta: String, window: tauri::Window, state: tauri::State<AppState>) -> Result<String, String> {
     state.is_reading_serial.store(false, Ordering::Relaxed);
