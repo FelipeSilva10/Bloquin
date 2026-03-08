@@ -28,16 +28,17 @@ body, html, #root {
   color: #333;
 }
 
-/* =========================================
-   TELA DE LOGIN (AGORA COM VIDA!)
-   ========================================= */
 .login-container {
   display: flex;
   justify-content: center;
   align-items: center;
   height: 100vh;
-  position: relative; /* FUNDAMENTAL */
-  z-index: 1;         /* FUNDAMENTAL */
+  position: relative;
+  z-index: 1;
+  background-image: url('/src/assets/background.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 /* O CARTÃO MÁGICO (Faltava isso!) */
