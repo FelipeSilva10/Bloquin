@@ -12,14 +12,11 @@ struct AppState {
     is_reading_serial: Arc<AtomicBool>,
 }
 
-// <-- Função auxiliar adicionada para localizar o arduino-cli.exe empacotado
 fn arduino_cli_path(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
     app_handle
         .path()
-        .resource_dir()
-        .expect("resource dir não encontrado")
-        .join("resources") // Garante que procura dentro da subpasta criada pelo Tauri
-        .join("arduino-cli.exe")
+        .resolve("arduino-cli.exe", tauri::path::BaseDirectory::Resource)
+        .expect("Não foi possível resolver o caminho do arduino-cli")
 }
 
 #[tauri::command]
