@@ -5,15 +5,31 @@ use std::process::Command;
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::Emitter; 
+use tauri::{Emitter, Manager}; // <-- Manager adicionado aqui
 use std::time::Duration;
 
 struct AppState {
     is_reading_serial: Arc<AtomicBool>,
 }
 
+// <-- Função auxiliar adicionada para localizar o arduino-cli.exe empacotado
+fn arduino_cli_path(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
+    app_handle
+        .path()
+        .resource_dir()
+        .expect("resource dir não encontrado")
+        .join("resources") // Garante que procura dentro da subpasta criada pelo Tauri
+        .join("arduino-cli.exe")
+}
+
 #[tauri::command]
-fn upload_code(codigo: String, placa: String, porta: String, state: tauri::State<AppState>) -> Result<String, String> {
+fn upload_code(
+    codigo: String, 
+    placa: String, 
+    porta: String, 
+    state: tauri::State<AppState>,
+    app_handle: tauri::AppHandle, // <-- app_handle injetado aqui
+) -> Result<String, String> {
     println!(">>> [1] Iniciando processo de envio...");
     println!(">>> [2] Desligando o monitor serial (liberando a porta)...");
     state.is_reading_serial.store(false, Ordering::Relaxed);
@@ -25,6 +41,9 @@ fn upload_code(codigo: String, placa: String, porta: String, state: tauri::State
         "esp32" => "esp32:esp32:esp32",
         _ => "arduino:avr:uno",
     };
+    
+    // <-- Pega o caminho absoluto do executável
+    let cli = arduino_cli_path(&app_handle);
     
     let temp_dir = env::temp_dir();
     let sketch_dir = temp_dir.join("oficina_code_sketch");
@@ -39,7 +58,8 @@ fn upload_code(codigo: String, placa: String, porta: String, state: tauri::State
     }
 
     println!(">>> [6] Compilando...");
-    let compile_output = match Command::new("arduino-cli").arg("compile").arg("-b").arg(fqbn).arg(&sketch_dir).output() { 
+    // <-- Command::new agora usa a variável `cli` em vez de "arduino-cli"
+    let compile_output = match Command::new(&cli).arg("compile").arg("-b").arg(fqbn).arg(&sketch_dir).output() { 
         Ok(out) => out, 
         Err(e) => return Err(format!("Erro compilador: {}", e)) 
     };
@@ -50,7 +70,8 @@ fn upload_code(codigo: String, placa: String, porta: String, state: tauri::State
     }
     
     println!(">>> [8] Enviando para a porta {}...", porta);
-    let upload_output = match Command::new("arduino-cli").arg("upload").arg("-b").arg(fqbn).arg("-p").arg(&porta).arg(&sketch_dir).output() { 
+    // <-- Command::new agora usa a variável `cli`
+    let upload_output = match Command::new(&cli).arg("upload").arg("-b").arg(fqbn).arg("-p").arg(&porta).arg(&sketch_dir).output() { 
         Ok(out) => out, 
         Err(e) => return Err(format!("Erro upload: {}", e)) 
     };
