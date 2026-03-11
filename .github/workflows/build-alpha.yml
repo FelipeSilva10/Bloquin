@@ -23,12 +23,6 @@ jobs:
       - name: Instalar dependências npm
         run: npm install
 
-      - name: Baixar arduino-cli
-        run: |
-          Invoke-WebRequest -Uri "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Windows_64bit.zip" -OutFile arduino-cli.zip
-          Expand-Archive arduino-cli.zip -DestinationPath src-tauri/resources/
-        shell: powershell
-
       - name: Build Tauri
         run: npm run tauri build
 
