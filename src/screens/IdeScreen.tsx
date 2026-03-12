@@ -125,11 +125,18 @@ const toolboxConfig = {
   ]
 };
 
-// ── Props ─────────────────────────────────────────────────────────────────────
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+
+interface SetupProgress {
+  etapa: number;
+  total: number;
+  msg: string;
+}
+
+type ArduinoStatus = 'checking' | 'ready' | 'missing' | 'downloading' | 'error';
 
 interface IdeScreenProps {
   role: 'student' | 'teacher' | 'visitor';
-  /** Quando true: workspace somente-leitura (professor inspecionando projeto de aluno) */
   readOnly?: boolean;
   onBack: () => void;
   projectId?: string;
@@ -158,6 +165,54 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   const isUploadingRef                      = useRef(false);
   const [uploadSuccess, setUploadSuccess]   = useState(false);
 
+  // ── Estado do arduino-cli ─────────────────────────────────────────────────
+  const [arduinoStatus, setArduinoStatus]     = useState<ArduinoStatus>('checking');
+  const [setupProgress, setSetupProgress]     = useState<SetupProgress | null>(null);
+  const [setupError, setSetupError]           = useState('');
+  const [showSetupModal, setShowSetupModal]   = useState(false);
+
+  // ── Verificação do arduino-cli na montagem ────────────────────────────────
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const ok = await invoke<boolean>('check_arduino_cli');
+        setArduinoStatus(ok ? 'ready' : 'missing');
+        if (!ok) setShowSetupModal(true);
+      } catch {
+        // Provavelmente está rodando no browser (dev), ignora
+        setArduinoStatus('ready');
+      }
+    };
+    check();
+  }, []);
+
+  // ── Escuta eventos de progresso do setup ──────────────────────────────────
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      unlisten = await listen<SetupProgress>('arduino-setup-progress', (e) => {
+        setSetupProgress(e.payload);
+      });
+    })();
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  const handleSetupArduinoCli = async () => {
+    setArduinoStatus('downloading');
+    setSetupError('');
+    setSetupProgress({ etapa: 0, total: 4, msg: 'Iniciando instalação...' });
+    try {
+      await invoke<string>('setup_arduino_cli');
+      setArduinoStatus('ready');
+      setShowSetupModal(false);
+      setSetupProgress(null);
+    } catch (err) {
+      setArduinoStatus('error');
+      setSetupError(String(err));
+    }
+  };
+
+  // ── Tema Blockly ──────────────────────────────────────────────────────────
   const oficinaTheme = Blockly.Theme.defineTheme('oficinaTheme', {
     name: 'oficinaTheme', base: Blockly.Themes.Classic,
     componentStyles: {
@@ -184,7 +239,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
       workspace.current = Blockly.inject(blocklyDiv.current, {
         toolbox: toolboxConfig,
         grid: { spacing: 20, length: 3, colour: '#ccc', snap: true },
-        readOnly,  // ← usa o prop diretamente
+        readOnly,
         move: { scrollbars: true, drag: true, wheel: true },
         theme: oficinaTheme,
         zoom: { controls: true, wheel: true, startScale: 1.0, maxScale: 3, minScale: 0.3, scaleSpeed: 1.2 },
@@ -213,7 +268,6 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
             if (data.target_board) setBoard(data.target_board as 'nano' | 'esp32' | 'uno');
             try {
               if (data.workspace_data) {
-                // Suporta tanto o formato comprimido (string) quanto o JSON legado (objeto)
                 const raw = typeof data.workspace_data === 'string'
                   ? JSON.parse(LZString.decompress(data.workspace_data) || '{}')
                   : data.workspace_data;
@@ -262,6 +316,13 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
 
   const handleUploadCode = async () => {
     if (isUploadingRef.current) return;
+
+    // Bloqueia se arduino-cli ainda não foi configurado
+    if (arduinoStatus === 'missing' || arduinoStatus === 'error') {
+      setShowSetupModal(true);
+      return;
+    }
+
     if (!generatedCode.includes('void setup()') || !generatedCode.includes('void loop()')) {
       setErrorMessage("As peças principais (PREPARAR e AGIR) não foram detectadas. Mexa em uma peça para atualizar antes de enviar!");
       setSaveStatus('error'); return;
@@ -275,7 +336,27 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
     finally { isUploadingRef.current = false; setIsUploading(false); }
   };
 
-  // ── Título do projeto ─────────────────────────────────────────────────────
+  // ── Indicador de status do arduino-cli na topbar ──────────────────────────
+  const arduinoStatusBadge = () => {
+    if (arduinoStatus === 'checking') return (
+      <span style={{ fontSize: '0.8rem', color: '#7f8c8d', padding: '4px 10px', background: '#f0f0f0', borderRadius: '100px' }}>
+        🔍 Verificando...
+      </span>
+    );
+    if (arduinoStatus === 'missing' || arduinoStatus === 'error') return (
+      <button onClick={() => setShowSetupModal(true)}
+        style={{ fontSize: '0.8rem', color: 'white', padding: '4px 12px', background: '#e74c3c', border: 'none', borderRadius: '100px', cursor: 'pointer', fontWeight: 800 }}>
+        ⚠️ Configurar arduino-cli
+      </button>
+    );
+    if (arduinoStatus === 'downloading') return (
+      <span style={{ fontSize: '0.8rem', color: 'white', padding: '4px 10px', background: '#f39c12', borderRadius: '100px' }}>
+        ⏳ Instalando...
+      </span>
+    );
+    return null; // 'ready' — não mostra nada, não polui a UI
+  };
+
   const projectTitle = projectId
     ? role === 'student'
       ? `Mesa: ${projectName}`
@@ -284,15 +365,21 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
         : `Meu Projeto: ${projectName}`
     : '';
 
+  // ── Barra de progresso do setup ───────────────────────────────────────────
+  const progressPercent = setupProgress
+    ? Math.round((setupProgress.etapa / setupProgress.total) * 100)
+    : 0;
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="app-container">
       <div className="topbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '15px' }}>
 
-        {/* Logo + título */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', minWidth: 'fit-content' }}>
+        {/* Logo + título + badge status arduino */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 'fit-content' }}>
           <img src={logoSimples} alt="Oficina Code" style={{ height: '35px' }} />
           {projectTitle && <h2 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--dark)' }}>{projectTitle}</h2>}
+          {arduinoStatusBadge()}
         </div>
 
         {/* Controles de hardware (centro) */}
@@ -317,8 +404,17 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
             <button onClick={fetchPorts} className="btn-icon" title="Buscar portas">🔄</button>
           </div>
           <div className="control-divider" />
-          <button onClick={handleUploadCode} className="btn-action btn-send"
-            disabled={isUploading} style={{ opacity: isUploading ? 0.7 : 1, cursor: isUploading ? 'wait' : 'pointer' }}>
+          <button
+            onClick={handleUploadCode}
+            className="btn-action btn-send"
+            disabled={isUploading || arduinoStatus === 'downloading'}
+            title={arduinoStatus === 'missing' ? 'arduino-cli não instalado — clique para configurar' : 'Enviar código para o robô'}
+            style={{
+              opacity: (isUploading || arduinoStatus === 'downloading') ? 0.7 : 1,
+              cursor: (isUploading || arduinoStatus === 'downloading') ? 'wait' : 'pointer',
+              background: (arduinoStatus === 'missing' || arduinoStatus === 'error') ? '#e74c3c' : undefined,
+            }}
+          >
             {isUploading ? '⏳ Compilando...' : '🚀 Enviar'}
           </button>
           <button className={`btn-action ${isSerialOpen ? 'btn-chat-active' : 'btn-chat'}`} onClick={handleToggleSerial}>
@@ -328,21 +424,17 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
 
         {/* Botões da direita */}
         <div style={{ display: 'flex', gap: '10px' }}>
-          {/* Ver código: para professor e visitante */}
           {role !== 'student' && (
             <button className="btn-secondary" onClick={() => setIsCodeVisible(!isCodeVisible)}
               style={{ margin: 0, backgroundColor: '#34495e', boxShadow: '0 4px 0px #2c3e50' }}>
               {isCodeVisible ? '🙈 Ocultar Código' : '💻 Ver Código'}
             </button>
           )}
-
-          {/* Salvar: aluno com projeto próprio OU professor no projeto próprio (não somente leitura) */}
           {(role === 'student' || (role === 'teacher' && !readOnly)) && projectId && (
             <button className="btn-primary" onClick={handleSaveProject} disabled={isSaving} style={{ margin: 0 }}>
               {isSaving ? '⏳ A gravar...' : '💾 Salvar'}
             </button>
           )}
-
           <button className="btn-danger" onClick={onBack} style={{ margin: 0 }}>Sair</button>
         </div>
       </div>
@@ -364,7 +456,96 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
         )}
       </div>
 
-      {/* Modais de feedback */}
+      {/* ── MODAL: SETUP DO ARDUINO-CLI ─────────────────────────────────────── */}
+      {showSetupModal && (
+        <div style={{ position:'fixed',top:0,left:0,width:'100vw',height:'100vh',backgroundColor:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:99999 }}>
+          <div style={{ backgroundColor:'white',padding:'40px',borderRadius:'24px',width:'90%',maxWidth:'480px',textAlign:'center',boxShadow:'0 20px 50px rgba(0,0,0,0.3)' }}>
+
+            {arduinoStatus === 'downloading' ? (
+              /* ── Progresso do download ── */
+              <>
+                <div style={{ fontSize:'4rem',marginBottom:'10px' }}>⚙️</div>
+                <h2 style={{ color:'var(--dark)',marginBottom:'10px' }}>Instalando arduino-cli</h2>
+                <p style={{ color:'#7f8c8d',marginBottom:'20px',fontSize:'1rem' }}>
+                  {setupProgress?.msg ?? 'Aguarde...'}
+                </p>
+                {/* Barra de progresso */}
+                <div style={{ background:'#e0e6ed',borderRadius:'100px',height:'14px',marginBottom:'8px',overflow:'hidden' }}>
+                  <div style={{
+                    background:'linear-gradient(90deg, #00a8ff, #4cd137)',
+                    height:'100%',
+                    width:`${progressPercent}%`,
+                    borderRadius:'100px',
+                    transition:'width 0.4s ease',
+                  }} />
+                </div>
+                <p style={{ color:'#a4b0be',fontSize:'0.85rem' }}>
+                  Etapa {setupProgress?.etapa ?? 0} de {setupProgress?.total ?? 4}
+                </p>
+                <p style={{ color:'#e67e22',fontSize:'0.9rem',marginTop:'12px',fontWeight:700 }}>
+                  ⚠️ Não feche o programa durante a instalação
+                </p>
+              </>
+            ) : arduinoStatus === 'error' ? (
+              /* ── Erro ── */
+              <>
+                <div style={{ fontSize:'4rem',marginBottom:'10px' }}>❌</div>
+                <h2 style={{ color:'var(--dark)',marginBottom:'10px' }}>Falha na instalação</h2>
+                <p style={{ color:'#7f8c8d',marginBottom:'15px',fontSize:'0.95rem' }}>
+                  Ocorreu um erro ao instalar o arduino-cli:
+                </p>
+                <pre style={{ background:'#f8f9fa',padding:'12px',borderRadius:'8px',textAlign:'left',fontSize:'0.8rem',color:'#c0392b',overflowX:'auto',marginBottom:'20px',maxHeight:'120px',overflowY:'auto' }}>
+                  {setupError}
+                </pre>
+                <p style={{ color:'#7f8c8d',fontSize:'0.9rem',marginBottom:'20px' }}>
+                  Verifique a sua conexão com a internet e tente novamente.
+                </p>
+                <div style={{ display:'flex',gap:'10px' }}>
+                  <button className="btn-text" style={{ flex:1 }} onClick={() => setShowSetupModal(false)}>
+                    Fechar
+                  </button>
+                  <button className="btn-primary" style={{ flex:2 }} onClick={handleSetupArduinoCli}>
+                    🔄 Tentar Novamente
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* ── Prompt inicial ── */
+              <>
+                <div style={{ fontSize:'4rem',marginBottom:'10px' }}>🔧</div>
+                <h2 style={{ color:'var(--dark)',marginBottom:'10px' }}>arduino-cli não encontrado</h2>
+                <p style={{ color:'#7f8c8d',marginBottom:'20px',fontSize:'1rem',lineHeight:1.6 }}>
+                  O programa precisa do <strong>arduino-cli</strong> para compilar e enviar código para o robô.
+                  <br /><br />
+                  Vamos baixar e instalar automaticamente agora.<br />
+                  <strong>Necessário: conexão com a internet.</strong>
+                </p>
+                <div style={{ background:'#f8fafd',borderRadius:'12px',padding:'12px',marginBottom:'20px',textAlign:'left',fontSize:'0.9rem',color:'#2c3e50' }}>
+                  <strong>O que será instalado:</strong>
+                  <ul style={{ margin:'8px 0 0 20px',lineHeight:1.8 }}>
+                    <li>arduino-cli (ferramenta de compilação)</li>
+                    <li>Suporte para Arduino Uno e Nano (AVR)</li>
+                  </ul>
+                  <p style={{ margin:'8px 0 0',color:'#7f8c8d',fontSize:'0.85rem' }}>
+                    Suporte para ESP32 será instalado automaticamente na primeira vez que você enviar código para um ESP32.
+                  </p>
+                </div>
+                <div style={{ display:'flex',gap:'10px' }}>
+                  <button className="btn-text" style={{ flex:1 }} onClick={() => setShowSetupModal(false)}>
+                    Agora não
+                  </button>
+                  <button className="btn-primary" style={{ flex:2, padding:'14px', fontSize:'1.05rem' }}
+                    onClick={handleSetupArduinoCli}>
+                    ⬇️ Instalar agora
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modais de feedback existentes ──────────────────────────────────── */}
       {saveStatus === 'success' && (
         <div style={{ position:'fixed',top:0,left:0,width:'100vw',height:'100vh',backgroundColor:'rgba(0,0,0,0.5)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:99999 }}>
           <div style={{ backgroundColor:'white',padding:'40px',borderRadius:'24px',width:'90%',maxWidth:'400px',textAlign:'center',boxShadow:'0 20px 50px rgba(0,0,0,0.3)' }}>
