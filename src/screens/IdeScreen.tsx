@@ -136,7 +136,7 @@ cppGenerator.forBlock['objeto_esta_perto']    = (b: Blockly.Block) => {
 const toolboxConfig = {
   kind: 'categoryToolbox',
   contents: [
-    { kind: 'category', name: '⚡ Pinos/Portas', colour: '230',
+    { kind: 'category', name: '⚡ Pinos Digitais', colour: '230',
       contents: [{ kind: 'block', type: 'configurar_pino' }, { kind: 'block', type: 'escrever_pino' }, { kind: 'block', type: 'ler_pino_digital' }] },
     { kind: 'category', name: '⏱️ Controle', colour: '120',
       contents: [{ kind: 'block', type: 'esperar' }, { kind: 'block', type: 'repetir_vezes' }] },
@@ -161,7 +161,19 @@ type FriendlyError = { emoji: string; title: string; message: string; tip: strin
 
 function getFriendlyError(raw: string): FriendlyError {
   const e = raw.toLowerCase();
-  if (e.includes('port') || e.includes('porta') || e.includes('serial') || e.includes('com') || e.includes('tty')) {
+
+  // ── Erros de porta/USB (mensagens do Rust: "Erro na porta COMx", "Erro upload", sem porta selecionada) ──
+  if (
+    e.includes('erro na porta') ||
+    e.includes('erro upload') ||
+    e.includes('could not open port') ||
+    e.includes('no such file') ||
+    e.includes('permission denied') ||
+    e.includes('access is denied') ||
+    (e.includes('porta') && !e.includes('erro no código')) ||
+    e.includes('tty') ||
+    e.includes('serial')
+  ) {
     return {
       emoji: '🔌',
       title: 'Cabo USB não encontrado!',
@@ -169,15 +181,26 @@ function getFriendlyError(raw: string): FriendlyError {
       tip: 'Dica: Verifique se o cabo está bem encaixado e tente clicar em 🔄 para atualizar as portas!',
     };
   }
-  if (e.includes('avrdude') || e.includes('programmer') || e.includes('not in sync') || e.includes('out of sync')) {
+
+  // ── Erro de compilador não encontrado (arduino-cli ausente) ──
+  if (e.includes('erro compilador') || e.includes('não foi possível') || e.includes('not found')) {
     return {
-      emoji: '😵',
-      title: 'Não consegui falar com o Arduino!',
-      message: 'O computador tentou se conectar ao Arduino, mas ele não respondeu. Isso pode acontecer se a placa selecionada estiver errada.',
-      tip: 'Dica: Verifique se você escolheu a placa certa (Uno, Nano ou ESP32) no seletor do meio da tela!',
+      emoji: '⚙️',
+      title: 'Arduino CLI não encontrado!',
+      message: 'O programa que converte os blocos para o robô não foi encontrado no computador.',
+      tip: 'Dica: Reinstale o OficinaCode ou chame o professor para verificar a instalação!',
     };
   }
-  if (e.includes('error') || e.includes('syntax') || e.includes('expected') || e.includes('undeclared')) {
+
+  // ── Erro de compilação do código gerado pelos blocos (Rust: "Erro no código:\n...") ──
+  if (
+    e.includes('erro no código') ||
+    e.includes('error:') ||       // saída do avr-gcc em inglês
+    e.includes('syntax error') ||
+    e.includes('expected') ||
+    e.includes('undeclared') ||
+    e.includes('was not declared')
+  ) {
     return {
       emoji: '🧩',
       title: 'Hmm… algo está errado nas peças!',
@@ -185,14 +208,34 @@ function getFriendlyError(raw: string): FriendlyError {
       tip: 'Dica: Tente remover a última peça que você colocou e montar de novo. Se não resolver, chame o professor!',
     };
   }
-  if (e.includes('timeout') || e.includes('time out')) {
+
+  // ── Erros de comunicação com a placa (avrdude) ──
+  if (
+    e.includes('avrdude') ||
+    e.includes('programmer') ||
+    e.includes('not in sync') ||
+    e.includes('out of sync') ||
+    e.includes('stk500')
+  ) {
+    return {
+      emoji: '😵',
+      title: 'Não consegui falar com o Arduino!',
+      message: 'O computador conectou no Arduino, mas a placa não respondeu corretamente. A placa selecionada pode estar errada.',
+      tip: 'Dica: Verifique se você escolheu a placa certa (Uno, Nano ou ESP32) no seletor do meio da tela!',
+    };
+  }
+
+  // ── Timeout ──
+  if (e.includes('timeout') || e.includes('time out') || e.includes('timed out')) {
     return {
       emoji: '⏰',
       title: 'Demorou demais…',
-      message: 'O Arduino não respondeu a tempo. Às vezes isso acontece quando a conexão é instável.',
+      message: 'O Arduino não respondeu a tempo. Às vezes isso acontece quando a conexão está instável.',
       tip: 'Dica: Desconecte e reconecte o cabo USB e tente novamente!',
     };
   }
+
+  // ── Fallback genérico (NÃO culpa as peças) ──
   return {
     emoji: '😕',
     title: 'Algo deu errado por aqui...',
@@ -510,11 +553,11 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
         </div>
       )}
 
-  {/* ── TOPBAR ───────────────────────────────────────────────────────── */}
-      <div className="topbar">
+      {/* ── TOPBAR ───────────────────────────────────────────────────────── */}
+      <div className="topbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '15px' }}>
 
-        {/* Esquerda: logo + badge */}
-        <div className="topbar-left">
+        {/* Logo + título */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 'fit-content' }}>
           <img src={logoSimples} alt="Oficina Code" style={{ height: '34px' }} />
           {projectTitle && (
             <div className="project-title-badge">
@@ -524,49 +567,47 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
           )}
         </div>
 
-        {/* Centro: controles de hardware */}
-        <div className="topbar-center">
-          <div className="hardware-controls">
-            <div className="control-group">
-              <span className="control-icon">🖥️</span>
-              <select value={board} onChange={(e) => setBoard(e.target.value as 'nano' | 'esp32' | 'uno')} disabled={readOnly}>
-                <option value="uno">Uno</option>
-                <option value="nano">Nano</option>
-                <option value="esp32">ESP32</option>
-              </select>
-            </div>
-            <div className="control-divider" />
-            <div className="control-group">
-              <span className="control-icon">🔌</span>
-              <select value={port} onChange={(e) => setPort(e.target.value)}>
-                {availablePorts.length === 0
-                  ? <option value="">Conecte o cabo…</option>
-                  : availablePorts.map(p => <option key={p} value={p}>{p}</option>)
-                }
-              </select>
-              <button onClick={fetchPorts} className="btn-icon" title="Atualizar portas">🔄</button>
-            </div>
-            <div className="control-divider" />
-            {!readOnly && (
-              <>
-                <button onClick={handleUploadCode} className="btn-action btn-send" disabled={isUploadingRef.current}>
-                  🚀 Enviar
-                </button>
-                <button className={`btn-action ${isSerialOpen ? 'btn-chat-active' : 'btn-chat'}`} onClick={handleToggleSerial}>
-                  {isSerialOpen ? '🛑 Parar' : '💬 Chat'}
-                </button>
-              </>
-            )}
-            {readOnly && (
-              <button className={`btn-action ${isSerialOpen ? 'btn-chat-active' : 'btn-chat'}`} onClick={handleToggleSerial}>
-                {isSerialOpen ? '🛑 Parar' : '💬 Monitorar'}
-              </button>
-            )}
+        {/* Controles de hardware (centro) */}
+        <div className="hardware-controls" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
+          <div className="control-group">
+            <span className="control-icon">🖥️</span>
+            <select value={board} onChange={(e) => setBoard(e.target.value as 'nano' | 'esp32' | 'uno')} disabled={readOnly}>
+              <option value="uno">Uno</option>
+              <option value="nano">Nano</option>
+              <option value="esp32">ESP32</option>
+            </select>
           </div>
+          <div className="control-divider" />
+          <div className="control-group">
+            <span className="control-icon">🔌</span>
+            <select value={port} onChange={(e) => setPort(e.target.value)}>
+              {availablePorts.length === 0
+                ? <option value="">Conecte o cabo…</option>
+                : availablePorts.map(p => <option key={p} value={p}>{p}</option>)
+              }
+            </select>
+            <button onClick={fetchPorts} className="btn-icon" title="Atualizar portas">🔄</button>
+          </div>
+          <div className="control-divider" />
+          {!readOnly && (
+            <>
+              <button onClick={handleUploadCode} className="btn-action btn-send" disabled={isUploadingRef.current}>
+                🚀 Enviar
+              </button>
+              <button className={`btn-action ${isSerialOpen ? 'btn-chat-active' : 'btn-chat'}`} onClick={handleToggleSerial}>
+                {isSerialOpen ? '🛑 Parar' : '💬 Chat'}
+              </button>
+            </>
+          )}
+          {readOnly && (
+            <button className={`btn-action ${isSerialOpen ? 'btn-chat-active' : 'btn-chat'}`} onClick={handleToggleSerial}>
+              {isSerialOpen ? '🛑 Parar' : '💬 Monitorar'}
+            </button>
+          )}
         </div>
 
-        {/* Direita: botões de ação */}
-        <div className="topbar-right">
+        {/* Botões da direita */}
+        <div style={{ display: 'flex', gap: '10px' }}>
           {role !== 'student' && (
             <button className="btn-secondary topbar-btn" onClick={() => setIsCodeVisible(!isCodeVisible)}>
               {isCodeVisible ? '🙈 Ocultar Código' : '💻 Ver Código'}
@@ -577,7 +618,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
               {isSaving ? '⏳ Salvando…' : '💾 Salvar'}
             </button>
           )}
-          <button className="btn-danger topbar-btn" onClick={onBack}>↩️ Sair</button>
+          <button className="btn-danger topbar-btn" onClick={onBack}>← Sair</button>
         </div>
       </div>
 
