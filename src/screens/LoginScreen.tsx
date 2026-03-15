@@ -45,16 +45,15 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
         {view === 'options' && (
           <div className="login-options">
-            <p>Como você quer entrar?</p>
-            <button className="btn-primary" onClick={() => setView('student')}>🎒 Sou Aluno</button>
-            <button className="btn-secondary" onClick={() => setView('teacher')}>👨‍🏫 Sou Professor</button>
+            <button className="btn-primary" onClick={() => setView('student')}>Sou Aluno</button>
+            <button className="btn-secondary" onClick={() => setView('teacher')}>Sou Professor</button>
             <button className="btn-text" onClick={() => onLogin('visitor')}>Entrar como Visitante</button>
           </div>
         )}
 
         {(view === 'student' || view === 'teacher') && (
           <div className="login-form">
-            <h3>{view === 'student' ? '🎒 Aluno' : '👨‍🏫 Professor'}</h3>
+            <h3>{view === 'student' ? 'Aluno' : 'Professor'}</h3>
             <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
             <input type="password" placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} />
             {error && <p style={{ color: 'var(--danger)', fontWeight: 700 }}>{error}</p>}

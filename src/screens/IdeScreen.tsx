@@ -235,7 +235,7 @@ const toolboxConfig = {
   kind: 'categoryToolbox',
   contents: [
     {
-      kind: 'category', name: 'Digital (Ligar/Desligar)', colour: '230',
+      kind: 'category', name: 'Digital', colour: '230',
       contents: [
         { kind: 'block', type: 'configurar_pino' },
         { kind: 'block', type: 'escrever_pino' },
