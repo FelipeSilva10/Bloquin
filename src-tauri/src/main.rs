@@ -34,6 +34,7 @@ fn find_arduino_cli(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf>
     if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
         let cached = std::path::Path::new(&local_app_data)
             .join("Oficina Code")
+            .join("resources")        
             .join("arduino-cli.exe");
         if cached.exists() {
             println!(">>> [CLI] Encontrado em cache local: {:?}", cached);
