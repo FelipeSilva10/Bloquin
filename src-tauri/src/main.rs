@@ -22,7 +22,7 @@ struct AppState {
 fn find_arduino_cli(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 
     // ── Fallback 1: bundlado ────────────────────────────────────────────────
-    if let Ok(bundled) = app_handle.path().resolve("resources/arduino-cli.exe", BaseDirectory::Resource) {
+    if let Ok(bundled) = app_handle.path().resolve("arduino-cli.exe", BaseDirectory::Resource){
         if bundled.exists() {
             println!(">>> [CLI] Encontrado bundlado: {:?}", bundled);
             return Some(bundled);
