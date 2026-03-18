@@ -6,7 +6,6 @@ import { supabase } from '../lib/supabase';
 import logoSimples from '../assets/LogoSimples.png'; 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import LZString from 'lz-string';
 
 Blockly.setLocale(PtBr as any);
 const cppGenerator = new Blockly.Generator('CPP');
@@ -22,14 +21,14 @@ const BOARDS = {
   nano: { name: 'Arduino Nano', pins: [['D2','2'],['D3 (PWM)','3'],['D4','4'],['D5 (PWM)','5'],['D6 (PWM)','6'],['D7','7'],['D8','8'],['D9 (PWM)','9'],['D10 (PWM)','10'],['D11 (PWM)','11'],['D12','12'],['D13 (LED Interno)','13']] },
   esp32: { name: 'ESP32 DevKit V1', pins: [
     // ── Uso geral (entrada e saída) ──────────────────────────────────────
-    ['GPIO 0  ⚠️ boot',   '0' ],
+    ['GPIO 0  boot',   '0' ],
     ['GPIO 2  (LED)',      '2' ], 
     ['GPIO 4',            '4' ],
-    ['GPIO 5  ⚠️ boot',   '5' ],
-    ['GPIO 12 ⚠️ boot',   '12'],
+    ['GPIO 5  boot',   '5' ],
+    ['GPIO 12 boot',   '12'],
     ['GPIO 13',           '13'],
     ['GPIO 14',           '14'],
-    ['GPIO 15 ⚠️ boot',   '15'],
+    ['GPIO 15 boot',   '15'],
     ['GPIO 16',           '16'],
     ['GPIO 17',           '17'],
     ['GPIO 18',           '18'],
@@ -425,13 +424,15 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
             setProjectName(data.nome);
             if (data.target_board) setBoard(data.target_board as 'nano' | 'esp32' | 'uno');
             try {
-              if (data.workspace_data) {
-                const raw = typeof data.workspace_data === 'string'
-                  ? JSON.parse(LZString.decompress(data.workspace_data) || '{}')
-                  : data.workspace_data;
-                if (raw && Object.keys(raw).length > 0)
-                  Blockly.serialization.workspaces.load(raw, workspace.current!);
-              }
+      if (data.workspace_data) {
+        const raw = typeof data.workspace_data === 'string'
+          ? JSON.parse(data.workspace_data) 
+          : data.workspace_data;
+          
+        if (raw && Object.keys(raw).length > 0) {
+          Blockly.serialization.workspaces.load(raw, workspace.current!);
+        }
+      }
             } catch (_) {}
             ensureRootBlocks();
           }
@@ -471,11 +472,11 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   const handleSaveProject = async () => {
     if (!projectId || !workspace.current) return;
     setIsSaving(true);
-    const { error } = await supabase.from('projetos').update({
-      workspace_data: LZString.compress(JSON.stringify(Blockly.serialization.workspaces.save(workspace.current))),
-      target_board: board,
-      updated_at: new Date().toISOString()
-    }).eq('id', projectId);
+  const { error } = await supabase.from('projetos').update({
+    workspace_data: Blockly.serialization.workspaces.save(workspace.current),
+    target_board: board,
+    updated_at: new Date().toISOString()
+  }).eq('id', projectId);
     setIsSaving(false);
     if (!error) setSaveStatus('success');
     else { setFriendlyError({ emoji: '☁️', title: 'Não consegui salvar!', message: error.message, tip: 'Verifique sua conexão com a internet e tente de novo.', rawError: error.message }); }
