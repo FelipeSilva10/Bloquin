@@ -3,7 +3,7 @@ name: Build Alpha
 on:
   push:
     branches:
-      - alpha-v1
+      - Version1
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────────
