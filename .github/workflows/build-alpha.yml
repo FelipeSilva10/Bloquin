@@ -29,7 +29,6 @@ jobs:
       - name: Baixar arduino-cli (Windows)
         run: |
           New-Item -ItemType Directory -Force -Path src-tauri/resources/
-          # Remove arquivo anterior se existir — Expand-Archive -Force falha em arquivos, não em dirs
           if (Test-Path src-tauri/resources/arduino-cli.exe) {
             Remove-Item -Force src-tauri/resources/arduino-cli.exe
           }
@@ -66,7 +65,6 @@ jobs:
       - name: Instalar Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # Dependências de sistema necessárias para o Tauri no Linux
       - name: Instalar dependências do sistema
         run: |
           sudo apt-get update
@@ -110,3 +108,37 @@ jobs:
         with:
           name: OficinaCode-alpha-v1-linux-appimage
           path: src-tauri/target/release/bundle/appimage/*.AppImage
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # BUILD LINUX ARCH (Opcional - veja a nota abaixo)
+  # ──────────────────────────────────────────────────────────────────────────────
+  build-linux-arch:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Instalar dependências do Arch
+        run: |
+          # Adicionado 'git' e 'curl' que são necessários para o checkout e download
+          pacman -Syu --noconfirm base-devel git curl wget webkit2gtk-4.1 \
+            gtk3 libayatana-appindicator nodejs npm rust cargo
+
+      - uses: actions/checkout@v4
+
+      - name: Instalar dependências npm
+        run: npm install
+        
+      - name: Baixar arduino-cli (Linux x86_64)
+        run: |
+          # Faltava baixar o arduino-cli no container Arch, o app falharia sem ele
+          mkdir -p src-tauri/resources/
+          curl -L \
+            "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz" \
+            -o arduino-cli.tar.gz
+          tar -xzf arduino-cli.tar.gz -C src-tauri/resources/
+          chmod +x src-tauri/resources/arduino-cli
+          rm arduino-cli.tar.gz
+
+      - name: Build Tauri (Arch)
+        # Removido --bundles deb, pois o Arch não possui dpkg nativamente para empacotar .deb
+        run: npm run tauri build
