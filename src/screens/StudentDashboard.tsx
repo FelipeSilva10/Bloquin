@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import logoSimples from '../assets/LogoSimples.png';
+import { BOARD_UNSET } from './IdeScreen';
 
 interface StudentDashboardProps {
   onLogout: () => void;
@@ -25,7 +26,6 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Nunca selecionar workspace_data na listagem — campo pesado, só carregado na IDE
     const { data } = await supabase
       .from('projetos')
       .select('id, nome, updated_at')
@@ -56,14 +56,15 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
       return;
     }
 
-    // Retorna só os campos da lista — workspace_data nasce nulo, não precisa voltar
+    // target_board inserido como BOARD_UNSET ('unset').
+    // A seleção real ocorre na IdeScreen, que detecta este valor e exibe o modal.
     const { data, error } = await supabase
       .from('projetos')
       .insert([{
         dono_id: user.id,
         turma_id: perfil.turma_id,
         nome: newProjectName.trim(),
-        target_board: 'uno',
+        target_board: BOARD_UNSET,
       }])
       .select('id, nome, updated_at')
       .single();
@@ -72,6 +73,8 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
       setProjects(prev => [data, ...prev]);
       setShowModal(false);
       setNewProjectName('');
+      // Abre imediatamente o projeto criado — a IDE solicitará a placa
+      onOpenIde(data.id);
     } else if (error) {
       setCreateError(error.message);
     }
