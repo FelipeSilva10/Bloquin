@@ -59,7 +59,22 @@ const BOARDS = {
   },
 };
 
+type BoardKey = keyof typeof BOARDS;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// currentBoardPins — variável de módulo usada pelos callbacks de blocos.
+//
+// REGRA CRÍTICA: sempre atualize esta variável de forma SÍNCRONA antes de
+// qualquer chamada a Blockly.serialization.workspaces.load() ou
+// workspace.newBlock(). Nunca confie apenas em setBoard() para isso, pois
+// setState é assíncrono e não garante a atualização antes do próximo render.
+// ─────────────────────────────────────────────────────────────────────────────
 let currentBoardPins = BOARDS.uno.pins;
+
+/** Atualiza currentBoardPins de forma síncrona a partir de uma chave de placa. */
+function syncBoardPins(boardKey: BoardKey) {
+  currentBoardPins = BOARDS[boardKey]?.pins ?? BOARDS.uno.pins;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Definição dos blocos personalizados
@@ -214,7 +229,6 @@ const customBlocks = [
     inputsInline: true, output: 'Boolean',
   },
   {
-    // NOVO: operador NÃO (NOT lógico)
     type: 'nao_logico', colour: 210,
     message0: 'NÃO %1',
     args0: [{ type: 'input_value', name: 'VALOR', check: 'Boolean' }],
@@ -222,7 +236,6 @@ const customBlocks = [
     tooltip: 'Inverte a condição: NÃO verdadeiro = falso.',
   },
   {
-    // NOVO: mapeamento de escala (map)
     type: 'mapear_valor', colour: 210,
     message0: 'Converter %1 de %2-%3 para %4-%5',
     args0: [
@@ -278,7 +291,6 @@ const customBlocks = [
     tooltip: 'Retorna verdadeiro se houver um objeto mais próximo que a distância indicada.',
   },
   {
-    // NOVO: verifica faixa com UMA única leitura do sensor
     type: 'distancia_entre', colour: 40,
     message0: 'Distância entre %1 e %2 cm? (Trigger %3 Echo %4)',
     args0: [
@@ -288,7 +300,7 @@ const customBlocks = [
       { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins },
     ],
     output: 'Boolean',
-    tooltip: 'Verifica se a distância está em uma faixa. Lê o sensor uma única vez! Use quando precisar de "entre X e Y cm".',
+    tooltip: 'Verifica se a distância está em uma faixa. Lê o sensor uma única vez!',
   },
 
   // ── Comunicação ────────────────────────────────────────────────────────────
@@ -312,14 +324,12 @@ Blockly.defineBlocksWithJsonArray(customBlocks);
 // Geradores de código C++
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Estrutura
 cppGenerator.forBlock['bloco_setup'] = (b: Blockly.Block) =>
   `void setup() {\n  Serial.begin(9600);\n${cppGenerator.statementToCode(b, 'DO') || '  // Suas configurações entrarão aqui...\n'}}\n\n`;
 
 cppGenerator.forBlock['bloco_loop'] = (b: Blockly.Block) =>
   `void loop() {\n${cppGenerator.statementToCode(b, 'DO') || '  // Suas ações principais entrarão aqui...\n'}}\n\n`;
 
-// Pinos digitais
 cppGenerator.forBlock['configurar_pino'] = (b: Blockly.Block) =>
   `  pinMode(${b.getFieldValue('PIN')}, ${b.getFieldValue('MODE')});\n`;
 
@@ -329,21 +339,18 @@ cppGenerator.forBlock['escrever_pino'] = (b: Blockly.Block) =>
 cppGenerator.forBlock['ler_pino_digital'] = (b: Blockly.Block) =>
   [`digitalRead(${b.getFieldValue('PIN')})`, 0];
 
-// PWM e analógico
 cppGenerator.forBlock['escrever_pino_pwm'] = (b: Blockly.Block) =>
   `  analogWrite(${b.getFieldValue('PIN')}, ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
 
 cppGenerator.forBlock['ler_pino_analogico'] = (b: Blockly.Block) =>
   [`analogRead(${b.getFieldValue('PIN')})`, 0];
 
-// Controle
 cppGenerator.forBlock['esperar'] = (b: Blockly.Block) =>
   `  delay(${b.getFieldValue('TIME')});\n`;
 
 cppGenerator.forBlock['repetir_vezes'] = (b: Blockly.Block) =>
   `  for (int i = 0; i < ${b.getFieldValue('TIMES')}; i++) {\n${cppGenerator.statementToCode(b, 'DO') || ''}  }\n`;
 
-// Condições
 cppGenerator.forBlock['se_entao'] = (b: Blockly.Block) =>
   `  if (${cppGenerator.valueToCode(b, 'CONDICAO', 0) || 'false'}) {\n${cppGenerator.statementToCode(b, 'ENTAO') || ''}  }\n`;
 
@@ -365,19 +372,9 @@ cppGenerator.forBlock['nao_logico'] = (b: Blockly.Block) =>
 cppGenerator.forBlock['mapear_valor'] = (b: Blockly.Block) =>
   [`map(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}, ${b.getFieldValue('DE_MIN')}, ${b.getFieldValue('DE_MAX')}, ${b.getFieldValue('PARA_MIN')}, ${b.getFieldValue('PARA_MAX')})`, 0];
 
-// ── Ultrassônico — CORRIGIDO ───────────────────────────────────────────────
-//
-// Bug original: usava extensão GCC ({ ... }) como expressão inline, o que:
-//   1. Não é C++ padrão (falha em compiladores estritos)
-//   2. Re-disparava o sensor a cada avaliação da expressão
-//
-// Correção: todos os blocos chamam _lerDistancia(), função helper injetada
-// automaticamente no topo do código gerado por generateCode() abaixo.
-
 cppGenerator.forBlock['configurar_ultrassonico'] = (b: Blockly.Block) =>
   `  pinMode(${b.getFieldValue('TRIG')}, OUTPUT);\n  pinMode(${b.getFieldValue('ECHO')}, INPUT);\n`;
 
-// CORRIGIDO: chama helper em vez de expressão GCC inline
 cppGenerator.forBlock['ler_distancia_cm'] = (b: Blockly.Block) => {
   const t = b.getFieldValue('TRIG'), e = b.getFieldValue('ECHO');
   return [`_lerDistancia(${t}, ${e})`, 0];
@@ -388,24 +385,18 @@ cppGenerator.forBlock['mostrar_distancia'] = (b: Blockly.Block) => {
   return `  Serial.println(_lerDistancia(${t}, ${e}));\n`;
 };
 
-// CORRIGIDO: antes chamava o sensor DUAS vezes na mesma expressão (m < cm && m > 0)
-// Agora chama UMA vez. A função helper já retorna 0.0 quando sem leitura.
 cppGenerator.forBlock['objeto_esta_perto'] = (b: Blockly.Block) => {
   const cm = b.getFieldValue('CM');
   const t = b.getFieldValue('TRIG'), e = b.getFieldValue('ECHO');
   return [`(_lerDistancia(${t}, ${e}) < ${cm})`, 0];
 };
 
-// NOVO: verifica faixa — usa _distanciaEntre() que lê o sensor UMA vez internamente.
-// Solução para quando o aluno precisaria de "E (dist >= 10) E (dist < 20)" com duas
-// referências ao bloco de distância (que antes disparava o sensor duas vezes).
 cppGenerator.forBlock['distancia_entre'] = (b: Blockly.Block) => {
   const min = b.getFieldValue('MIN'), max = b.getFieldValue('MAX');
   const t = b.getFieldValue('TRIG'), e = b.getFieldValue('ECHO');
   return [`_distanciaEntre(${t}, ${e}, ${min}.0f, ${max}.0f)`, 0];
 };
 
-// Comunicação
 cppGenerator.forBlock['escrever_serial'] = (b: Blockly.Block) =>
   `  Serial.println("${b.getFieldValue('TEXT')}");\n`;
 
@@ -414,21 +405,16 @@ cppGenerator.forBlock['escrever_serial_valor'] = (b: Blockly.Block) =>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // generateCode: injeta funções helper quando necessário
-//
-// Sempre que o código gerado usar _lerDistancia ou _distanciaEntre, esta
-// função insere as implementações no topo do arquivo — sem extensões GCC,
-// em C++ padrão compatível com Arduino e ESP32.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const generateCode = (ws: Blockly.WorkspaceSvg): string => {
   const raw = cppGenerator.workspaceToCode(ws) || '';
 
-  const needsEntre      = raw.includes('_distanciaEntre(');
-  const needsUltrass    = raw.includes('_lerDistancia(') || needsEntre;
+  const needsEntre   = raw.includes('_distanciaEntre(');
+  const needsUltrass = raw.includes('_lerDistancia(') || needsEntre;
 
   if (!needsUltrass) return raw;
 
-  // Helper: leitura ultrassônica (C++ padrão — sem extensão GCC)
   const helperLer =
     'float _lerDistancia(int trig, int echo) {\n' +
     '  digitalWrite(trig, LOW);\n' +
@@ -440,7 +426,6 @@ const generateCode = (ws: Blockly.WorkspaceSvg): string => {
     '  return dur > 0 ? dur * 0.034f / 2.0f : 0.0f;\n' +
     '}\n';
 
-  // Helper: faixa de distância — lê o sensor UMA vez e compara
   const helperEntre = needsEntre
     ? '\nbool _distanciaEntre(int trig, int echo, float minCm, float maxCm) {\n' +
       '  float d = _lerDistancia(trig, echo);\n' +
@@ -601,6 +586,144 @@ const UPLOAD_STAGES: { id: UploadStage; label: string; emoji: string; tip: strin
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BoardSelectionModal — etapa obrigatória para novos projetos
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface BoardSelectionModalProps {
+  onSelect: (board: BoardKey) => void;
+}
+
+function BoardSelectionModal({ onSelect }: BoardSelectionModalProps) {
+  const [hovered, setHovered] = useState<BoardKey | null>(null);
+
+  const boards: { key: BoardKey; title: string; color: string; img: string }[] = [
+    {
+      key: 'uno',
+      title: 'Arduino Uno',
+      color: '#0984e3',
+      img: 'public/arduino_uno.jpg',
+    },
+    {
+      key: 'nano',
+      title: 'Arduino Nano',
+      color: '#6c5ce7',
+      img: 'public/arduino_nano.jpg',
+    },
+    {
+      key: 'esp32',
+      title: 'ESP32 DevKit',
+      color: '#e17055',
+      img: 'public/esp32_devkit_v1.jpg',
+    },
+  ];
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 999999 }}>
+      <div style={{
+        background: '#fff',
+        borderRadius: 32,
+        padding: '44px 40px 36px',
+        maxWidth: 680,
+        width: '95%',
+        boxShadow: '0 30px 80px rgba(0,0,0,0.25)',
+        animation: 'popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+        borderTop: '6px solid #00a8ff',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 28,
+        textAlign: 'center',
+      }}>
+        {/* Título */}
+        <div>
+          <h2 style={{ color: '#2f3542', fontSize: '1.7rem', fontWeight: 900, marginBottom: 8 }}>
+            Qual placa vamos usar?
+          </h2>
+          <p style={{ color: '#7f8c8d', fontSize: '1rem', fontWeight: 700, lineHeight: 1.5 }}>
+            Escolha antes de começar. Os pinos disponíveis vão mudar dependendo da placa.
+            <br />
+            <strong style={{ color: '#e17055' }}>Essa escolha não pode ser alterada depois de salvar.</strong>
+          </p>
+        </div>
+
+        {/* Cards horizontais */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'row',
+          gap: 16,
+          width: '100%',
+          justifyContent: 'center',
+        }}>
+          {boards.map(({ key, title, color, img }) => (
+            <button
+              key={key}
+              onMouseEnter={() => setHovered(key)}
+              onMouseLeave={() => setHovered(null)}
+              onClick={() => onSelect(key)}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 12,
+                padding: '18px 16px 14px',
+                borderRadius: 20,
+                border: `3px solid ${hovered === key ? color : '#e0e6ed'}`,
+                background: hovered === key ? `${color}11` : '#f8fafd',
+                cursor: 'pointer',
+                boxShadow: hovered === key
+                  ? `0 8px 24px ${color}44`
+                  : '0 2px 8px rgba(0,0,0,0.06)',
+                transform: hovered === key ? 'translateY(-4px) scale(1.03)' : 'none',
+                transition: 'all 0.18s ease',
+                flex: 1,
+                minWidth: 0,
+                outline: 'none',
+              }}
+            >
+              {/* Foto da placa */}
+              <div style={{
+                width: '100%',
+                aspectRatio: '4/3',
+                borderRadius: 12,
+                overflow: 'hidden',
+                background: '#eef2f7',
+                border: `2px solid ${hovered === key ? color + '55' : '#e0e6ed'}`,
+                transition: 'border-color 0.18s ease',
+                flexShrink: 0,
+              }}>
+                <img
+                  src={img}
+                  alt={title}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    display: 'block',
+                    transition: 'transform 0.25s ease',
+                    transform: hovered === key ? 'scale(1.06)' : 'scale(1)',
+                  }}
+                />
+              </div>
+
+              {/* Nome */}
+              <span style={{
+                color: hovered === key ? color : '#2f3542',
+                fontWeight: 900,
+                fontSize: '1rem',
+                transition: 'color 0.18s ease',
+                lineHeight: 1.2,
+              }}>
+                {title}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Componente IdeScreen
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -615,7 +738,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   const blocklyDiv  = useRef<HTMLDivElement>(null);
   const workspace   = useRef<Blockly.WorkspaceSvg | null>(null);
 
-  const [board, setBoard]                       = useState<'nano' | 'esp32' | 'uno'>('uno');
+  const [board, setBoard]                       = useState<BoardKey>('uno');
   const [port, setPort]                         = useState('');
   const [availablePorts, setAvailablePorts]     = useState<string[]>([]);
   const [generatedCode, setGeneratedCode]       = useState('// O código C++ aparecerá aqui...');
@@ -633,6 +756,14 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   const [showTechDetails, setShowTechDetails]   = useState(false);
   const [orphanWarning, setOrphanWarning]       = useState<string[]>([]);
   const isUploadingRef                          = useRef(false);
+
+  // ── Controle de seleção de placa ─────────────────────────────────────────
+  // Para NOVOS projetos: exibe o modal de seleção antes de inicializar o workspace.
+  // Para projetos EXISTENTES: carrega a placa do DB de forma síncrona antes do load.
+  // showBoardModal só é true em projetos novos (sem projectId) e não-readOnly.
+  const [showBoardModal, setShowBoardModal]     = useState(!projectId && !readOnly);
+  // ideReady garante que o Blockly só é injetado após a placa ser determinada.
+  const [ideReady, setIdeReady]                 = useState(!!projectId || readOnly);
 
   // ── Tema ────────────────────────────────────────────────────────────────────
 
@@ -689,12 +820,21 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
 
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
+  // ── Handler: seleção de placa para novos projetos ─────────────────────────
+  // Chamado pelo BoardSelectionModal. Atualiza currentBoardPins de forma
+  // síncrona ANTES de liberar a inicialização do workspace.
+  const handleBoardSelected = (selectedBoard: BoardKey) => {
+    syncBoardPins(selectedBoard);   // ← síncrono, antes do inject
+    setBoard(selectedBoard);
+    setShowBoardModal(false);
+    setIdeReady(true);              // ← libera o useEffect do Blockly
+  };
+
   // ── Effects ─────────────────────────────────────────────────────────────────
 
-  useEffect(() => { currentBoardPins = BOARDS[board].pins; }, [board]);
   useEffect(() => { fetchPorts(); }, []);
 
-  // Escuta resultado do upload vindo do backend (evento assíncrono)
+  // Escuta resultado do upload vindo do backend
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     (async () => {
@@ -713,82 +853,110 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   }, []);
 
   // Inicialização do Blockly
+  // IMPORTANTE: só roda quando ideReady === true, garantindo que currentBoardPins
+  // já foi atualizado de forma síncrona antes do inject e do workspace load.
   useEffect(() => {
-    if (blocklyDiv.current && !workspace.current) {
-      workspace.current = Blockly.inject(blocklyDiv.current, {
-        toolbox: toolboxConfig,
-        grid: { spacing: 24, length: 4, colour: '#d8e0ec', snap: true },
-        readOnly,
-        move: { scrollbars: true, drag: true, wheel: true },
-        theme: oficinaTheme,
-        zoom: { controls: true, wheel: true, startScale: 1.0, maxScale: 3, minScale: 0.3, scaleSpeed: 1.2 },
-        trashcan: true,
-        sounds: false,
-      });
+    if (!ideReady || !blocklyDiv.current || workspace.current) return;
 
-      workspace.current.addChangeListener((event) => {
-        if (event.isUiEvent) return;
-        try {
-          // CORRIGIDO: usa generateCode() que injeta os helpers necessários
-          setGeneratedCode(
-            generateCode(workspace.current!) ||
-            '// Arraste blocos para dentro de PREPARAR e AGIR!'
-          );
-        } catch (e) {
-          console.error('Erro ao gerar código:', e);
-        }
-      });
+    workspace.current = Blockly.inject(blocklyDiv.current, {
+      toolbox: toolboxConfig,
+      grid: { spacing: 24, length: 4, colour: '#d8e0ec', snap: true },
+      readOnly,
+      move: { scrollbars: true, drag: true, wheel: true },
+      theme: oficinaTheme,
+      zoom: { controls: true, wheel: true, startScale: 1.0, maxScale: 3, minScale: 0.3, scaleSpeed: 1.2 },
+      trashcan: true,
+      sounds: false,
+    });
 
-      const ensureRootBlocks = () => {
-        if (!workspace.current) return;
-        let s = workspace.current.getTopBlocks(false).find(b => b.type === 'bloco_setup');
-        if (!s) {
-          s = workspace.current.newBlock('bloco_setup');
-          s.moveBy(50, 50);
-          s.initSvg();
-          s.render();
-        }
-        s.setDeletable(false);
-
-        let l = workspace.current.getTopBlocks(false).find(b => b.type === 'bloco_loop');
-        if (!l) {
-          l = workspace.current.newBlock('bloco_loop');
-          l.moveBy(450, 50);
-          l.initSvg();
-          l.render();
-        }
-        l.setDeletable(false);
-      };
-
-      if (projectId) {
-        (async () => {
-          const { data, error } = await supabase
-            .from('projetos')
-            .select('*')
-            .eq('id', projectId)
-            .single();
-
-          if (data && !error) {
-            setProjectName(data.nome);
-            if (data.target_board) setBoard(data.target_board as 'nano' | 'esp32' | 'uno');
-            try {
-              if (data.workspace_data) {
-                const raw =
-                  typeof data.workspace_data === 'string'
-                    ? JSON.parse(LZString.decompressFromBase64(data.workspace_data) || '{}')
-                    : data.workspace_data;
-                if (raw && Object.keys(raw).length > 0)
-                  Blockly.serialization.workspaces.load(raw, workspace.current!);
-              }
-            } catch (_) {
-              // workspace corrompido — começa vazio
-            }
-            ensureRootBlocks();
-          }
-        })();
-      } else {
-        ensureRootBlocks();
+    workspace.current.addChangeListener((event) => {
+      if (event.isUiEvent) return;
+      try {
+        setGeneratedCode(
+          generateCode(workspace.current!) ||
+          '// Arraste blocos para dentro de PREPARAR e AGIR!'
+        );
+      } catch (e) {
+        console.error('Erro ao gerar código:', e);
       }
+    });
+
+    const ensureRootBlocks = () => {
+      if (!workspace.current) return;
+      let s = workspace.current.getTopBlocks(false).find(b => b.type === 'bloco_setup');
+      if (!s) {
+        s = workspace.current.newBlock('bloco_setup');
+        s.moveBy(50, 50);
+        s.initSvg();
+        s.render();
+      }
+      s.setDeletable(false);
+
+      let l = workspace.current.getTopBlocks(false).find(b => b.type === 'bloco_loop');
+      if (!l) {
+        l = workspace.current.newBlock('bloco_loop');
+        l.moveBy(450, 50);
+        l.initSvg();
+        l.render();
+      }
+      l.setDeletable(false);
+    };
+
+    if (projectId) {
+      (async () => {
+        const { data, error } = await supabase
+          .from('projetos')
+          .select('*')
+          .eq('id', projectId)
+          .single();
+
+        if (error || !data) {
+          ensureRootBlocks();
+          return;
+        }
+
+        setProjectName(data.nome);
+
+        // ── CORREÇÃO CRÍTICA ───────────────────────────────────────────────
+        // Atualiza currentBoardPins de forma SÍNCRONA antes de qualquer
+        // operação no workspace. Não depender apenas de setBoard() aqui,
+        // pois setState é assíncrono e o workspace.load() abaixo rodaria
+        // com os pinos errados se apenas setBoard fosse chamado.
+        const savedBoard = (data.target_board as BoardKey) ?? 'uno';
+        if (!BOARDS[savedBoard]) {
+          setFriendlyError({
+            emoji: '⚠️',
+            title: 'Placa desconhecida no projeto!',
+            message: `O projeto foi salvo com a placa "${data.target_board}", que não é reconhecida.`,
+            tip: 'Contate o suporte ou o professor. O projeto não foi carregado para evitar corrupção.',
+            rawError: `target_board="${data.target_board}" não existe em BOARDS.`,
+          });
+          return;
+        }
+
+        syncBoardPins(savedBoard);  // ← síncrono, garante pinos corretos no load
+        setBoard(savedBoard);
+
+        // Agora é seguro carregar o workspace — currentBoardPins já está correto
+        try {
+          if (data.workspace_data) {
+            const raw =
+              typeof data.workspace_data === 'string'
+                ? JSON.parse(LZString.decompressFromBase64(data.workspace_data) || '{}')
+                : data.workspace_data;
+            if (raw && Object.keys(raw).length > 0)
+              Blockly.serialization.workspaces.load(raw, workspace.current!);
+          }
+        } catch (_) {
+          // workspace corrompido — começa vazio
+        }
+
+        ensureRootBlocks();
+      })();
+    } else {
+      // Projeto novo: currentBoardPins já foi atualizado por handleBoardSelected
+      // antes de ideReady ser setado para true.
+      ensureRootBlocks();
     }
 
     return () => {
@@ -797,11 +965,11 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
         workspace.current = null;
       }
     };
-  }, [projectId, readOnly]);
+  }, [ideReady, projectId, readOnly]);
 
   useEffect(() => {
     if (workspace.current) Blockly.svgResize(workspace.current);
-  }, [role, isCodeVisible, isFullscreenCode]);
+  }, [role, isCodeVisible, isFullscreenCode, ideReady]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -861,11 +1029,9 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
     }
   };
 
-  // CORRIGIDO: aceita ignoreOrphans para o botão "Enviar assim mesmo"
   const handleUploadCode = async (ignoreOrphans = false) => {
     if (isUploadingRef.current) return;
 
-    // 1. Verificar blocos órfãos (a menos que o usuário tenha confirmado)
     if (!ignoreOrphans) {
       const orphans = getOrphanedBlocks();
       if (orphans.length > 0) {
@@ -874,7 +1040,6 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
       }
     }
 
-    // 2. Verificar blocos raiz presentes
     if (!generatedCode.includes('void setup()') || !generatedCode.includes('void loop()')) {
       setFriendlyError({
         emoji: '🧩',
@@ -886,13 +1051,11 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
       return;
     }
 
-    // 3. Fechar serial se aberto
     if (isSerialOpen) {
       await invoke('stop_serial').catch(() => {});
       setIsSerialOpen(false);
     }
 
-    // 4. Inicia loading — backend retorna imediatamente, processa em background
     isUploadingRef.current = true;
     setUploadStage('validating');
 
@@ -900,7 +1063,6 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
     if (!isUploadingRef.current) return;
     setUploadStage('compiling');
 
-    // Dispara o comando — retorna imediatamente; resultado chega via evento 'upload-result'
     invoke('upload_code', { codigo: generatedCode, placa: board, porta: port })
       .catch((e) => {
         setUploadStage(null);
@@ -911,7 +1073,6 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
     await delay(2500);
     if (!isUploadingRef.current) return;
     setUploadStage('sending');
-    // A partir daqui aguarda o evento 'upload-result'
   };
 
   const handleCloseError = () => {
@@ -937,6 +1098,9 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   return (
     <div className="app-container">
 
+      {/* ── MODAL: SELEÇÃO DE PLACA (novos projetos) ─────────────────────────── */}
+      {showBoardModal && <BoardSelectionModal onSelect={handleBoardSelected} />}
+
       {readOnly && (
         <div className="readonly-banner">
           <span>👁️ Modo Visualização</span>
@@ -959,7 +1123,17 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
         <div className="hardware-controls" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
           <div className="control-group">
             <span className="control-icon">Placa: </span>
-            <select value={board} onChange={(e) => setBoard(e.target.value as 'nano' | 'esp32' | 'uno')} disabled={readOnly}>
+            {/* Placa é exibida mas não pode mais ser editada após projeto criado/aberto */}
+            <select
+              value={board}
+              onChange={(e) => {
+                const newBoard = e.target.value as BoardKey;
+                syncBoardPins(newBoard);  // ← síncrono
+                setBoard(newBoard);
+              }}
+              disabled={readOnly || !!projectId}
+              title={projectId ? 'A placa não pode ser alterada após o projeto ser salvo' : undefined}
+            >
               <option value="uno">Uno</option>
               <option value="nano">Nano</option>
               <option value="esp32">ESP32</option>
@@ -1118,7 +1292,6 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
               <button className="btn-outline" style={{ flex: 1 }} onClick={() => setOrphanWarning([])}>
                 Vou corrigir! ✏️
               </button>
-              {/* CORRIGIDO: agora realmente envia após fechar o aviso */}
               <button
                 className="btn-secondary"
                 style={{ flex: 1 }}
