@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import logoSimples from '../assets/LogoSimples.png';
 import { BOARD_UNSET } from './IdeScreen';
+import { invoke } from '@tauri-apps/api/core';
 
 interface TeacherDashboardProps {
   onLogout: () => void;
@@ -31,6 +32,10 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
   const [projectToDelete, setProjectToDelete] = useState<Projeto | null>(null);
   const [createError, setCreateError] = useState('');
 
+  // Estado do botão Admin
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState('');
+
   useEffect(() => { fetchTurmas(); fetchOwnProjects(); }, []);
 
   const fetchTurmas = async () => {
@@ -48,6 +53,31 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
     setLoadingProjects(false);
     if (data) setOwnProjects(data);
   };
+
+  // ── Abre o OficinaAdmin em WebviewWindow com auto-login ───────────────────
+  const handleOpenAdminPanel = async () => {
+    setAdminLoading(true);
+    setAdminError('');
+    try {
+      // Pega a sessão atual (tokens já existem, sem round-trip extra)
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error || !session) {
+        setAdminError('Sessão não encontrada. Faça login novamente.');
+        return;
+      }
+
+      await invoke('open_admin_panel', {
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+      });
+    } catch (err) {
+      setAdminError(`Erro ao abrir o painel: ${err}`);
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
 
   const openTurmaManager = async (turma: Turma) => {
     setManagingTurma(turma);
@@ -69,8 +99,6 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // target_board inserido como BOARD_UNSET ('unset').
-    // A seleção real ocorre na IdeScreen, que detecta este valor e exibe o modal.
     type InsertPayload = { dono_id: string; nome: string; target_board: string; turma_id?: string };
     let payload: InsertPayload = { dono_id: user.id, nome: newProjectName.trim(), target_board: BOARD_UNSET };
 
@@ -90,7 +118,6 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
       setOwnProjects(prev => [data, ...prev]);
       setShowNewProjectModal(false);
       setNewProjectName('');
-      // Abre imediatamente — a IDE solicitará a placa
       onOpenOwnProject(data.id);
     } else if (error) {
       console.error('Erro ao criar projeto:', error);
@@ -123,7 +150,41 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
           <img src={logoSimples} alt="Oficina Code" style={{ height: '40px' }} />
           <h1 style={{ color: 'var(--dark)', fontSize: '1.5rem', fontWeight: 900 }}>Painel do Professor</h1>
         </div>
-        <button className="btn-outline" onClick={onLogout} style={{ padding: '10px 20px' }}>Sair</button>
+
+        {/* Botões do lado direito da topbar */}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {/* ── Botão Admin ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+            <button
+              onClick={handleOpenAdminPanel}
+              disabled={adminLoading}
+              style={{
+                padding: '10px 20px',
+                background: adminLoading ? '#b2bec3' : 'linear-gradient(135deg, #6c5ce7, #a29bfe)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontWeight: 900,
+                fontSize: '0.95rem',
+                cursor: adminLoading ? 'not-allowed' : 'pointer',
+                boxShadow: adminLoading ? 'none' : '0 4px 0px #4b3fad',
+                transition: 'all 0.15s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              {adminLoading ? '⏳' : '🏫'} {adminLoading ? 'Abrindo…' : 'Painel Admin'}
+            </button>
+            {adminError && (
+              <span style={{ fontSize: '0.75rem', color: '#e17055', fontWeight: 700, maxWidth: '200px', textAlign: 'right' }}>
+                {adminError}
+              </span>
+            )}
+          </div>
+
+          <button className="btn-outline" onClick={onLogout} style={{ padding: '10px 20px' }}>Sair</button>
+        </div>
       </div>
 
       {/* ABAS */}

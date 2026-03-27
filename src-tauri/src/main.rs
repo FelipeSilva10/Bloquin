@@ -6,6 +6,8 @@ use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
+use tauri::WebviewWindowBuilder;
+use tauri::WebviewUrl;
 use std::time::Duration;
 
 // ── Windows: ocultar janela de CMD em todos os subprocessos ──────────────────
@@ -368,6 +370,46 @@ fn get_available_ports() -> Result<Vec<String>, String> {
     }
 }
 
+/// Abre o painel admin do OficinaAdmin em uma WebviewWindow separada.
+/// Recebe o access_token e refresh_token da sessão atual do professor,
+/// e os injeta como query params para que o site faça auto-login via
+/// supabase.auth.setSession().
+///
+/// A janela só pode ser aberta por professores — a verificação de role
+/// é feita no frontend antes de chamar este comando.
+#[tauri::command]
+fn open_admin_panel(
+    app: tauri::AppHandle,
+    access_token: String,
+    refresh_token: String,
+) -> Result<String, String> {
+    // URL base do OficinaAdmin (altere se for deploy em outro domínio)
+    let admin_base_url = "https://oficina-admin-web.vercel.app";
+
+    // Monta a URL com os tokens como query params.
+    // O site admin vai ler ?access_token=...&refresh_token=... e chamar setSession().
+    let url = format!(
+        "{}/auto-login?access_token={}&refresh_token={}",
+        admin_base_url,
+        urlencoding::encode(&access_token),
+        urlencoding::encode(&refresh_token),
+    );
+
+    let webview_url = WebviewUrl::External(
+        url.parse().map_err(|e| format!("URL inválida: {}", e))?
+    );
+
+    WebviewWindowBuilder::new(&app, "admin-panel", webview_url)
+        .title("OficinaAdmin — Painel de Gestão")
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(900.0, 600.0)
+        .center()
+        .build()
+        .map_err(|e| format!("Erro ao abrir janela: {}", e))?;
+
+    Ok("ok".to_string())
+}
+
 fn main() {
     let app_state = AppState {
         is_reading_serial: Arc::new(AtomicBool::new(false)),
@@ -380,7 +422,8 @@ fn main() {
             upload_code,
             start_serial,
             stop_serial,
-            get_available_ports
+            get_available_ports,
+            open_admin_panel
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
