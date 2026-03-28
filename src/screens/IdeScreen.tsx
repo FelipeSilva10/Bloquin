@@ -70,10 +70,10 @@ export const BOARD_UNSET = 'unset';
 // currentBoardPins — variável de módulo usada pelos callbacks de blocos.
 // Só populada após seleção explícita; nunca usada como fallback silencioso.
 // ─────────────────────────────────────────────────────────────────────────────
-let currentBoardPins: [string, string][] = BOARDS.uno.pins;
+let currentBoardPins: [string, string][] = [...BOARDS.uno.pins] as [string, string][];
 
 function syncBoardPins(boardKey: BoardKey) {
-  currentBoardPins = [...BOARDS[boardKey].pins];
+  currentBoardPins = [...BOARDS[boardKey].pins] as [string, string][];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
