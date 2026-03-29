@@ -1,7 +1,7 @@
 {
-  "productName": "Oficina Code",
+  "productName": "bloquin",
   "version": "0.1.0",
-  "identifier": "com.oficinacode.app",
+  "identifier": "com.bloquin.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -11,18 +11,22 @@
   "app": {
     "windows": [
       {
-        "title": "Oficina Code (versão alpha)",
+        "title": "Bloquin",
         "width": 1000,
         "height": 800
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "dangerousDisableAssetCspModification": false
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "resources/arduino-cli.exe"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -33,5 +37,10 @@
     "resources": [
       "resources/*"
     ]
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
   }
 }

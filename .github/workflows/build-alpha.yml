@@ -1,41 +1,97 @@
-name: Build Alpha Windows
-
+name: Build Alpha
 on:
   push:
     branches:
-      - alpha-v1
+      - Version1
 
 jobs:
+  # ──────────────────────────────────────────────────────────────────────────────
+  # BUILD WINDOWS (.exe via NSIS)
+  # ──────────────────────────────────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Instalar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
       - name: Instalar Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Instalar dependências npm
+        run: npm install
+      - name: Baixar arduino-cli (Windows)
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/resources/
+          if (Test-Path src-tauri/resources/arduino-cli.exe) {
+            Remove-Item -Force src-tauri/resources/arduino-cli.exe
+          }
+          Invoke-WebRequest `
+            -Uri "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Windows_64bit.zip" `
+            -OutFile arduino-cli.zip
+          Expand-Archive arduino-cli.zip -DestinationPath src-tauri/resources/ -Force
+          Remove-Item arduino-cli.zip
+      - name: Build Tauri (Windows)
+        run: npm run tauri build
+      - name: Upload instalador Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bloquin-windows
+          path: src-tauri/target/release/bundle/nsis/*.exe
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # BUILD LINUX ARCH
+  # ──────────────────────────────────────────────────────────────────────────────
+  build-linux-arch:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Instalar dependências do Arch e Configurar Git
+        run: |
+          pacman -Syu --noconfirm \
+            base-devel \
+            git \
+            curl \
+            wget \
+            webkit2gtk-4.1 \
+            gtk3 \
+            libayatana-appindicator \
+            nodejs \
+            npm \
+            rust \
+            cargo \
+            xdg-utils \
+            fuse2 \
+            librsvg \
+            squashfs-tools
+          
+          # Correção para o erro de "Dubious Ownership" do Git em containers
+          git config --global --add safe.directory '*'
+
+      - uses: actions/checkout@v4
 
       - name: Instalar dependências npm
         run: npm install
 
-      - name: Baixar arduino-cli
+      - name: Baixar arduino-cli (Linux x86_64)
         run: |
-          New-Item -ItemType Directory -Force -Path src-tauri/resources/
-          Invoke-WebRequest -Uri "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Windows_64bit.zip" -OutFile arduino-cli.zip
-          Expand-Archive arduino-cli.zip -DestinationPath src-tauri/resources/ -Force
-        shell: powershell
+          mkdir -p src-tauri/resources/
+          curl -L \
+            "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz" \
+            -o arduino-cli.tar.gz
+          tar -xzf arduino-cli.tar.gz -C src-tauri/resources/
+          chmod +x src-tauri/resources/arduino-cli
+          rm arduino-cli.tar.gz
 
-      - name: Build Tauri
+      - name: Build Tauri (Arch)
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: npm run tauri build
 
-      - name: Upload instalador
+      - name: Upload AppImage (Arch)
         uses: actions/upload-artifact@v4
         with:
-          name: OficinaCode-alpha-v1-windows
-          path: src-tauri/target/release/bundle/nsis/*.exe
-
+          name: Bloquin-appimage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage

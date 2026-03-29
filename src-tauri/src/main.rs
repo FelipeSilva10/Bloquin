@@ -5,91 +5,291 @@ use std::process::Command;
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 use std::time::Duration;
+
+// ── Windows: ocultar janela de CMD em todos os subprocessos ──────────────────
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Extensão de conveniência para adicionar a flag de janela oculta no Windows.
+/// No Linux/Mac é um no-op transparente.
+trait HideWindow {
+    fn hide_window(&mut self) -> &mut Self;
+}
+
+impl HideWindow for Command {
+    fn hide_window(&mut self) -> &mut Self {
+        #[cfg(target_os = "windows")]
+        self.creation_flags(CREATE_NO_WINDOW);
+        self
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 struct AppState {
     is_reading_serial: Arc<AtomicBool>,
 }
 
-// Aponta para o arduino-cli.exe bundlado dentro do instalador
-fn arduino_cli_path(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
-    app_handle
-        .path()
-        .resource_dir()
-        .expect("resource dir não encontrado")
-        .join("arduino-cli.exe")
+/// Procura o arduino-cli na seguinte ordem de prioridade:
+///
+/// 1. Binário empacotado junto ao executável (resources/) — build de produção.
+/// 2. Variável de ambiente ARDUINO_CLI_PATH — ideal para dev no Linux/Mac.
+/// 3. arduino-cli disponível no PATH do sistema — funciona no VSCode/terminal.
+/// 4. Plano B: download automático para pasta temporária.
+fn find_or_download_cli() -> Result<String, String> {
+    // ── 1. Binário nos resources do app (build de produção) ──────────────────
+    // Tauri copia os resources para junto do executável no bundle final.
+    let exe_name = if cfg!(target_os = "windows") { "arduino-cli.exe" } else { "arduino-cli" };
+
+    if let Ok(exe_path) = std::env::current_exe() {
+        // Tauri coloca os resources em <exe_dir>/resources/ no bundle
+        let bundled = exe_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join("resources")
+            .join(exe_name);
+
+        if bundled.exists() {
+            println!(">>> [CLI] Usando binário empacotado: {:?}", bundled);
+            return Ok(bundled.to_string_lossy().to_string());
+        }
+    }
+
+    // ── 2. Variável de ambiente explícita (dev / CI) ─────────────────────────
+    // Exemplo: export ARDUINO_CLI_PATH=/usr/local/bin/arduino-cli
+    if let Ok(path) = std::env::var("ARDUINO_CLI_PATH") {
+        if std::path::Path::new(&path).exists() {
+            println!(">>> [CLI] Usando ARDUINO_CLI_PATH={}", path);
+            return Ok(path);
+        }
+    }
+
+    // ── 3. PATH do sistema ───────────────────────────────────────────────────
+    // Funciona quando `arduino-cli` está instalado normalmente no sistema
+    // (inclusive quando rodando via `npm run tauri dev` no VSCode no Linux).
+    if Command::new("arduino-cli")
+        .hide_window()
+        .arg("version")
+        .output()
+        .is_ok()
+    {
+        println!(">>> [CLI] arduino-cli encontrado no PATH do sistema.");
+        return Ok("arduino-cli".to_string());
+    }
+
+    // ── 4. Plano B: download automático ─────────────────────────────────────
+    let temp_dir  = env::temp_dir().join("bloquin_cli");
+    let local_cli = temp_dir.join(exe_name);
+
+    if local_cli.exists() {
+        println!(">>> [CLI] arduino-cli encontrado em cache: {:?}", local_cli);
+        return Ok(local_cli.to_string_lossy().to_string());
+    }
+
+    println!(">>> [CLI] Iniciando PLANO B: Download do arduino-cli...");
+    let _ = fs::create_dir_all(&temp_dir);
+
+    let url = if cfg!(target_os = "windows") {
+        "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Windows_64bit.zip"
+    } else if cfg!(target_os = "macos") {
+        "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_macOS_64bit.tar.gz"
+    } else {
+        "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz"
+    };
+
+    let archive_name = if cfg!(target_os = "windows") { "cli.zip" } else { "cli.tar.gz" };
+    let archive_path = temp_dir.join(archive_name);
+
+    println!(">>> [CLI] Baixando de {} ...", url);
+    let curl_status = Command::new("curl")
+        .hide_window()
+        .args(["-L", url, "-o", archive_path.to_str().unwrap()])
+        .status()
+        .map_err(|e| format!("Erro ao executar curl (download): {}", e))?;
+
+    if !curl_status.success() {
+        return Err("Falha ao baixar o arquivo do arduino-cli.".to_string());
+    }
+
+    let tar_status = Command::new("tar")
+        .hide_window()
+        .args(["-xf", archive_path.to_str().unwrap(), "-C", temp_dir.to_str().unwrap()])
+        .status()
+        .map_err(|e| format!("Erro ao executar tar (extração): {}", e))?;
+
+    if !tar_status.success() {
+        return Err("Falha ao descompactar o arduino-cli.".to_string());
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(mut perms) = fs::metadata(&local_cli).map(|m| m.permissions()) {
+            perms.set_mode(0o755);
+            let _ = fs::set_permissions(&local_cli, perms);
+        }
+    }
+
+    if local_cli.exists() {
+        let _ = fs::remove_file(archive_path);
+        println!(">>> [CLI] Download concluído: {:?}", local_cli);
+        Ok(local_cli.to_string_lossy().to_string())
+    } else {
+        Err("arduino-cli não foi encontrado mesmo após a extração.".to_string())
+    }
 }
 
+/// Garante que os pacotes de placas (cores) estejam instalados.
+fn ensure_core_installed(cli_path: &str, placa: &str) -> Result<String, String> {
+    let (core, fqbn) = match placa {
+        "uno"   => ("arduino:avr", "arduino:avr:uno"),
+        "nano"  => ("arduino:avr", "arduino:avr:nano"),
+        "esp32" => ("esp32:esp32", "esp32:esp32:esp32"),
+        _       => ("arduino:avr", "arduino:avr:uno"),
+    };
+
+    println!(">>> [CORE] Verificando pacote '{}'...", core);
+    let list_output = Command::new(cli_path)
+        .hide_window()
+        .arg("core")
+        .arg("list")
+        .output()
+        .map_err(|e| format!("Erro ao listar cores: {}", e))?;
+
+    let list_str = String::from_utf8_lossy(&list_output.stdout);
+
+    if !list_str.contains(core) {
+        println!(">>> [CORE] Pacote '{}' não encontrado. Instalando...", core);
+
+        if core == "esp32:esp32" {
+            let _ = Command::new(cli_path)
+                .hide_window()
+                .args(["config", "init"])
+                .output();
+
+            let esp_url = "https://espressif.github.io/arduino-esp32/package_esp32_index.json";
+            let add_url = Command::new(cli_path)
+                .hide_window()
+                .args(["config", "add", "board_manager.additional_urls", esp_url])
+                .output()
+                .map_err(|e| format!("Erro na injeção da URL do ESP32: {}", e))?;
+
+            if !add_url.status.success() {
+                let err = String::from_utf8_lossy(&add_url.stderr);
+                return Err(format!("Erro ao configurar URL do ESP32 no YAML: {}", err));
+            }
+        }
+
+        let update = Command::new(cli_path)
+            .hide_window()
+            .args(["core", "update-index"])
+            .output()
+            .map_err(|e| format!("Erro no update-index: {}", e))?;
+
+        if !update.status.success() {
+            return Err("Falha ao atualizar o index das placas (sem internet?).".to_string());
+        }
+
+        let install = Command::new(cli_path)
+            .hide_window()
+            .args(["core", "install", core])
+            .output()
+            .map_err(|e| format!("Erro ao instalar core: {}", e))?;
+
+        if !install.status.success() {
+            let err = String::from_utf8_lossy(&install.stderr);
+            return Err(format!("Erro fatal ao instalar pacote {}:\n{}", core, err));
+        }
+
+        println!(">>> [CORE] Core '{}' instalado com sucesso!", core);
+    } else {
+        println!(">>> [CORE] Pacote '{}' já instalado.", core);
+    }
+
+    Ok(fqbn.to_string())
+}
+
+/// Toda a lógica pesada de compilação/envio, isolada para rodar em thread de fundo.
+fn run_upload_pipeline(codigo: &str, placa: &str, porta: &str) -> Result<(), String> {
+    println!(">>> [UPLOAD] Iniciando pipeline...");
+
+    let cli  = find_or_download_cli()?;
+    let fqbn = ensure_core_installed(&cli, placa)?;
+
+    let temp_dir    = env::temp_dir();
+    let sketch_dir  = temp_dir.join("bloquin_sketch");
+    let sketch_path = sketch_dir.join("bloquin_sketch.ino");
+
+    let _ = fs::create_dir_all(&sketch_dir);
+
+    fs::write(&sketch_path, codigo)
+        .map_err(|e| format!("Erro ao criar arquivo: {}", e))?;
+
+    println!(">>> [UPLOAD] Compilando com FQBN: {}", fqbn);
+    let compile_output = Command::new(&cli)
+        .hide_window()
+        .args(["compile", "-b", &fqbn, sketch_dir.to_str().unwrap()])
+        .output()
+        .map_err(|e| format!("Erro no processo de compilação: {}", e))?;
+
+    if !compile_output.status.success() {
+        let erro = String::from_utf8_lossy(&compile_output.stderr);
+        return Err(format!("Erro no código (Compilação falhou):\n{}", erro));
+    }
+
+    println!(">>> [UPLOAD] Enviando para a porta {}...", porta);
+    let upload_output = Command::new(&cli)
+        .hide_window()
+        .args(["upload", "-b", &fqbn, "-p", porta, sketch_dir.to_str().unwrap()])
+        .output()
+        .map_err(|e| format!("Erro upload: {}", e))?;
+
+    if !upload_output.status.success() {
+        let erro = String::from_utf8_lossy(&upload_output.stderr);
+        return Err(format!("Erro ao gravar na porta {}:\n{}", porta, erro));
+    }
+
+    println!(">>> [UPLOAD] CONCLUÍDO COM SUCESSO!");
+    Ok(())
+}
+
+/// Inicia o upload em uma thread separada para não bloquear a UI.
+/// O resultado é enviado de volta como evento Tauri: "upload-result".
+///   - Sucesso: payload = "ok"
+///   - Erro:    payload = "err:<mensagem>"
+///
+/// O frontend escuta esse evento e atualiza o estado de loading/erro.
 #[tauri::command]
 fn upload_code(
     codigo: String,
     placa: String,
     porta: String,
+    window: tauri::Window,
     state: tauri::State<AppState>,
-    app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    println!(">>> [1] Iniciando processo de envio...");
-    println!(">>> [2] Desligando o monitor serial (liberando a porta)...");
+    // Para o serial imediatamente, liberando a porta antes do upload
     state.is_reading_serial.store(false, Ordering::Relaxed);
-    std::thread::sleep(Duration::from_millis(500));
 
-    let fqbn = match placa.as_str() {
-        "uno"   => "arduino:avr:uno",
-        "nano"  => "arduino:avr:nano",
-        "esp32" => "esp32:esp32:esp32",
-        _       => "arduino:avr:uno",
-    };
+    let window_clone = window.clone();
 
-    let cli = arduino_cli_path(&app_handle);
+    std::thread::spawn(move || {
+        // Aguarda o serial fechar a porta de fato
+        std::thread::sleep(Duration::from_millis(600));
 
-    let temp_dir    = env::temp_dir();
-    let sketch_dir  = temp_dir.join("oficina_code_sketch");
-    let sketch_path = sketch_dir.join("oficina_code_sketch.ino");
+        let result = run_upload_pipeline(&codigo, &placa, &porta);
 
-    println!(">>> [4] Criando pasta temporária...");
-    let _ = fs::create_dir_all(&sketch_dir);
+        match result {
+            Ok(_)  => { let _ = window_clone.emit("upload-result", "ok"); }
+            Err(e) => { let _ = window_clone.emit("upload-result", format!("err:{}", e)); }
+        }
+    });
 
-    println!(">>> [5] Salvando o código C++ gerado...");
-    if let Err(e) = fs::write(&sketch_path, codigo) {
-        return Err(format!("Erro ao criar arquivo: {}", e));
-    }
-
-    println!(">>> [6] Compilando com: {:?}", cli);
-    let compile_output = match Command::new(&cli)
-        .arg("compile")
-        .arg("-b").arg(fqbn)
-        .arg(&sketch_dir)
-        .output()
-    {
-        Ok(out) => out,
-        Err(e)  => return Err(format!("Erro compilador: {}", e)),
-    };
-
-    if !compile_output.status.success() {
-        let erro = String::from_utf8_lossy(&compile_output.stderr);
-        return Err(format!("Erro no código:\n{}", erro));
-    }
-
-    println!(">>> [8] Enviando para a porta {}...", porta);
-    let upload_output = match Command::new(&cli)
-        .arg("upload")
-        .arg("-b").arg(fqbn)
-        .arg("-p").arg(&porta)
-        .arg(&sketch_dir)
-        .output()
-    {
-        Ok(out) => out,
-        Err(e)  => return Err(format!("Erro upload: {}", e)),
-    };
-
-    if !upload_output.status.success() {
-        let erro = String::from_utf8_lossy(&upload_output.stderr);
-        return Err(format!("Erro na porta {}:\n{}", porta, erro));
-    }
-
-    println!(">>> [9] UPLOAD CONCLUÍDO COM SUCESSO!");
-    Ok("Sucesso!".to_string())
+    // Retorna imediatamente — a UI não trava
+    Ok("iniciando".to_string())
 }
 
 #[tauri::command]
@@ -168,6 +368,45 @@ fn get_available_ports() -> Result<Vec<String>, String> {
     }
 }
 
+#[tauri::command]
+async fn open_admin_panel(
+    app: tauri::AppHandle,
+    access_token: String,
+    refresh_token: String,
+) -> Result<String, String> {
+    use tauri::Manager; // Importação necessária para usar o get_webview_window
+
+    // 1. Verifica se a janela já existe. Se sim, apenas foca nela para não travar.
+    if let Some(window) = app.get_webview_window("admin-panel") {
+        window.set_focus().map_err(|e| format!("Erro ao focar a janela: {}", e))?;
+        return Ok("ok".to_string());
+    }
+
+    // 2. Cria a janela apenas se ela não existir
+    let admin_base_url = "https://bloquinadmin.vercel.app";
+
+    let url = format!(
+        "{}/auto-login?access_token={}&refresh_token={}",
+        admin_base_url,
+        urlencoding::encode(&access_token),
+        urlencoding::encode(&refresh_token),
+    );
+
+    let webview_url = tauri::WebviewUrl::External(
+        url.parse().map_err(|e| format!("URL inválida: {}", e))?
+    );
+
+    tauri::WebviewWindowBuilder::new(&app, "admin-panel", webview_url)
+        .title("Admin — Painel de Gestão")
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(900.0, 600.0)
+        .center()
+        .build()
+        .map_err(|e| format!("Erro ao abrir janela: {}", e))?;
+
+    Ok("ok".to_string())
+}
+
 fn main() {
     let app_state = AppState {
         is_reading_serial: Arc::new(AtomicBool::new(false)),
@@ -180,7 +419,8 @@ fn main() {
             upload_code,
             start_serial,
             stop_serial,
-            get_available_ports
+            get_available_ports,
+            open_admin_panel
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
