@@ -2,6 +2,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
 
 :root {
+  /* Cores Base */
   --primary:    #00a8ff;
   --secondary:  #4cd137;
   --accent:     #ffffff;
@@ -13,6 +14,14 @@
   --surface:    #f8fafd;
   --border:     #e0e6ed;
   --text-muted: #7f8c8d;
+
+  /* Cores Específicas de Botões (Extraídas do CSS isolado) */
+  --btn-primary-bg: #ef9f4b;
+  --btn-primary-shadow: #cf8235;
+  --btn-secondary-bg: #23638c;
+  --btn-secondary-shadow: #1a4b6b;
+  --btn-outline-bg: #e73561;
+  --btn-outline-shadow: #bf254c;
 
   /* Sombras */
   --shadow-sm:  0 2px 8px rgba(0,0,0,0.06);
@@ -34,7 +43,6 @@ body, html, #root {
 /* ═══════════════════════════════════════════════════
    ANIMAÇÕES GLOBAIS
    ═══════════════════════════════════════════════════ */
-
 @keyframes popIn {
   0%   { opacity: 0; transform: scale(0.85) translateY(24px); }
   70%  { transform: scale(1.03) translateY(-4px); }
@@ -53,12 +61,12 @@ body, html, #root {
 
 @keyframes float {
   0%, 100% { transform: translateY(0px) rotate(-3deg); }
-  50%       { transform: translateY(-14px) rotate(3deg); }
+  50%      { transform: translateY(-14px) rotate(3deg); }
 }
 
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
-  50%       { transform: scale(1.08); }
+  50%      { transform: scale(1.08); }
 }
 
 @keyframes spin {
@@ -77,7 +85,7 @@ body, html, #root {
 
 @keyframes blink {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.3; }
+  50%      { opacity: 0.3; }
 }
 
 @keyframes dotBounce {
@@ -94,11 +102,10 @@ body, html, #root {
 /* ═══════════════════════════════════════════════════
    TELA DE LOGIN
    ═══════════════════════════════════════════════════ */
-
 .login-container {
   display: flex; justify-content: center; align-items: center;
   height: 100vh; position: relative; z-index: 1;
-  background: linear-gradient(105deg, #667eea 12%, #764ba2 40%, #00a8ff 100%);
+  background: linear-gradient(105deg, #667eea 12%, #764ba2 40%, var(--primary) 100%);
 }
 
 .login-container::before {
@@ -122,7 +129,7 @@ body, html, #root {
 .login-card::before {
   content: '';
   position: absolute; top: 0; left: 0; right: 0; height: 15px;
-  background: linear-gradient(90deg, var(--primary), var(--secondary), #ef9f4b, var(--danger));
+  background: linear-gradient(90deg, var(--primary), var(--secondary), var(--btn-primary-bg), var(--danger));
 }
 
 .login-card p { color: var(--text-muted); font-size: 1.1rem; margin-bottom: 30px; font-weight: 700; }
@@ -135,16 +142,17 @@ body, html, #root {
   transition: all 0.3s ease;
 }
 .login-form input::placeholder { color: #a4b0be; font-weight: 700; }
-.login-form input:focus {
+.login-divider { margin: 24px 0; border-bottom: 2px solid var(--border); width: 100%; }
+
+.login-form input:focus, 
+.login-form input:focus-visible {
   outline: none; border-color: var(--primary); background-color: #fff;
   box-shadow: 0 0 0 4px rgba(0, 168, 255, 0.15); transform: translateY(-2px);
-
 }
 
 /* ═══════════════════════════════════════════════════
    BOTÕES
    ═══════════════════════════════════════════════════ */
-
 button {
   padding: 16px; border: none; border-radius: 16px;
   font-size: 1.1rem; font-weight: 800; cursor: pointer;
@@ -156,9 +164,9 @@ button:active { transform: translateY(5px); box-shadow: 0 0px 0px rgba(0,0,0,0.2
 button:disabled { opacity: 0.6; cursor: not-allowed; }
 button:disabled:active { transform: none; box-shadow: 0 6px 0px rgba(0,0,0,0.2); }
 
-.btn-primary   { background-color: #ef9f4b; color: white; box-shadow: 0 6px 0px #cf8235; }
-.btn-secondary { background-color: #23638c; color: white; box-shadow: 0 6px 0px #1a4b6b; }
-.btn-outline   { background-color: #e73561; color: white; box-shadow: 0 6px 0px #bf254c; }
+.btn-primary   { background-color: var(--btn-primary-bg); color: white; box-shadow: 0 6px 0px var(--btn-primary-shadow); }
+.btn-secondary { background-color: var(--btn-secondary-bg); color: white; box-shadow: 0 6px 0px var(--btn-secondary-shadow); }
+.btn-outline   { background-color: var(--btn-outline-bg); color: white; box-shadow: 0 6px 0px var(--btn-outline-shadow); }
 .btn-danger    { background-color: var(--danger); color: var(--white) !important; box-shadow: 0 6px 0px #d63031; }
 .btn-text      { background: transparent; color: #a4b0be; box-shadow: none; text-decoration: underline; padding: 5px; font-size: 1rem; }
 .btn-text:hover { color: var(--dark); }
@@ -168,46 +176,22 @@ button:disabled:active { transform: none; box-shadow: 0 6px 0px rgba(0,0,0,0.2);
 .topbar-btn { padding: 8px 14px !important; font-size: 0.9rem !important; border-radius: 10px !important; }
 
 /* ── Botão de toggle de senha (Login) ── */
-.password-wrapper {
-  position: relative;
-  width: 100%;
-}
-
-.password-wrapper input {
-  width: 100%;
-  padding-right: 40px;
-  box-sizing: border-box;
-}
+.password-wrapper { position: relative; width: 100%; }
+.password-wrapper input { width: 100%; padding-right: 40px; box-sizing: border-box; }
 
 .btn-toggle-password {
-  padding: 0;
-  border-radius: 50%;
-  font-size: 1rem;
-  font-weight: 400;
-  box-shadow: none;
-  background: none;
-  border: none;
-  transition: none;
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  translate: 0 -50%;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-muted);
+  padding: 0; border-radius: 50%; font-size: 1rem; font-weight: 400;
+  box-shadow: none; background: none; border: none; transition: none;
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text-muted);
 }
-
 .btn-toggle-password:hover { color: var(--dark); }
-.btn-toggle-password:active { transform: scale(0.9); box-shadow: none; }
+.btn-toggle-password:active { transform: scale(0.9) translateY(-50%); box-shadow: none; }
 
 /* ═══════════════════════════════════════════════════
    LAYOUT PRINCIPAL
    ═══════════════════════════════════════════════════ */
-
 .app-container { display: flex; flex-direction: column; height: 100vh; }
 
 /* ── Banner modo leitura ── */
@@ -255,7 +239,10 @@ button:disabled:active { transform: none; box-shadow: 0 6px 0px rgba(0,0,0,0.2);
   display: flex; align-items: center; background-color: var(--surface);
   border-radius: 70px; padding: 4px 12px 4px 10px; gap: 5px;
 }
-.control-icon { font-size: 0,8rem; }
+
+/* ERRO CORRIGIDO AQUI: 0,8rem alterado para 0.8rem */
+.control-icon { font-size: 0.8rem; }
+
 .hardware-controls select {
   background: transparent; border: none !important; font-size: 0.95rem; font-weight: 700;
   color: var(--dark); cursor: pointer; outline: none; padding: 0 !important; margin: 0 !important; height: auto;
@@ -269,7 +256,6 @@ button:disabled:active { transform: none; box-shadow: 0 6px 0px rgba(0,0,0,0.2);
   transition: all 0.2s; height: auto !important;
   font-size: 1.1rem;
 }
-
 .btn-icon:hover { background-color: #e3e9eb;}
 .btn-icon:active { transform: scale(0.8); box-shadow: none; }
 
@@ -279,9 +265,9 @@ button:disabled:active { transform: none; box-shadow: 0 6px 0px rgba(0,0,0,0.2);
   transition: all 0.1s; color: white; margin: 0 !important; height: auto !important;
 }
 .btn-action:active { transform: translateY(4px); }
-.btn-send       { background-color: var(--secondary); box-shadow: 0 4px 0px #3bac29; }
+.btn-send        { background-color: var(--secondary); box-shadow: 0 4px 0px #3bac29; }
 .btn-send:active { box-shadow: none; }
-.btn-chat       { background-color: #2c3e50; box-shadow: 0 4px 0px #1a252f; }
+.btn-chat        { background-color: #2c3e50; box-shadow: 0 4px 0px #1a252f; }
 .btn-chat:active { box-shadow: none; }
 .btn-chat-active { background-color: var(--danger); box-shadow: 0 4px 0px #d63031; }
 .btn-chat-active:active { box-shadow: none; }
@@ -289,7 +275,6 @@ button:disabled:active { transform: none; box-shadow: 0 6px 0px rgba(0,0,0,0.2);
 /* ═══════════════════════════════════════════════════
    WORKSPACE + PAINEL DE CÓDIGO
    ═══════════════════════════════════════════════════ */
-
 .workspace-area { display: flex; flex: 1; height: calc(100vh - 60px); }
 #blocklyDiv { flex: 1; height: 100%; }
 
@@ -317,9 +302,8 @@ pre {
 .code-panel.fullscreen > * { direction: ltr; }
 
 /* ═══════════════════════════════════════════════════
-   OVERLAY DE MODAL (base)
+   MODAIS
    ═══════════════════════════════════════════════════ */
-
 .modal-overlay {
   position: fixed; inset: 0;
   background: rgba(15, 20, 40, 0.65);
@@ -329,174 +313,62 @@ pre {
   animation: fadeIn 0.2s ease;
 }
 
-/* ═══════════════════════════════════════════════════
-   MODAL: UPLOAD / LOADING
-   ═══════════════════════════════════════════════════ */
-
-.upload-modal {
+.upload-modal, .orphan-modal, .friendly-error-modal, .save-success-modal {
   background: var(--white);
-  border-radius: 28px; width: 90%; max-width: 420px;
-  padding: 40px 36px;
-  display: flex; flex-direction: column; align-items: center; gap: 20px;
+  border-radius: 28px; width: 90%; 
+  display: flex; flex-direction: column; align-items: center; 
   box-shadow: var(--shadow-xl);
   animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  border-top: 6px solid var(--primary);
   text-align: center;
 }
 
-.upload-rocket-wrap {
-  width: 90px; height: 90px; border-radius: 50%;
-  background: linear-gradient(135deg, #eef2f7, #dce6f5);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 2.8rem;
-  animation: float 2s ease-in-out infinite;
-}
-
-.upload-stage-label {
-  color: var(--dark); font-size: 1.4rem; font-weight: 900; margin: 0;
-}
-.upload-stage-tip {
-  color: var(--text-muted); font-size: 1rem; font-weight: 700;
-  background: var(--surface); border-radius: 12px; padding: 10px 16px;
-  border-left: 4px solid var(--primary); text-align: left; width: 100%;
-}
-
-/* Barra de progresso */
-.upload-progress-bar-track {
-  width: 100%; height: 10px; background: var(--border); border-radius: 100px; overflow: hidden;
-}
-.upload-progress-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--primary), var(--secondary));
-  border-radius: 100px;
-  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-  background-size: 200% auto;
-  animation: shimmer 2s linear infinite;
-}
-
-/* Etapas em pontos */
-.upload-steps {
-  display: flex; gap: 8px; width: 100%; justify-content: space-between;
-}
-.upload-step {
-  display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1;
-  opacity: 0.35; transition: opacity 0.4s;
-}
+/* Upload Modal Especificidades */
+.upload-modal { max-width: 420px; padding: 40px 36px; gap: 20px; border-top: 6px solid var(--primary); }
+.upload-rocket-wrap { width: 90px; height: 90px; border-radius: 50%; background: linear-gradient(135deg, #eef2f7, #dce6f5); display: flex; align-items: center; justify-content: center; font-size: 2.8rem; animation: float 2s ease-in-out infinite; }
+.upload-stage-label { color: var(--dark); font-size: 1.4rem; font-weight: 900; margin: 0; }
+.upload-stage-tip { color: var(--text-muted); font-size: 1rem; font-weight: 700; background: var(--surface); border-radius: 12px; padding: 10px 16px; border-left: 4px solid var(--primary); text-align: left; width: 100%; }
+.upload-progress-bar-track { width: 100%; height: 10px; background: var(--border); border-radius: 100px; overflow: hidden; }
+.upload-progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--secondary)); border-radius: 100px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); background-size: 200% auto; animation: shimmer 2s linear infinite; }
+.upload-steps { display: flex; gap: 8px; width: 100%; justify-content: space-between; }
+.upload-step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; opacity: 0.35; transition: opacity 0.4s; }
 .upload-step.active { opacity: 1; }
-.upload-step-dot {
-  width: 12px; height: 12px; border-radius: 50%;
-  background: var(--border); transition: background 0.4s;
-}
+.upload-step-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--border); transition: background 0.4s; }
 .upload-step.active .upload-step-dot { background: var(--primary); }
-.upload-step.current .upload-step-dot {
-  background: var(--primary);
-  box-shadow: 0 0 0 4px rgba(0,168,255,0.25);
-  animation: pulse 1s ease-in-out infinite;
-}
-.upload-step-label {
-  font-size: 0.72rem; font-weight: 800; color: var(--dark); text-align: center; line-height: 1.2;
-}
-
-/* Tela de sucesso do upload */
-.upload-success-content {
-  display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%;
-}
-.success-robot {
-  font-size: 5rem;
-  animation: successPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
+.upload-step.current .upload-step-dot { background: var(--primary); box-shadow: 0 0 0 4px rgba(0,168,255,0.25); animation: pulse 1s ease-in-out infinite; }
+.upload-step-label { font-size: 0.72rem; font-weight: 800; color: var(--dark); text-align: center; line-height: 1.2; }
+.upload-success-content { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%; }
+.success-robot { font-size: 5rem; animation: successPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 .upload-success-content h2 { color: var(--dark); font-size: 1.8rem; font-weight: 900; }
 .upload-success-content p { color: var(--text-muted); font-size: 1.05rem; font-weight: 700; line-height: 1.5; }
 .upload-close-btn { width: 100%; padding: 16px !important; font-size: 1.1rem !important; }
 
-/* ═══════════════════════════════════════════════════
-   MODAL: BLOCOS ÓRFÃOS
-   ═══════════════════════════════════════════════════ */
-
-.orphan-modal {
-  background: var(--white); border-radius: 28px;
-  width: 90%; max-width: 480px; padding: 36px;
-  display: flex; flex-direction: column; align-items: center; gap: 18px;
-  box-shadow: var(--shadow-xl);
-  animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  border-top: 6px solid var(--warning); text-align: center;
-}
+/* Orphan Modal Especificidades */
+.orphan-modal { max-width: 480px; padding: 36px; gap: 18px; border-top: 6px solid var(--warning); }
 .orphan-icon { font-size: 4rem; animation: float 3s ease-in-out infinite; }
 .orphan-modal h2 { color: var(--dark); font-size: 1.5rem; font-weight: 900; }
 .orphan-modal p { color: #555; font-size: 1rem; font-weight: 700; line-height: 1.6; }
-
-.orphan-blocks-list {
-  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; width: 100%;
-}
-.orphan-block-chip {
-  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
-  border: 2px solid #f1c40f; border-radius: 100px;
-  padding: 6px 14px; font-size: 0.9rem; font-weight: 800;
-  color: #8b6914; display: flex; align-items: center; gap: 6px;
-}
-
-/* Diagrama visual de blocos soltos vs encaixados */
-.orphan-diagram {
-  display: flex; align-items: center; gap: 16px; width: 100%;
-  background: var(--surface); border-radius: 16px; padding: 16px 20px;
-  border: 2px solid var(--border);
-}
-.orphan-diagram-bad, .orphan-diagram-good {
-  display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1;
-  font-size: 0.85rem; font-weight: 800;
-}
+.orphan-blocks-list { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; width: 100%; }
+.orphan-block-chip { background: linear-gradient(135deg, #fff3cd, #ffeaa7); border: 2px solid #f1c40f; border-radius: 100px; padding: 6px 14px; font-size: 0.9rem; font-weight: 800; color: #8b6914; display: flex; align-items: center; gap: 6px; }
+.orphan-diagram { display: flex; align-items: center; gap: 16px; width: 100%; background: var(--surface); border-radius: 16px; padding: 16px 20px; border: 2px solid var(--border); }
+.orphan-diagram-bad, .orphan-diagram-good { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; font-size: 0.85rem; font-weight: 800; }
 .orphan-diagram-arrow { font-size: 1.5rem; color: var(--text-muted); }
-.mini-block {
-  background: #74b9ff; color: white; border-radius: 8px;
-  padding: 6px 12px; font-size: 0.8rem; font-weight: 800;
-  box-shadow: 0 3px 0 #0984e3;
-}
+.mini-block { background: #74b9ff; color: white; border-radius: 8px; padding: 6px 12px; font-size: 0.8rem; font-weight: 800; box-shadow: 0 3px 0 #0984e3; }
 .mini-block.floating { animation: float 2s ease-in-out infinite; }
-.mini-block.header {
-  background: #6c5ce7; box-shadow: 0 3px 0 #4b3fad; width: 100%;
-}
-.mini-block.child {
-  background: #74b9ff; box-shadow: 0 3px 0 #0984e3;
-  margin-left: 16px; width: calc(100% - 16px);
-}
+.mini-block.header { background: #6c5ce7; box-shadow: 0 3px 0 #4b3fad; width: 100%; }
+.mini-block.child { background: #74b9ff; box-shadow: 0 3px 0 #0984e3; margin-left: 16px; width: calc(100% - 16px); }
 .mini-block-container { display: flex; flex-direction: column; gap: 4px; width: 100%; }
 
-/* ═══════════════════════════════════════════════════
-   MODAL: ERRO AMIGÁVEL
-   ═══════════════════════════════════════════════════ */
-
-.friendly-error-modal {
-  background: var(--white); border-radius: 28px;
-  width: 90%; max-width: 440px; padding: 40px 36px;
-  display: flex; flex-direction: column; align-items: center; gap: 18px;
-  box-shadow: var(--shadow-xl);
-  animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  border-top: 6px solid var(--danger); text-align: center;
-}
+/* Friendly Error Modal Especificidades */
+.friendly-error-modal { max-width: 440px; padding: 40px 36px; gap: 18px; border-top: 6px solid var(--danger); }
 .friendly-error-icon { font-size: 4.5rem; animation: float 3s ease-in-out infinite; }
 .friendly-error-modal h2 { color: var(--dark); font-size: 1.5rem; font-weight: 900; }
 .friendly-error-message { color: #555; font-size: 1rem; font-weight: 700; line-height: 1.6; }
-.friendly-error-tip {
-  display: flex; align-items: flex-start; gap: 10px; width: 100%;
-  background: linear-gradient(135deg, #e8f5e9, #f0fdf0);
-  border: 2px solid #a5d6a7; border-radius: 14px; padding: 14px 16px;
-  text-align: left;
-}
+.friendly-error-tip { display: flex; align-items: flex-start; gap: 10px; width: 100%; background: linear-gradient(135deg, #e8f5e9, #f0fdf0); border: 2px solid #a5d6a7; border-radius: 14px; padding: 14px 16px; text-align: left; }
 .friendly-error-tip span:first-child { font-size: 1.3rem; flex-shrink: 0; }
 .friendly-error-tip span:last-child { font-size: 0.95rem; font-weight: 700; color: #2e7d32; line-height: 1.5; }
 
-/* ═══════════════════════════════════════════════════
-   MODAL: SALVO COM SUCESSO
-   ═══════════════════════════════════════════════════ */
-
-.save-success-modal {
-  background: var(--white); border-radius: 28px;
-  width: 90%; max-width: 400px; padding: 40px 36px;
-  display: flex; flex-direction: column; align-items: center; gap: 16px;
-  box-shadow: var(--shadow-xl);
-  animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  border-top: 6px solid var(--primary); text-align: center;
-}
+/* Save Success Modal Especificidades */
+.save-success-modal { max-width: 400px; padding: 40px 36px; gap: 16px; border-top: 6px solid var(--primary); }
 .save-success-icon { font-size: 4.5rem; animation: float 3s ease-in-out infinite; }
 .save-success-modal h2 { color: var(--dark); font-size: 1.6rem; font-weight: 900; }
 .save-success-modal p { color: var(--text-muted); font-size: 1.05rem; font-weight: 700; line-height: 1.5; }
@@ -504,7 +376,6 @@ pre {
 /* ═══════════════════════════════════════════════════
    MONITOR SERIAL (repaginado)
    ═══════════════════════════════════════════════════ */
-
 .serial-monitor {
   position: fixed; bottom: 24px; right: 24px;
   width: 360px; height: 440px;

@@ -661,7 +661,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
             <div className="orphan-diagram-good"><span>✅</span><div className="mini-block-container"><div className="mini-block header">PREPARAR / AGIR</div><div className="mini-block child">Peça encaixada</div></div></div>
           </div>
           <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
-            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setOrphanWarning([])}>Vou corrigir! ✏️</button>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setOrphanWarning([])}>Vou corrigir</button>
             <button className="btn-secondary" style={{ flex: 1 }} onClick={() => { setOrphanWarning([]); handleUploadCode(true); }}>Enviar assim mesmo</button>
           </div>
         </div></div>
@@ -690,7 +690,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
           <div className="save-success-icon">☁️</div>
           <h2>Projeto Salvo!</h2>
           <p>Suas peças e progressos foram guardados com segurança na nuvem. Continue programando!</p>
-          <button className="btn-primary" style={{ width: '100%', padding: '14px', fontSize: '1.1rem' }} onClick={() => setSaveStatus(null)}>Continuar 🚀</button>
+          <button className="btn-primary" style={{ width: '100%', padding: '14px', fontSize: '1.1rem' }} onClick={() => setSaveStatus(null)}>Continuar</button>
         </div></div>
       )}
 
@@ -715,7 +715,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
             <div ref={messagesEndRef} />
           </div>
           <div className="serial-monitor-footer">
-            <button className="serial-clear-btn" onClick={() => setSerialMessages([])}>🗑️ Limpar</button>
+            <button className="serial-clear-btn" onClick={() => setSerialMessages([])}>Limpar</button>
             <span>{serialMessages.length} mensagens</span>
           </div>
         </div>

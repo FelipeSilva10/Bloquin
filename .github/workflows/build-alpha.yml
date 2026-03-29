@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - Version1
+
 jobs:
   # ──────────────────────────────────────────────────────────────────────────────
   # BUILD WINDOWS (.exe via NSIS)
@@ -47,7 +48,7 @@ jobs:
     container:
       image: archlinux:latest
     steps:
-      - name: Instalar dependências do Arch
+      - name: Instalar dependências do Arch e Configurar Git
         run: |
           pacman -Syu --noconfirm \
             base-devel \
@@ -61,10 +62,19 @@ jobs:
             npm \
             rust \
             cargo \
-            xdg-utils
+            xdg-utils \
+            fuse2 \
+            librsvg \
+            squashfs-tools
+          
+          # Correção para o erro de "Dubious Ownership" do Git em containers
+          git config --global --add safe.directory '*'
+
       - uses: actions/checkout@v4
+
       - name: Instalar dependências npm
         run: npm install
+
       - name: Baixar arduino-cli (Linux x86_64)
         run: |
           mkdir -p src-tauri/resources/
@@ -74,10 +84,12 @@ jobs:
           tar -xzf arduino-cli.tar.gz -C src-tauri/resources/
           chmod +x src-tauri/resources/arduino-cli
           rm arduino-cli.tar.gz
+
       - name: Build Tauri (Arch)
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: npm run tauri build
+
       - name: Upload AppImage (Arch)
         uses: actions/upload-artifact@v4
         with:

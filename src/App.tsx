@@ -5,23 +5,26 @@ import { TeacherDashboard } from "./screens/TeacherDashboard";
 import { StudentDashboard } from "./screens/StudentDashboard";
 import './App.css';
 
-type UserRole = 'guest' | 'student' | 'teacher' | 'teacher-dashboard' | 'student-dashboard' | 'visitor';
+// Quem é o usuário
+type UserRole = 'guest' | 'student' | 'teacher' | 'visitor';
+// Onde ele está
+type ViewState = 'login' | 'dashboard' | 'ide';
 
 function App() {
-  const [currentRole, setCurrentRole] = useState<UserRole>('guest');
+  const [role, setRole] = useState<UserRole>('guest');
+  const [view, setView] = useState<ViewState>('login');
   const [activeProjectId, setActiveProjectId] = useState<string | undefined>();
-  // Controla se a IDE está em modo somente-leitura (professor inspecionando projeto de aluno)
-  // vs. modo completo (professor ou aluno editando projeto próprio)
   const [isViewOnly, setIsViewOnly] = useState(false);
 
-  const handleLogin = (role: 'student' | 'teacher' | 'visitor') => {
-    if (role === 'teacher') setCurrentRole('teacher-dashboard');
-    else if (role === 'student') setCurrentRole('student-dashboard');
-    else setCurrentRole('visitor');
+  const handleLogin = (loggedRole: 'student' | 'teacher' | 'visitor') => {
+    setRole(loggedRole);
+    // Visitantes vão direto para a IDE, alunos e professores vão para o Dashboard
+    setView(loggedRole === 'visitor' ? 'ide' : 'dashboard');
   };
 
   const handleLogout = () => {
-    setCurrentRole('guest');
+    setRole('guest');
+    setView('login');
     setActiveProjectId(undefined);
     setIsViewOnly(false);
   };
@@ -29,54 +32,56 @@ function App() {
   const handleBackToDashboard = () => {
     setActiveProjectId(undefined);
     setIsViewOnly(false);
-    if (currentRole === 'teacher') setCurrentRole('teacher-dashboard');
-    else if (currentRole === 'student') setCurrentRole('student-dashboard');
-    else handleLogout();
+    setView(role === 'visitor' ? 'login' : 'dashboard');
+    if (role === 'visitor') setRole('guest');
   };
 
-  if (currentRole === 'guest') return <LoginScreen onLogin={handleLogin} />;
+  const openIde = (projectId: string | undefined, viewOnly: boolean) => {
+    setActiveProjectId(projectId);
+    setIsViewOnly(viewOnly);
+    setView('ide');
+  };
 
-  if (currentRole === 'teacher-dashboard') {
+  // --- Roteamento Visual ---
+
+  if (view === 'login' || role === 'guest') {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+  if (view === 'dashboard') {
+    if (role === 'teacher') {
+      return (
+        <TeacherDashboard
+          onLogout={handleLogout}
+          onOpenOwnProject={(id) => openIde(id, false)}
+          onInspectStudentProject={(id) => openIde(id, true)}
+        />
+      );
+    }
+    
+    if (role === 'student') {
+      return (
+        <StudentDashboard
+          onLogout={handleLogout}
+          onOpenIde={(id) => openIde(id, false)}
+        />
+      );
+    }
+  }
+
+  if (view === 'ide') {
     return (
-      <TeacherDashboard
-        onLogout={handleLogout}
-        // Projeto próprio do professor: IDE completa, pode salvar
-        onOpenOwnProject={(projectId) => {
-          setActiveProjectId(projectId);
-          setIsViewOnly(false);
-          setCurrentRole('teacher');
-        }}
-        // Projeto de aluno: IDE somente-leitura
-        onInspectStudentProject={(projectId) => {
-          setActiveProjectId(projectId);
-          setIsViewOnly(true);
-          setCurrentRole('teacher');
-        }}
+      <IdeScreen
+        // Precisamos garantir que role não seja 'guest' aqui para passar para a IDE
+        role={role as Exclude<UserRole, 'guest'>} 
+        readOnly={isViewOnly}
+        onBack={handleBackToDashboard}
+        projectId={activeProjectId}
       />
     );
   }
 
-  if (currentRole === 'student-dashboard') {
-    return (
-      <StudentDashboard
-        onLogout={handleLogout}
-        onOpenIde={(projectId) => {
-          setActiveProjectId(projectId);
-          setIsViewOnly(false);
-          setCurrentRole('student');
-        }}
-      />
-    );
-  }
-
-  return (
-    <IdeScreen
-      role={currentRole}
-      readOnly={isViewOnly}
-      onBack={handleBackToDashboard}
-      projectId={activeProjectId}
-    />
-  );
+  return null; // Fallback de segurança
 }
 
 export default App;
