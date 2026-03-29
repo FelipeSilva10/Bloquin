@@ -4,6 +4,9 @@ import 'blockly/blocks';
 import * as PtBr from 'blockly/msg/pt-br';
 import { supabase } from '../lib/supabase';
 import logoSimples from '../assets/LogoSimples.png';
+import arduinoUno from '../assets/arduino_uno.jpg';
+import arduinoNano from '../assets/arduino_nano.jpg';
+import esp32DevkitV1 from '../assets/esp32_devkit_v1.jpg';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import LZString from 'lz-string';
@@ -209,9 +212,9 @@ interface BoardSelectionModalProps { onSelect: (board: BoardKey) => void; }
 function BoardSelectionModal({ onSelect }: BoardSelectionModalProps) {
   const [hovered, setHovered] = useState<BoardKey | null>(null);
   const boards: { key: BoardKey; title: string; color: string; img: string }[] = [
-    { key: 'uno',   title: 'Arduino Uno',  color: '#0984e3', img: 'src/assets/arduino_uno.jpg' },
-    { key: 'nano',  title: 'Arduino Nano', color: '#ff00d0', img: 'src/assets/arduino_nano.jpg' },
-    { key: 'esp32', title: 'ESP32 DevKit', color: '#e17055', img: 'src/assets/esp32_devkit_v1.jpg' },
+    { key: 'uno',   title: 'Arduino Uno',  color: '#0984e3', img: arduinoUno },
+    { key: 'nano',  title: 'Arduino Nano', color: '#ff00d0', img: arduinoNano },
+    { key: 'esp32', title: 'ESP32 DevKit', color: '#e17055', img: esp32DevkitV1 },
   ];
 
   return (

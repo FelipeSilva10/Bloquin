@@ -6,7 +6,6 @@ use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
-use tauri::WebviewWindowBuilder;
 use tauri::WebviewUrl;
 use std::time::Duration;
 
