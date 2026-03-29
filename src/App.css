@@ -189,6 +189,12 @@ button:disabled:active { transform: none; box-shadow: 0 6px 0px rgba(0,0,0,0.2);
 .btn-toggle-password:hover { color: var(--dark); }
 .btn-toggle-password:active { transform: scale(0.9) translateY(-50%); box-shadow: none; }
 
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear,
+input::-webkit-credentials-auto-fill-button {
+  display: none !important;
+}
+
 /* ═══════════════════════════════════════════════════
    LAYOUT PRINCIPAL
    ═══════════════════════════════════════════════════ */
