@@ -1,12 +1,12 @@
 [package]
-name = "OficinaCode"
+name = "bloquin"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "oficina_code_lib"
+name = "bloquin_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

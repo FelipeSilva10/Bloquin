@@ -307,8 +307,8 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   const [orphanWarning, setOrphanWarning]       = useState<string[]>([]);
   const isUploadingRef                          = useRef(false);
 
-  const oficinaTheme = Blockly.Theme.defineTheme('oficinaTheme', {
-    name: 'oficinaTheme', base: Blockly.Themes.Classic,
+  const bloquinTheme = Blockly.Theme.defineTheme('bloquinTheme', {
+    name: 'bloquinTheme', base: Blockly.Themes.Classic,
     blockStyles: { colour_blocks: { colourPrimary: '#ef9f4b', colourSecondary: '#d4891f', colourTertiary: '#b87219' }, list_blocks: { colourPrimary: '#4cd137', colourSecondary: '#3bac29', colourTertiary: '#2e8a1f' }, logic_blocks: { colourPrimary: '#6c5ce7', colourSecondary: '#5a4ed4', colourTertiary: '#473dbf' }, loop_blocks: { colourPrimary: '#00b894', colourSecondary: '#00a381', colourTertiary: '#008068' }, math_blocks: { colourPrimary: '#0984e3', colourSecondary: '#0773c9', colourTertiary: '#0562af' }, procedure_blocks: { colourPrimary: '#fd79a8', colourSecondary: '#e46d96', colourTertiary: '#cc6284' }, text_blocks: { colourPrimary: '#fdcb6e', colourSecondary: '#e4b55b', colourTertiary: '#cb9e48' }, variable_blocks: { colourPrimary: '#e17055', colourSecondary: '#c85f42', colourTertiary: '#b04e30' }, variable_dynamic_blocks: { colourPrimary: '#e17055', colourSecondary: '#c85f42', colourTertiary: '#b04e30' }, hat_blocks: { colourPrimary: '#a29bfe', colourSecondary: '#9085e3', colourTertiary: '#7e71c8' } },
     componentStyles: { workspaceBackgroundColour: '#eef2f7', toolboxBackgroundColour: '#1a2035', toolboxForegroundColour: '#ffffff', flyoutBackgroundColour: '#242c42', flyoutForegroundColour: '#ffffff', flyoutOpacity: 0.98, scrollbarColour: '#00a8ff', scrollbarOpacity: 0.5, insertionMarkerColour: '#00a8ff', insertionMarkerOpacity: 0.6, markerColour: '#ffffff', cursorColour: '#d0d0d0' },
   });
@@ -445,7 +445,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
       grid: { spacing: 24, length: 4, colour: '#d8e0ec', snap: true },
       readOnly,
       move: { scrollbars: true, drag: true, wheel: true },
-      theme: oficinaTheme,
+      theme: bloquinTheme,
       zoom: { controls: true, wheel: true, startScale: 1.0, maxScale: 3, minScale: 0.3, scaleSpeed: 1.2 },
       trashcan: true,
       sounds: false,
@@ -568,7 +568,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
       {/* TOPBAR */}
       <div className="topbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 'fit-content' }}>
-          <img src={logoSimples} alt="Oficina Code" style={{ height: '34px' }} />
+          <img src={logoSimples} alt="bloquin" style={{ height: '34px' }} />
           {projectTitle && (
             <div className="project-title-badge">
               {readOnly && <span className="read-only-dot" />}

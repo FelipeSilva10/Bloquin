@@ -60,7 +60,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
     if (data) setOwnProjects(data);
   };
 
-  // ── Abre o OficinaAdmin em WebviewWindow com auto-login ───────────────────
+  // ── Abre o bloquinAdmin em WebviewWindow com auto-login ───────────────────
   const handleOpenAdminPanel = async () => {
     setAdminLoading(true);
     setAdminError('');
@@ -169,7 +169,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
       {/* TOPBAR */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', backgroundColor: 'var(--white)', padding: '15px 25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <img src={logoSimples} alt="Oficina Code" style={{ height: '40px' }} />
+          <img src={logoSimples} alt="bloquin" style={{ height: '40px' }} />
           <h1 style={{ color: 'var(--dark)', fontSize: '1.5rem', fontWeight: 900 }}>Painel do Professor</h1>
         </div>
 
@@ -222,7 +222,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
               {loadingTurmas
                 ? <p style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Carregando turmas...</p>
                 : turmas.length === 0
-                  ? <div style={{ backgroundColor: 'var(--white)', padding: '40px', borderRadius: '16px', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}><p style={{ color: 'var(--text-muted)', fontSize: '1.1rem', fontWeight: 700 }}>Nenhuma turma encontrada. O administrador deve cadastrar suas turmas no OficinaAdmin.</p></div>
+                  ? <div style={{ backgroundColor: 'var(--white)', padding: '40px', borderRadius: '16px', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}><p style={{ color: 'var(--text-muted)', fontSize: '1.1rem', fontWeight: 700 }}>Nenhuma turma encontrada. O administrador deve cadastrar suas turmas no bloquinAdmin.</p></div>
                   : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
                       {turmas.map(turma => (

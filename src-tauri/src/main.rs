@@ -6,7 +6,6 @@ use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
-use tauri::WebviewUrl;
 use std::time::Duration;
 
 // ── Windows: ocultar janela de CMD em todos os subprocessos ──────────────────
@@ -83,7 +82,7 @@ fn find_or_download_cli() -> Result<String, String> {
     }
 
     // ── 4. Plano B: download automático ─────────────────────────────────────
-    let temp_dir  = env::temp_dir().join("oficina_code_cli");
+    let temp_dir  = env::temp_dir().join("bloquin_cli");
     let local_cli = temp_dir.join(exe_name);
 
     if local_cli.exists() {
@@ -222,8 +221,8 @@ fn run_upload_pipeline(codigo: &str, placa: &str, porta: &str) -> Result<(), Str
     let fqbn = ensure_core_installed(&cli, placa)?;
 
     let temp_dir    = env::temp_dir();
-    let sketch_dir  = temp_dir.join("oficina_code_sketch");
-    let sketch_path = sketch_dir.join("oficina_code_sketch.ino");
+    let sketch_dir  = temp_dir.join("bloquin_sketch");
+    let sketch_path = sketch_dir.join("bloquin_sketch.ino");
 
     let _ = fs::create_dir_all(&sketch_dir);
 
@@ -369,13 +368,6 @@ fn get_available_ports() -> Result<Vec<String>, String> {
     }
 }
 
-/// Abre o painel admin do OficinaAdmin em uma WebviewWindow separada.
-/// Recebe o access_token e refresh_token da sessão atual do professor,
-/// e os injeta como query params para que o site faça auto-login via
-/// supabase.auth.setSession().
-///
-/// A janela só pode ser aberta por professores — a verificação de role
-/// é feita no frontend antes de chamar este comando.
 #[tauri::command]
 async fn open_admin_panel(
     app: tauri::AppHandle,
@@ -391,7 +383,7 @@ async fn open_admin_panel(
     }
 
     // 2. Cria a janela apenas se ela não existir
-    let admin_base_url = "https://oficinaadmin.vercel.app";
+    let admin_base_url = "https://bloquinadmin.vercel.app";
 
     let url = format!(
         "{}/auto-login?access_token={}&refresh_token={}",
@@ -405,7 +397,7 @@ async fn open_admin_panel(
     );
 
     tauri::WebviewWindowBuilder::new(&app, "admin-panel", webview_url)
-        .title("OficinaAdmin — Painel de Gestão")
+        .title("Admin — Painel de Gestão")
         .inner_size(1280.0, 800.0)
         .min_inner_size(900.0, 600.0)
         .center()

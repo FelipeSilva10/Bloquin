@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import logoSimples from '../assets/LogoSimples.png';
+import logoCompleta from '../assets/LogoCompleta.png';
 
 interface LoginScreenProps {
   onLogin: (role: 'student' | 'teacher' | 'visitor') => void;
@@ -59,7 +59,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   return (
     <div className="login-container">
       <div className="login-card">
-        <img src={logoSimples} alt="Oficina Code" style={{ height: '80px', marginBottom: '24px' }} />
+        <img src={logoCompleta} alt="bloquin" style={{ height: '50px', marginBottom: '24px' }} />
 
         {/* Formulário único e centralizado */}
         <form className="login-form" onSubmit={handleLogin}>

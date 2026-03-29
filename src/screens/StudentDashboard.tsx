@@ -114,7 +114,7 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
       {/* TOPBAR */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', backgroundColor: 'var(--white)', padding: '15px 25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <img src={logoSimples} alt="Oficina Code" style={{ height: '40px' }} />
+          <img src={logoSimples} alt="bloquin" style={{ height: '40px' }} />
           <h1 style={{ color: 'var(--dark)', fontSize: '1.5rem', fontWeight: 900 }}>Meus Projetos</h1>
         </div>
         <button className="btn-outline" onClick={onLogout} style={{ padding: '10px 20px' }}>Sair</button>
