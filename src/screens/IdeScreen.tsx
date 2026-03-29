@@ -209,9 +209,9 @@ interface BoardSelectionModalProps { onSelect: (board: BoardKey) => void; }
 function BoardSelectionModal({ onSelect }: BoardSelectionModalProps) {
   const [hovered, setHovered] = useState<BoardKey | null>(null);
   const boards: { key: BoardKey; title: string; color: string; img: string }[] = [
-    { key: 'uno',   title: 'Arduino Uno',  color: '#0984e3', img: 'public/arduino_uno.jpg' },
-    { key: 'nano',  title: 'Arduino Nano', color: '#ff00d0', img: 'public/arduino_nano.jpg' },
-    { key: 'esp32', title: 'ESP32 DevKit', color: '#e17055', img: 'public/esp32_devkit_v1.jpg' },
+    { key: 'uno',   title: 'Arduino Uno',  color: '#0984e3', img: 'src/assets/arduino_uno.jpg' },
+    { key: 'nano',  title: 'Arduino Nano', color: '#ff00d0', img: 'src/assets/arduino_nano.jpg' },
+    { key: 'esp32', title: 'ESP32 DevKit', color: '#e17055', img: 'src/assets/esp32_devkit_v1.jpg' },
   ];
 
   return (
