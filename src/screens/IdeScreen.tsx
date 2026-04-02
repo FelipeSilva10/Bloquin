@@ -64,15 +64,8 @@ const BOARDS = {
 
 type BoardKey = keyof typeof BOARDS;
 
-// Sentinel gravado no banco ao criar projeto.
-// Indica "placa ainda não escolhida pelo usuário".
-// Só é substituído por uma BoardKey real após seleção explícita.
 export const BOARD_UNSET = 'unset';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// currentBoardPins — variável de módulo usada pelos callbacks de blocos.
-// Só populada após seleção explícita; nunca usada como fallback silencioso.
-// ─────────────────────────────────────────────────────────────────────────────
 let currentBoardPins: [string, string][] = [...BOARDS.uno.pins] as [string, string][];
 
 function syncBoardPins(boardKey: BoardKey) {
@@ -84,15 +77,22 @@ function syncBoardPins(boardKey: BoardKey) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const customBlocks = [
+  // ── ESTRUTURA ──────────────────────────────────────────────────────────────
   { type: 'bloco_setup', colour: 290, helpUrl: '', message0: 'PREPARAR (Roda 1 vez) %1', args0: [{ type: 'input_statement', name: 'DO' }], tooltip: 'Código que roda apenas uma vez, na inicialização.' },
   { type: 'bloco_loop', colour: 260, helpUrl: '', message0: 'AGIR (Roda para sempre) %1', args0: [{ type: 'input_statement', name: 'DO' }], tooltip: 'Código que fica se repetindo enquanto o robô estiver ligado.' },
+
+  // ── PINOS ──────────────────────────────────────────────────────────────────
   { type: 'configurar_pino', colour: 230, message0: 'Configurar pino %1 como %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'MODE', options: [['Saída (Enviar sinal)', 'OUTPUT'], ['Entrada (Ler sensor)', 'INPUT'], ['Entrada com resistor', 'INPUT_PULLUP']] }], previousStatement: null, nextStatement: null, tooltip: 'Define se o pino vai enviar ou receber sinal.' },
   { type: 'escrever_pino', colour: 230, message0: 'Colocar pino %1 em estado %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'STATE', options: [['Ligado (HIGH)', 'HIGH'], ['Desligado (LOW)', 'LOW']] }], previousStatement: null, nextStatement: null, tooltip: 'Liga ou desliga um pino digital.' },
   { type: 'ler_pino_digital', colour: 230, message0: 'Ler pino digital %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], output: null, tooltip: 'Lê o estado (HIGH ou LOW) de um pino digital.' },
   { type: 'escrever_pino_pwm', colour: 230, message0: 'Intensidade do pino %1 → %2 (0 a 255)', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'input_value', name: 'VALOR' }], inputsInline: true, previousStatement: null, nextStatement: null, tooltip: 'Controla a intensidade via PWM.' },
   { type: 'ler_pino_analogico', colour: 230, message0: 'Ler sensor analógico no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], output: null, tooltip: 'Lê um sensor analógico. Retorna valor de 0 a 1023.' },
+
+  // ── CONTROLE BÁSICO ────────────────────────────────────────────────────────
   { type: 'esperar', colour: 120, message0: 'Esperar %1 milissegundos', args0: [{ type: 'field_number', name: 'TIME', value: 1000, min: 0 }], previousStatement: null, nextStatement: null, tooltip: '1000 ms = 1 segundo.' },
   { type: 'repetir_vezes', colour: 120, message0: 'Repetir %1 vezes %2 %3', args0: [{ type: 'field_number', name: 'TIMES', value: 5, min: 1 }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null },
+
+  // ── CONDIÇÕES ──────────────────────────────────────────────────────────────
   { type: 'se_entao', colour: 210, message0: 'SE %1 ENTÃO %2 %3', args0: [{ type: 'input_value', name: 'CONDICAO', check: 'Boolean' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'ENTAO' }], previousStatement: null, nextStatement: null },
   { type: 'se_entao_senao', colour: 210, message0: 'SE %1 ENTÃO %2 %3 SENÃO %4 %5', args0: [{ type: 'input_value', name: 'CONDICAO', check: 'Boolean' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'ENTAO' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'SENAO' }], previousStatement: null, nextStatement: null },
   { type: 'comparar_valores', colour: 210, message0: '%1 %2 %3', args0: [{ type: 'input_value', name: 'A' }, { type: 'field_dropdown', name: 'OP', options: [['é maior que', '>'], ['é menor que', '<'], ['é igual a', '=='], ['é maior ou igual a', '>='], ['é menor ou igual a', '<='], ['é diferente de', '!=']] }, { type: 'input_value', name: 'B' }], inputsInline: true, output: 'Boolean' },
@@ -100,13 +100,50 @@ const customBlocks = [
   { type: 'e_ou_logico', colour: 210, message0: '%1 %2 %3', args0: [{ type: 'input_value', name: 'A', check: 'Boolean' }, { type: 'field_dropdown', name: 'OP', options: [['E', '&&'], ['OU', '||']] }, { type: 'input_value', name: 'B', check: 'Boolean' }], inputsInline: true, output: 'Boolean' },
   { type: 'nao_logico', colour: 210, message0: 'NÃO %1', args0: [{ type: 'input_value', name: 'VALOR', check: 'Boolean' }], inputsInline: true, output: 'Boolean', tooltip: 'Inverte a condição.' },
   { type: 'mapear_valor', colour: 210, message0: 'Converter %1 de %2-%3 para %4-%5', args0: [{ type: 'input_value', name: 'VALOR' }, { type: 'field_number', name: 'DE_MIN', value: 0 }, { type: 'field_number', name: 'DE_MAX', value: 1023 }, { type: 'field_number', name: 'PARA_MIN', value: 0 }, { type: 'field_number', name: 'PARA_MAX', value: 255 }], inputsInline: true, output: null, tooltip: 'Converte um valor de uma escala para outra.' },
+
+  // ── ULTRASSÔNICO ───────────────────────────────────────────────────────────
   { type: 'configurar_ultrassonico', colour: 40, message0: 'Configurar sensor de distância: Trigger %1 Echo %2', args0: [{ type: 'field_dropdown', name: 'TRIG', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], previousStatement: null, nextStatement: null, tooltip: 'Coloque dentro de PREPARAR.' },
   { type: 'ler_distancia_cm', colour: 40, message0: 'Distância em cm (Trigger %1 Echo %2)', args0: [{ type: 'field_dropdown', name: 'TRIG', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], output: null, tooltip: 'Retorna a distância em centímetros.' },
   { type: 'mostrar_distancia', colour: 40, message0: 'O robô diz a distância em cm (Trigger %1 Echo %2)', args0: [{ type: 'field_dropdown', name: 'TRIG', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], previousStatement: null, nextStatement: null },
   { type: 'objeto_esta_perto', colour: 40, message0: 'Tem objeto a menos de %1 cm? (Trigger %2 Echo %3)', args0: [{ type: 'field_number', name: 'CM', value: 20, min: 1 }, { type: 'field_dropdown', name: 'TRIG', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], output: 'Boolean', tooltip: 'Verdadeiro se objeto mais próximo que a distância.' },
   { type: 'distancia_entre', colour: 40, message0: 'Distância entre %1 e %2 cm? (Trigger %3 Echo %4)', args0: [{ type: 'field_number', name: 'MIN', value: 10, min: 0 }, { type: 'field_number', name: 'MAX', value: 20, min: 0 }, { type: 'field_dropdown', name: 'TRIG', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], output: 'Boolean', tooltip: 'Verifica se a distância está em uma faixa.' },
+
+  // ── COMUNICAÇÃO ────────────────────────────────────────────────────────────
   { type: 'escrever_serial', colour: 160, message0: 'O robô diz o texto: %1', args0: [{ type: 'field_input', name: 'TEXT', text: 'Olá, mundo!' }], previousStatement: null, nextStatement: null },
   { type: 'escrever_serial_valor', colour: 160, message0: 'O robô diz a leitura de: %1', args0: [{ type: 'input_value', name: 'VALOR' }], previousStatement: null, nextStatement: null },
+
+  // ── CONTROLE AVANÇADO ──────────────────────────────────────────────────────
+  { type: 'enquanto_verdadeiro', colour: 120, message0: 'Enquanto %1 fizer %2 %3', args0: [{ type: 'input_value', name: 'CONDICAO', check: 'Boolean' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null, tooltip: 'Repete o bloco enquanto a condição for verdadeira.' },
+  { type: 'parar_repeticao', colour: 120, message0: '⛔ Parar de repetir (break)', args0: [], previousStatement: null, nextStatement: null, tooltip: 'Sai imediatamente do loop atual (repetir_vezes ou enquanto).' },
+
+  // ── MATEMÁTICA ─────────────────────────────────────────────────────────────
+  { type: 'operacao_matematica', colour: 200, message0: '%1 %2 %3', args0: [{ type: 'input_value', name: 'A' }, { type: 'field_dropdown', name: 'OP', options: [['+ soma', '+'], ['− subtração', '-'], ['× multiplicação', '*'], ['÷ divisão', '/'], ['% resto', '%']] }, { type: 'input_value', name: 'B' }], inputsInline: true, output: null, tooltip: 'Operação matemática entre dois valores.' },
+  { type: 'valor_absoluto', colour: 200, message0: '|%1| valor absoluto', args0: [{ type: 'input_value', name: 'VALOR' }], output: null, tooltip: 'Retorna o valor sem sinal negativo. Ex: abs(-5) = 5.' },
+  { type: 'constrain_valor', colour: 200, message0: 'Limitar %1 entre %2 e %3', args0: [{ type: 'input_value', name: 'VALOR' }, { type: 'field_number', name: 'MIN', value: 0 }, { type: 'field_number', name: 'MAX', value: 255 }], inputsInline: true, output: null, tooltip: 'Garante que o valor fique dentro do intervalo dado.' },
+  { type: 'random_valor', colour: 200, message0: 'Número aleatório de %1 a %2', args0: [{ type: 'field_number', name: 'MIN', value: 0 }, { type: 'field_number', name: 'MAX', value: 100 }], output: null, tooltip: 'Gera um número inteiro aleatório no intervalo.' },
+  { type: 'millis_atual', colour: 200, message0: 'Tempo ligado (ms)', args0: [], output: null, tooltip: 'Retorna milissegundos desde o início. Útil para temporização sem travar com delay.' },
+
+  // ── VARIÁVEIS GLOBAIS ──────────────────────────────────────────────────────
+  // Sem prev/next — flutua solto no workspace como declaração global
+  { type: 'declarar_variavel_global', colour: 330, message0: '📦 Variável %1 %2 = %3', args0: [{ type: 'field_dropdown', name: 'TIPO', options: [['inteiro (int)', 'int'], ['decimal (float)', 'float'], ['bool (true/false)', 'bool']] }, { type: 'field_input', name: 'NOME', text: 'minha_var' }, { type: 'input_value', name: 'VALOR' }], tooltip: 'Declara uma variável global. Deixe solto no workspace, fora de qualquer bloco.' },
+  { type: 'atribuir_variavel', colour: 330, message0: 'Guardar em %1 o valor %2', args0: [{ type: 'field_input', name: 'NOME', text: 'minha_var' }, { type: 'input_value', name: 'VALOR' }], inputsInline: true, previousStatement: null, nextStatement: null, tooltip: 'Atribui um novo valor à variável. O nome deve ser igual ao da declaração.' },
+  { type: 'ler_variavel', colour: 330, message0: 'variável %1', args0: [{ type: 'field_input', name: 'NOME', text: 'minha_var' }], output: null, tooltip: 'Lê o valor atual de uma variável.' },
+  { type: 'incrementar_variavel', colour: 330, message0: 'Aumentar %1 em %2', args0: [{ type: 'field_input', name: 'NOME', text: 'contador' }, { type: 'input_value', name: 'VALOR' }], inputsInline: true, previousStatement: null, nextStatement: null, tooltip: 'Soma um valor à variável (equivale a: contador += 1).' },
+
+  // ── FUNÇÕES ────────────────────────────────────────────────────────────────
+  // Sem prev/next — flutua solto no workspace como definição de função
+  { type: 'definir_funcao', colour: 270, message0: '⚡ Função %1 %2 %3', args0: [{ type: 'field_input', name: 'NOME', text: 'minhaFuncao' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], tooltip: 'Cria uma função reutilizável. Deixe solto no workspace e chame-a com "Executar função".' },
+  { type: 'chamar_funcao', colour: 270, message0: 'Executar função %1', args0: [{ type: 'field_input', name: 'NOME', text: 'minhaFuncao' }], previousStatement: null, nextStatement: null, tooltip: 'Chama e executa uma função definida no workspace.' },
+
+  // ── SERVO MOTOR ────────────────────────────────────────────────────────────
+  { type: 'servo_configurar', colour: 170, message0: 'Conectar servo no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], previousStatement: null, nextStatement: null, tooltip: 'Inicializa o servo motor. Coloque dentro de PREPARAR.' },
+  { type: 'servo_mover', colour: 170, message0: 'Mover servo (pino %1) para %2 °', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'input_value', name: 'ANGULO' }], inputsInline: true, previousStatement: null, nextStatement: null, tooltip: 'Move o servo para um ângulo de 0 a 180 graus.' },
+  { type: 'servo_ler', colour: 170, message0: 'Posição atual do servo (pino %1)', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], output: null, tooltip: 'Retorna o ângulo atual do servo (0 a 180).' },
+
+  // ── BUZZER / SOM ───────────────────────────────────────────────────────────
+  { type: 'buzzer_tocar', colour: 50, message0: '🔊 Tocar som: pino %1 frequência %2 Hz', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'field_number', name: 'FREQ', value: 440, min: 31, max: 65535 }], previousStatement: null, nextStatement: null, tooltip: 'Toca um som contínuo no buzzer/piezo. Use "Parar som" para encerrar.' },
+  { type: 'buzzer_tocar_tempo', colour: 50, message0: '🔊 Tocar som: pino %1 frequência %2 Hz por %3 ms', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'field_number', name: 'FREQ', value: 440, min: 31 }, { type: 'field_number', name: 'DUR', value: 500, min: 1 }], previousStatement: null, nextStatement: null, tooltip: 'Toca um som por um tempo determinado (em milissegundos).' },
+  { type: 'buzzer_parar', colour: 50, message0: '🔇 Parar som no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], previousStatement: null, nextStatement: null, tooltip: 'Para o som do buzzer/piezo naquele pino.' },
 ];
 
 Blockly.defineBlocksWithJsonArray(customBlocks);
@@ -115,15 +152,22 @@ Blockly.defineBlocksWithJsonArray(customBlocks);
 // Geradores C++
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Estrutura
 cppGenerator.forBlock['bloco_setup'] = (b: Blockly.Block) => `void setup() {\n  Serial.begin(9600);\n${cppGenerator.statementToCode(b, 'DO') || '  // Suas configurações entrarão aqui...\n'}}\n\n`;
 cppGenerator.forBlock['bloco_loop'] = (b: Blockly.Block) => `void loop() {\n${cppGenerator.statementToCode(b, 'DO') || '  // Suas ações principais entrarão aqui...\n'}}\n\n`;
+
+// Pinos
 cppGenerator.forBlock['configurar_pino'] = (b: Blockly.Block) => `  pinMode(${b.getFieldValue('PIN')}, ${b.getFieldValue('MODE')});\n`;
 cppGenerator.forBlock['escrever_pino'] = (b: Blockly.Block) => `  digitalWrite(${b.getFieldValue('PIN')}, ${b.getFieldValue('STATE')});\n`;
 cppGenerator.forBlock['ler_pino_digital'] = (b: Blockly.Block) => [`digitalRead(${b.getFieldValue('PIN')})`, 0];
 cppGenerator.forBlock['escrever_pino_pwm'] = (b: Blockly.Block) => `  analogWrite(${b.getFieldValue('PIN')}, ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
 cppGenerator.forBlock['ler_pino_analogico'] = (b: Blockly.Block) => [`analogRead(${b.getFieldValue('PIN')})`, 0];
+
+// Controle básico
 cppGenerator.forBlock['esperar'] = (b: Blockly.Block) => `  delay(${b.getFieldValue('TIME')});\n`;
 cppGenerator.forBlock['repetir_vezes'] = (b: Blockly.Block) => `  for (int i = 0; i < ${b.getFieldValue('TIMES')}; i++) {\n${cppGenerator.statementToCode(b, 'DO') || ''}  }\n`;
+
+// Condições
 cppGenerator.forBlock['se_entao'] = (b: Blockly.Block) => `  if (${cppGenerator.valueToCode(b, 'CONDICAO', 0) || 'false'}) {\n${cppGenerator.statementToCode(b, 'ENTAO') || ''}  }\n`;
 cppGenerator.forBlock['se_entao_senao'] = (b: Blockly.Block) => `  if (${cppGenerator.valueToCode(b, 'CONDICAO', 0) || 'false'}) {\n${cppGenerator.statementToCode(b, 'ENTAO') || ''}  } else {\n${cppGenerator.statementToCode(b, 'SENAO') || ''}  }\n`;
 cppGenerator.forBlock['comparar_valores'] = (b: Blockly.Block) => [`(${cppGenerator.valueToCode(b, 'A', 0) || '0'} ${b.getFieldValue('OP')} ${cppGenerator.valueToCode(b, 'B', 0) || '0'})`, 0];
@@ -131,22 +175,161 @@ cppGenerator.forBlock['numero_fixo'] = (b: Blockly.Block) => [b.getFieldValue('V
 cppGenerator.forBlock['e_ou_logico'] = (b: Blockly.Block) => [`(${cppGenerator.valueToCode(b, 'A', 0) || 'false'} ${b.getFieldValue('OP')} ${cppGenerator.valueToCode(b, 'B', 0) || 'false'})`, 0];
 cppGenerator.forBlock['nao_logico'] = (b: Blockly.Block) => [`!(${cppGenerator.valueToCode(b, 'VALOR', 0) || 'false'})`, 0];
 cppGenerator.forBlock['mapear_valor'] = (b: Blockly.Block) => [`map(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}, ${b.getFieldValue('DE_MIN')}, ${b.getFieldValue('DE_MAX')}, ${b.getFieldValue('PARA_MIN')}, ${b.getFieldValue('PARA_MAX')})`, 0];
+
+// Ultrassônico
 cppGenerator.forBlock['configurar_ultrassonico'] = (b: Blockly.Block) => `  pinMode(${b.getFieldValue('TRIG')}, OUTPUT);\n  pinMode(${b.getFieldValue('ECHO')}, INPUT);\n`;
 cppGenerator.forBlock['ler_distancia_cm'] = (b: Blockly.Block) => [`_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')})`, 0];
 cppGenerator.forBlock['mostrar_distancia'] = (b: Blockly.Block) => `  Serial.println(_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}));\n`;
 cppGenerator.forBlock['objeto_esta_perto'] = (b: Blockly.Block) => [`(_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}) < ${b.getFieldValue('CM')})`, 0];
 cppGenerator.forBlock['distancia_entre'] = (b: Blockly.Block) => [`_distanciaEntre(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}, ${b.getFieldValue('MIN')}.0f, ${b.getFieldValue('MAX')}.0f)`, 0];
+
+// Comunicação
 cppGenerator.forBlock['escrever_serial'] = (b: Blockly.Block) => `  Serial.println("${b.getFieldValue('TEXT')}");\n`;
 cppGenerator.forBlock['escrever_serial_valor'] = (b: Blockly.Block) => `  Serial.println(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
 
+// Controle avançado
+cppGenerator.forBlock['enquanto_verdadeiro'] = (b: Blockly.Block) =>
+  `  while (${cppGenerator.valueToCode(b, 'CONDICAO', 0) || 'false'}) {\n${cppGenerator.statementToCode(b, 'DO') || ''}  }\n`;
+cppGenerator.forBlock['parar_repeticao'] = (_b: Blockly.Block) => `  break;\n`;
+
+// Matemática
+cppGenerator.forBlock['operacao_matematica'] = (b: Blockly.Block) => {
+  const a = cppGenerator.valueToCode(b, 'A', 99) || '0';
+  const op = b.getFieldValue('OP');
+  const bv = cppGenerator.valueToCode(b, 'B', 99) || '0';
+  return [`(${a} ${op} ${bv})`, 0];
+};
+cppGenerator.forBlock['valor_absoluto'] = (b: Blockly.Block) =>
+  [`abs(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'})`, 0];
+cppGenerator.forBlock['constrain_valor'] = (b: Blockly.Block) =>
+  [`constrain(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}, ${b.getFieldValue('MIN')}, ${b.getFieldValue('MAX')})`, 0];
+cppGenerator.forBlock['random_valor'] = (b: Blockly.Block) =>
+  [`random(${b.getFieldValue('MIN')}, ${b.getFieldValue('MAX')})`, 0];
+cppGenerator.forBlock['millis_atual'] = (_b: Blockly.Block) => [`millis()`, 0];
+
+// Variáveis
+cppGenerator.forBlock['declarar_variavel_global'] = (b: Blockly.Block) => {
+  const tipo = b.getFieldValue('TIPO');
+  const nome = (b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_');
+  const valor = cppGenerator.valueToCode(b, 'VALOR', 99) || '0';
+  return `${tipo} ${nome} = ${valor};\n`;
+};
+cppGenerator.forBlock['atribuir_variavel'] = (b: Blockly.Block) => {
+  const nome = (b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_');
+  const valor = cppGenerator.valueToCode(b, 'VALOR', 99) || '0';
+  return `  ${nome} = ${valor};\n`;
+};
+cppGenerator.forBlock['ler_variavel'] = (b: Blockly.Block) =>
+  [(b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_'), 0];
+cppGenerator.forBlock['incrementar_variavel'] = (b: Blockly.Block) => {
+  const nome = (b.getFieldValue('NOME') || 'contador').replace(/\s+/g, '_');
+  const valor = cppGenerator.valueToCode(b, 'VALOR', 99) || '1';
+  return `  ${nome} += ${valor};\n`;
+};
+
+// Funções
+cppGenerator.forBlock['definir_funcao'] = (b: Blockly.Block) => {
+  const nome = (b.getFieldValue('NOME') || 'minhaFuncao').replace(/\s+/g, '_');
+  const corpo = cppGenerator.statementToCode(b, 'DO') || '';
+  return `void ${nome}() {\n${corpo}}\n\n`;
+};
+cppGenerator.forBlock['chamar_funcao'] = (b: Blockly.Block) => {
+  const nome = (b.getFieldValue('NOME') || 'minhaFuncao').replace(/\s+/g, '_');
+  return `  ${nome}();\n`;
+};
+
+// Servo
+cppGenerator.forBlock['servo_configurar'] = (b: Blockly.Block) => {
+  const pin = b.getFieldValue('PIN');
+  return `  _servoObj_${pin}.attach(${pin});\n`;
+};
+cppGenerator.forBlock['servo_mover'] = (b: Blockly.Block) => {
+  const pin = b.getFieldValue('PIN');
+  const ang = cppGenerator.valueToCode(b, 'ANGULO', 99) || '90';
+  return `  _servoObj_${pin}.write(${ang});\n`;
+};
+cppGenerator.forBlock['servo_ler'] = (b: Blockly.Block) => {
+  const pin = b.getFieldValue('PIN');
+  return [`_servoObj_${pin}.read()`, 0];
+};
+
+// Buzzer
+cppGenerator.forBlock['buzzer_tocar'] = (b: Blockly.Block) =>
+  `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')});\n`;
+cppGenerator.forBlock['buzzer_tocar_tempo'] = (b: Blockly.Block) =>
+  `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')}, ${b.getFieldValue('DUR')});\n`;
+cppGenerator.forBlock['buzzer_parar'] = (b: Blockly.Block) =>
+  `  noTone(${b.getFieldValue('PIN')});\n`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// generateCode — ordena corretamente: includes → globais → funções → setup → loop
+// ─────────────────────────────────────────────────────────────────────────────
+
 const generateCode = (ws: Blockly.WorkspaceSvg): string => {
-  const raw = cppGenerator.workspaceToCode(ws) || '';
-  const needsEntre   = raw.includes('_distanciaEntre(');
-  const needsUltrass = raw.includes('_lerDistancia(') || needsEntre;
-  if (!needsUltrass) return raw;
-  const helperLer = 'float _lerDistancia(int trig, int echo) {\n  digitalWrite(trig, LOW);\n  delayMicroseconds(2);\n  digitalWrite(trig, HIGH);\n  delayMicroseconds(10);\n  digitalWrite(trig, LOW);\n  long dur = pulseIn(echo, HIGH, 38000);\n  return dur > 0 ? dur * 0.034f / 2.0f : 0.0f;\n}\n';
-  const helperEntre = needsEntre ? '\nbool _distanciaEntre(int trig, int echo, float minCm, float maxCm) {\n  float d = _lerDistancia(trig, echo);\n  return d > 0.0f && d >= minCm && d < maxCm;\n}\n' : '';
-  return helperLer + helperEntre + '\n' + raw;
+  const topBlocks = ws.getTopBlocks(true);
+
+  const globalVarLines: string[] = [];
+  const funcDefLines: string[] = [];
+  let setupCode = '';
+  let loopCode = '';
+
+  for (const block of topBlocks) {
+    if (block.type === 'bloco_setup') {
+      setupCode = cppGenerator.blockToCode(block) as string;
+    } else if (block.type === 'bloco_loop') {
+      loopCode = cppGenerator.blockToCode(block) as string;
+    } else if (block.type === 'declarar_variavel_global') {
+      globalVarLines.push(cppGenerator.blockToCode(block) as string);
+    } else if (block.type === 'definir_funcao') {
+      funcDefLines.push(cppGenerator.blockToCode(block) as string);
+    }
+  }
+
+  const mainCode = [
+    ...globalVarLines,
+    globalVarLines.length > 0 ? '\n' : '',
+    ...funcDefLines,
+    setupCode || 'void setup() {\n  Serial.begin(9600);\n  // Suas configurações entrarão aqui...\n}\n\n',
+    loopCode || 'void loop() {\n  // Suas ações principais entrarão aqui...\n}\n\n',
+  ].filter(Boolean).join('');
+
+  // ── Servo: detecta pinos usados e injeta #include + objetos globais ────────
+  const needsServo = mainCode.includes('_servoObj_');
+  let servoHeader = '';
+  if (needsServo) {
+    const pins = new Set<string>();
+    const re = /_servoObj_(\w+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(mainCode)) !== null) pins.add(m[1]);
+    servoHeader =
+      '#include <Servo.h>\n' +
+      [...pins].map(p => `Servo _servoObj_${p};`).join('\n') +
+      '\n\n';
+  }
+
+  // ── Ultrassônico: injeta helpers ──────────────────────────────────────────
+  const needsEntre   = mainCode.includes('_distanciaEntre(');
+  const needsUltrass = mainCode.includes('_lerDistancia(') || needsEntre;
+  let helperLer   = '';
+  let helperEntre = '';
+  if (needsUltrass) {
+    helperLer =
+      'float _lerDistancia(int trig, int echo) {\n' +
+      '  digitalWrite(trig, LOW);\n  delayMicroseconds(2);\n' +
+      '  digitalWrite(trig, HIGH);\n  delayMicroseconds(10);\n' +
+      '  digitalWrite(trig, LOW);\n' +
+      '  long dur = pulseIn(echo, HIGH, 38000);\n' +
+      '  return dur > 0 ? dur * 0.034f / 2.0f : 0.0f;\n}\n';
+    if (needsEntre) {
+      helperEntre =
+        '\nbool _distanciaEntre(int trig, int echo, float minCm, float maxCm) {\n' +
+        '  float d = _lerDistancia(trig, echo);\n' +
+        '  return d > 0.0f && d >= minCm && d < maxCm;\n}\n';
+    }
+  }
+
+  const prefix = servoHeader + helperLer + helperEntre + (needsUltrass ? '\n' : '');
+  return prefix + mainCode;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,22 +339,150 @@ const generateCode = (ws: Blockly.WorkspaceSvg): string => {
 const toolboxConfig = {
   kind: 'categoryToolbox',
   contents: [
-    { kind: 'category', name: 'Pinos', colour: '230', contents: [{ kind: 'block', type: 'configurar_pino' }, { kind: 'block', type: 'escrever_pino' }, { kind: 'block', type: 'ler_pino_digital' }, { kind: 'block', type: 'escrever_pino_pwm', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 128 } } } } }, { kind: 'block', type: 'ler_pino_analogico' }] },
-    { kind: 'category', name: 'Controle', colour: '120', contents: [{ kind: 'block', type: 'esperar' }, { kind: 'block', type: 'repetir_vezes' }] },
-    { kind: 'category', name: 'Condições', colour: '210', contents: [{ kind: 'block', type: 'se_entao' }, { kind: 'block', type: 'se_entao_senao' }, { kind: 'block', type: 'comparar_valores', inputs: { A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, B: { block: { type: 'numero_fixo', fields: { VALOR: 10 } } } } }, { kind: 'block', type: 'numero_fixo' }, { kind: 'block', type: 'e_ou_logico' }, { kind: 'block', type: 'nao_logico' }, { kind: 'block', type: 'mapear_valor', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 512 } } } } }] },
-    { kind: 'category', name: 'Ultrassônico', colour: '40', contents: [{ kind: 'block', type: 'configurar_ultrassonico' }, { kind: 'block', type: 'ler_distancia_cm' }, { kind: 'block', type: 'mostrar_distancia' }, { kind: 'block', type: 'objeto_esta_perto' }, { kind: 'block', type: 'distancia_entre' }] },
-    { kind: 'category', name: 'Comunicação', colour: '160', contents: [{ kind: 'block', type: 'escrever_serial' }, { kind: 'block', type: 'escrever_serial_valor' }] },
+    {
+      kind: 'category', name: 'Pinos', colour: '230',
+      contents: [
+        { kind: 'block', type: 'configurar_pino' },
+        { kind: 'block', type: 'escrever_pino' },
+        { kind: 'block', type: 'ler_pino_digital' },
+        { kind: 'block', type: 'escrever_pino_pwm', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 128 } } } } },
+        { kind: 'block', type: 'ler_pino_analogico' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Controle', colour: '120',
+      contents: [
+        { kind: 'block', type: 'esperar' },
+        { kind: 'block', type: 'repetir_vezes' },
+        { kind: 'block', type: 'enquanto_verdadeiro' },
+        { kind: 'block', type: 'parar_repeticao' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Condições', colour: '210',
+      contents: [
+        { kind: 'block', type: 'se_entao' },
+        { kind: 'block', type: 'se_entao_senao' },
+        { kind: 'block', type: 'comparar_valores', inputs: { A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, B: { block: { type: 'numero_fixo', fields: { VALOR: 10 } } } } },
+        { kind: 'block', type: 'numero_fixo' },
+        { kind: 'block', type: 'e_ou_logico' },
+        { kind: 'block', type: 'nao_logico' },
+        { kind: 'block', type: 'mapear_valor', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 512 } } } } },
+      ],
+    },
+    {
+      kind: 'category', name: 'Matemática', colour: '200',
+      contents: [
+        { kind: 'block', type: 'operacao_matematica', inputs: { A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, B: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
+        { kind: 'block', type: 'valor_absoluto', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
+        { kind: 'block', type: 'constrain_valor', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
+        { kind: 'block', type: 'random_valor' },
+        { kind: 'block', type: 'millis_atual' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Variáveis', colour: '330',
+      contents: [
+        { kind: 'block', type: 'declarar_variavel_global', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
+        { kind: 'block', type: 'atribuir_variavel', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
+        { kind: 'block', type: 'ler_variavel' },
+        { kind: 'block', type: 'incrementar_variavel', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 1 } } } } },
+      ],
+    },
+    {
+      kind: 'category', name: 'Funções', colour: '270',
+      contents: [
+        { kind: 'block', type: 'definir_funcao' },
+        { kind: 'block', type: 'chamar_funcao' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Ultrassônico', colour: '40',
+      contents: [
+        { kind: 'block', type: 'configurar_ultrassonico' },
+        { kind: 'block', type: 'ler_distancia_cm' },
+        { kind: 'block', type: 'mostrar_distancia' },
+        { kind: 'block', type: 'objeto_esta_perto' },
+        { kind: 'block', type: 'distancia_entre' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Servo', colour: '170',
+      contents: [
+        { kind: 'block', type: 'servo_configurar' },
+        { kind: 'block', type: 'servo_mover', inputs: { ANGULO: { block: { type: 'numero_fixo', fields: { VALOR: 90 } } } } },
+        { kind: 'block', type: 'servo_ler' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Buzzer', colour: '50',
+      contents: [
+        { kind: 'block', type: 'buzzer_tocar' },
+        { kind: 'block', type: 'buzzer_tocar_tempo' },
+        { kind: 'block', type: 'buzzer_parar' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Comunicação', colour: '160',
+      contents: [
+        { kind: 'block', type: 'escrever_serial' },
+        { kind: 'block', type: 'escrever_serial_valor' },
+      ],
+    },
   ],
 };
 
 const BLOCK_NAMES: Record<string, string> = {
-  configurar_pino: 'Configurar Pino', escrever_pino: 'Ligar/Desligar Pino', ler_pino_digital: 'Ler Pino Digital',
-  escrever_pino_pwm: 'Intensidade (PWM)', ler_pino_analogico: 'Ler Sensor Analógico', esperar: 'Esperar',
-  repetir_vezes: 'Repetir Vezes', escrever_serial: 'O Robô Diz (texto)', escrever_serial_valor: 'O Robô Diz (valor)',
-  se_entao: 'Se... Então', se_entao_senao: 'Se... Então... Senão', comparar_valores: 'Comparar Valores',
-  numero_fixo: 'Número', e_ou_logico: 'E / Ou', nao_logico: 'NÃO', mapear_valor: 'Converter Valor',
-  configurar_ultrassonico: 'Configurar Sensor HC-SR04', ler_distancia_cm: 'Ler Distância (cm)',
-  mostrar_distancia: 'Mostrar Distância', objeto_esta_perto: 'Objeto Está Perto?', distancia_entre: 'Distância Entre... e...?',
+  // Pinos
+  configurar_pino: 'Configurar Pino',
+  escrever_pino: 'Ligar/Desligar Pino',
+  ler_pino_digital: 'Ler Pino Digital',
+  escrever_pino_pwm: 'Intensidade (PWM)',
+  ler_pino_analogico: 'Ler Sensor Analógico',
+  // Controle
+  esperar: 'Esperar',
+  repetir_vezes: 'Repetir Vezes',
+  enquanto_verdadeiro: 'Enquanto... Fizer',
+  parar_repeticao: 'Parar de Repetir',
+  // Condições
+  se_entao: 'Se... Então',
+  se_entao_senao: 'Se... Então... Senão',
+  comparar_valores: 'Comparar Valores',
+  numero_fixo: 'Número',
+  e_ou_logico: 'E / Ou',
+  nao_logico: 'NÃO',
+  mapear_valor: 'Converter Valor',
+  // Matemática
+  operacao_matematica: 'Operação Matemática',
+  valor_absoluto: 'Valor Absoluto',
+  constrain_valor: 'Limitar Valor',
+  random_valor: 'Número Aleatório',
+  millis_atual: 'Tempo Ligado (ms)',
+  // Variáveis
+  declarar_variavel_global: 'Variável Global',
+  atribuir_variavel: 'Guardar em Variável',
+  ler_variavel: 'Ler Variável',
+  incrementar_variavel: 'Aumentar Variável',
+  // Funções
+  definir_funcao: 'Definir Função',
+  chamar_funcao: 'Executar Função',
+  // Ultrassônico
+  configurar_ultrassonico: 'Configurar Sensor HC-SR04',
+  ler_distancia_cm: 'Ler Distância (cm)',
+  mostrar_distancia: 'Mostrar Distância',
+  objeto_esta_perto: 'Objeto Está Perto?',
+  distancia_entre: 'Distância Entre... e...?',
+  // Servo
+  servo_configurar: 'Conectar Servo',
+  servo_mover: 'Mover Servo',
+  servo_ler: 'Posição do Servo',
+  // Buzzer
+  buzzer_tocar: 'Tocar Som',
+  buzzer_tocar_tempo: 'Tocar Som por Tempo',
+  buzzer_parar: 'Parar Som',
+  // Comunicação
+  escrever_serial: 'O Robô Diz (texto)',
+  escrever_serial_valor: 'O Robô Diz (valor)',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,7 +540,7 @@ function BoardSelectionModal({ onSelect }: BoardSelectionModalProps) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'row', gap: 16, width: '100%', justifyContent: 'center' }}>
           {boards.map(({ key, title, color, img }) => (
-              <button key={key} onMouseEnter={() => setHovered(key)} onMouseLeave={() => setHovered(null)} onClick={() => onSelect(key)}
+            <button key={key} onMouseEnter={() => setHovered(key)} onMouseLeave={() => setHovered(null)} onClick={() => onSelect(key)}
               style={{ background: 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '18px 16px 14px', borderRadius: 20, cursor: 'pointer', boxShadow: hovered === key ? `0 8px 24px ${color}44` : '0 2px 8px rgba(0,0,0,0.06)', transform: hovered === key ? 'translateY(-4px) scale(1.03)' : 'none', transition: 'all 0.18s ease', flex: 1, minWidth: 0, outline: 'none' }}>
               <div style={{ width: '100%', aspectRatio: '4/3', borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
                 <img src={img} alt={title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.25s ease', transform: hovered === key ? 'scale(1.06)' : 'scale(1)' }} />
@@ -244,7 +555,7 @@ function BoardSelectionModal({ onSelect }: BoardSelectionModalProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BoardBadge — exibe placa como informação fixa e imutável na topbar
+// BoardBadge
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BoardBadge({ boardKey }: { boardKey: BoardKey }) {
@@ -269,25 +580,25 @@ interface IdeScreenProps {
   projectId?: string;
 }
 
-// Estados de resolução da placa:
-// 'resolving' → consultando DB (só quando projectId existe)
-// 'selecting' → aguardando escolha explícita no modal
-// 'ready'     → placa confirmada, Blockly pode inicializar
-// 'error'     → valor inválido no banco; bloqueia a IDE
 type BoardLoadState = 'resolving' | 'selecting' | 'ready' | 'error';
+
+// Blocos de nível superior que ficam soltos no workspace (não são órfãos)
+const TOP_LEVEL_BLOCK_TYPES = new Set([
+  'bloco_setup',
+  'bloco_loop',
+  'declarar_variavel_global',
+  'definir_funcao',
+]);
 
 export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScreenProps) {
   const blocklyDiv = useRef<HTMLDivElement>(null);
   const workspace  = useRef<Blockly.WorkspaceSvg | null>(null);
 
-  // board === null enquanto não houver seleção explícita confirmada.
-  // Nunca tem valor semântico antes de boardLoadState === 'ready'.
   const [board, setBoard]                   = useState<BoardKey | null>(null);
   const [boardLoadState, setBoardLoadState] = useState<BoardLoadState>(
     projectId ? 'resolving' : 'selecting'
   );
 
-  // workspace_data buscado na fase 1, aguarda fase 2 para ser carregado
   const pendingWorkspaceData = useRef<unknown>(null);
 
   const [port, setPort]                         = useState('');
@@ -323,22 +634,14 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
 
   const getOrphanedBlocks = (): string[] => {
     if (!workspace.current) return [];
-    return workspace.current.getTopBlocks(false).filter(b => b.type !== 'bloco_setup' && b.type !== 'bloco_loop').map(b => BLOCK_NAMES[b.type] ?? b.type);
+    return workspace.current.getTopBlocks(false)
+      .filter(b => !TOP_LEVEL_BLOCK_TYPES.has(b.type))
+      .map(b => BLOCK_NAMES[b.type] ?? b.type);
   };
 
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // FASE 1 — Resolução da placa
-  //
-  // Regra de decisão para projectId existente:
-  //   target_board === BOARD_UNSET ou null  → seleção obrigatória
-  //   target_board é BoardKey válida        → usa diretamente, sem modal
-  //   target_board é string desconhecida    → erro explícito, sem fallback
-  //
-  // Para visitante/novo projeto (sem projectId):
-  //   Estado inicial já é 'selecting' — sem consulta ao DB.
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── FASE 1: Resolução da placa ──────────────────────────────────────────────
 
   useEffect(() => {
     if (!projectId) return;
@@ -354,7 +657,6 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
       if (cancelled) return;
 
       if (error || !data) {
-        // Falha na query → trata como projeto sem placa definida
         setBoardLoadState('selecting');
         return;
       }
@@ -365,19 +667,16 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
       const raw = data.target_board as string | null | undefined;
 
       if (!raw || raw === BOARD_UNSET) {
-        // Placa não escolhida ainda — seleção obrigatória
         setBoardLoadState('selecting');
         return;
       }
 
       if (raw in BOARDS) {
-        // Placa válida e confirmada
         const key = raw as BoardKey;
-        syncBoardPins(key);   // ← SÍNCRONO antes de liberar o workspace
+        syncBoardPins(key);
         setBoard(key);
         setBoardLoadState('ready');
       } else {
-        // Valor inválido no banco — erro sem fallback
         setBoardLoadState('error');
         setFriendlyError({
           emoji: '⚠️',
@@ -393,15 +692,8 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Callback do modal de seleção
-  //
-  // Persiste a placa imediatamente no banco (quando há projectId) para que
-  // o metadado esteja salvo mesmo sem salvar o workspace.
-  // ─────────────────────────────────────────────────────────────────────────
-
   const handleBoardSelected = async (selected: BoardKey) => {
-    syncBoardPins(selected);   // ← SÍNCRONO antes de liberar o Blockly
+    syncBoardPins(selected);
     setBoard(selected);
 
     if (projectId) {
@@ -414,7 +706,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
     setBoardLoadState('ready');
   };
 
-  // ── Effects ──────────────────────────────────────────────────────────────────
+  // ── Effects ─────────────────────────────────────────────────────────────────
 
   useEffect(() => { fetchPorts(); }, []);
 
@@ -430,12 +722,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
     return () => { if (unlisten) unlisten(); };
   }, []);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // FASE 2 — Inicialização do Blockly
-  //
-  // Só dispara quando boardLoadState === 'ready'.
-  // Garante que currentBoardPins está correto antes de qualquer render de bloco.
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── FASE 2: Inicialização do Blockly ────────────────────────────────────────
 
   useEffect(() => {
     if (boardLoadState !== 'ready' || !blocklyDiv.current || workspace.current) return;
@@ -494,7 +781,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
     return () => { if (unlisten) unlisten(); };
   }, []);
 
-  // ── Handlers ─────────────────────────────────────────────────────────────────
+  // ── Handlers ────────────────────────────────────────────────────────────────
 
   const handleToggleSerial = async () => {
     try {
@@ -543,15 +830,13 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   const stageIndex = uploadStage ? UPLOAD_STAGES.findIndex(s => s.id === uploadStage) : -1;
   const currentStageData = uploadStage ? UPLOAD_STAGES.find(s => s.id === uploadStage) : null;
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="app-container">
 
-      {/* MODAL: SELEÇÃO DE PLACA — bloqueia a IDE para qualquer perfil */}
       {boardLoadState === 'selecting' && <BoardSelectionModal onSelect={handleBoardSelected} />}
 
-      {/* OVERLAY: consultando DB */}
       {boardLoadState === 'resolving' && (
         <div className="modal-overlay" style={{ zIndex: 999998 }}>
           <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, opacity: 0.85 }}>Carregando projeto…</div>
@@ -584,7 +869,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
             <select value={port} onChange={(e) => setPort(e.target.value)}>
               {availablePorts.length === 0 ? <option value="">Selecione uma placa</option> : availablePorts.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
-              <button onClick={fetchPorts} className="btn-icon" title="Atualizar porta"> ↻ </button>
+            <button onClick={fetchPorts} className="btn-icon" title="Atualizar porta"> ↻ </button>
           </div>
           <div className="control-divider" />
           {!readOnly && (
@@ -653,7 +938,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
         <div className="modal-overlay"><div className="orphan-modal">
           <div className="orphan-icon">🧩</div>
           <h2>Tem peças soltas!</h2>
-          <p>As peças abaixo estão flutuando no espaço. Para o robô executar, <strong>todas as peças precisam estar dentro de PREPARAR ou AGIR</strong>.</p>
+          <p>As peças abaixo estão flutuando no espaço. Para o robô executar, <strong>todas as peças precisam estar dentro de PREPARAR ou AGIR</strong> (ou dentro de uma Função).</p>
           <div className="orphan-blocks-list">{[...new Set(orphanWarning)].map((name, i) => <div key={i} className="orphan-block-chip"><span>🔷</span> {name}</div>)}</div>
           <div className="orphan-diagram">
             <div className="orphan-diagram-bad"><span>❌</span><div className="mini-block floating">Peça Solta</div></div>
