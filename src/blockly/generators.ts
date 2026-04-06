@@ -20,11 +20,24 @@ export function initGenerators() {
   cppGenerator.forBlock['escrever_pino_pwm'] = (b: Blockly.Block) => `  analogWrite(${b.getFieldValue('PIN')}, ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
   cppGenerator.forBlock['ler_pino_analogico'] = (b: Blockly.Block) => [`analogRead(${b.getFieldValue('PIN')})`, 0];
 
-  // Controle básico
+  // Controle e Temporizadores (C1, Eixo 6)
   cppGenerator.forBlock['esperar'] = (b: Blockly.Block) => `  delay(${b.getFieldValue('TIME')});\n`;
-  cppGenerator.forBlock['repetir_vezes'] = (b: Blockly.Block) => `  for (int i = 0; i < ${b.getFieldValue('TIMES')}; i++) {\n${cppGenerator.statementToCode(b, 'DO') || ''}  }\n`;
+  cppGenerator.forBlock['repetir_vezes'] = (b: Blockly.Block) => {
+    if (!cppGenerator.nameDB_) cppGenerator.nameDB_ = new Blockly.Names((cppGenerator as any).RESERVED_WORDS_);
+    const loopVar = cppGenerator.nameDB_.getDistinctName('i', Blockly.Names.NameType.VARIABLE);
+    return `  for (int ${loopVar} = 0; ${loopVar} < ${b.getFieldValue('TIMES')}; ${loopVar}++) {\n${cppGenerator.statementToCode(b, 'DO') || ''}  }\n`;
+  };
+  cppGenerator.forBlock['a_cada_x_ms'] = (b: Blockly.Block) => {
+    if (!cppGenerator.nameDB_) cppGenerator.nameDB_ = new Blockly.Names((cppGenerator as any).RESERVED_WORDS_);
+    const timerVar = cppGenerator.nameDB_.getDistinctName('timer', Blockly.Names.NameType.VARIABLE);
+    const ms = b.getFieldValue('MS');
+    const doCode = cppGenerator.statementToCode(b, 'DO') || '';
+    return `  static unsigned long ${timerVar} = 0;\n  if (millis() - ${timerVar} >= ${ms}) {\n    ${timerVar} = millis();\n${doCode}  }\n`;
+  };
+  cppGenerator.forBlock['enquanto_verdadeiro'] = (b: Blockly.Block) => `  while (${cppGenerator.valueToCode(b, 'CONDICAO', 0) || 'false'}) {\n${cppGenerator.statementToCode(b, 'DO') || ''}  }\n`;
+  cppGenerator.forBlock['parar_repeticao'] = (_b: Blockly.Block) => `  break;\n`;
 
-  // Condições
+  // Condições e Matemática
   cppGenerator.forBlock['se_entao'] = (b: Blockly.Block) => `  if (${cppGenerator.valueToCode(b, 'CONDICAO', 0) || 'false'}) {\n${cppGenerator.statementToCode(b, 'ENTAO') || ''}  }\n`;
   cppGenerator.forBlock['se_entao_senao'] = (b: Blockly.Block) => `  if (${cppGenerator.valueToCode(b, 'CONDICAO', 0) || 'false'}) {\n${cppGenerator.statementToCode(b, 'ENTAO') || ''}  } else {\n${cppGenerator.statementToCode(b, 'SENAO') || ''}  }\n`;
   cppGenerator.forBlock['comparar_valores'] = (b: Blockly.Block) => [`(${cppGenerator.valueToCode(b, 'A', 0) || '0'} ${b.getFieldValue('OP')} ${cppGenerator.valueToCode(b, 'B', 0) || '0'})`, 0];
@@ -32,28 +45,10 @@ export function initGenerators() {
   cppGenerator.forBlock['e_ou_logico'] = (b: Blockly.Block) => [`(${cppGenerator.valueToCode(b, 'A', 0) || 'false'} ${b.getFieldValue('OP')} ${cppGenerator.valueToCode(b, 'B', 0) || 'false'})`, 0];
   cppGenerator.forBlock['nao_logico'] = (b: Blockly.Block) => [`!(${cppGenerator.valueToCode(b, 'VALOR', 0) || 'false'})`, 0];
   cppGenerator.forBlock['mapear_valor'] = (b: Blockly.Block) => [`map(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}, ${b.getFieldValue('DE_MIN')}, ${b.getFieldValue('DE_MAX')}, ${b.getFieldValue('PARA_MIN')}, ${b.getFieldValue('PARA_MAX')})`, 0];
-
-  // Ultrassônico
-  cppGenerator.forBlock['configurar_ultrassonico'] = (b: Blockly.Block) => `  pinMode(${b.getFieldValue('TRIG')}, OUTPUT);\n  pinMode(${b.getFieldValue('ECHO')}, INPUT);\n`;
-  cppGenerator.forBlock['ler_distancia_cm'] = (b: Blockly.Block) => [`_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')})`, 0];
-  cppGenerator.forBlock['mostrar_distancia'] = (b: Blockly.Block) => `  Serial.println(_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}));\n`;
-  cppGenerator.forBlock['objeto_esta_perto'] = (b: Blockly.Block) => [`(_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}) < ${b.getFieldValue('CM')})`, 0];
-  cppGenerator.forBlock['distancia_entre'] = (b: Blockly.Block) => [`_distanciaEntre(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}, ${b.getFieldValue('MIN')}.0f, ${b.getFieldValue('MAX')}.0f)`, 0];
-
-  // Comunicação
-  cppGenerator.forBlock['escrever_serial'] = (b: Blockly.Block) => `  Serial.println("${b.getFieldValue('TEXT')}");\n`;
-  cppGenerator.forBlock['escrever_serial_valor'] = (b: Blockly.Block) => `  Serial.println(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
-
-  // Controle avançado
-  cppGenerator.forBlock['enquanto_verdadeiro'] = (b: Blockly.Block) => `  while (${cppGenerator.valueToCode(b, 'CONDICAO', 0) || 'false'}) {\n${cppGenerator.statementToCode(b, 'DO') || ''}  }\n`;
-  cppGenerator.forBlock['parar_repeticao'] = (_b: Blockly.Block) => `  break;\n`;
-
-  // Matemática
   cppGenerator.forBlock['operacao_matematica'] = (b: Blockly.Block) => {
     const a = cppGenerator.valueToCode(b, 'A', 99) || '0';
-    const op = b.getFieldValue('OP');
     const bv = cppGenerator.valueToCode(b, 'B', 99) || '0';
-    return [`(${a} ${op} ${bv})`, 0];
+    return [`(${a} ${b.getFieldValue('OP')} ${bv})`, 0];
   };
   cppGenerator.forBlock['valor_absoluto'] = (b: Blockly.Block) => [`abs(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'})`, 0];
   cppGenerator.forBlock['constrain_valor'] = (b: Blockly.Block) => [`constrain(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}, ${b.getFieldValue('MIN')}, ${b.getFieldValue('MAX')})`, 0];
@@ -61,77 +56,44 @@ export function initGenerators() {
   cppGenerator.forBlock['millis_atual'] = (_b: Blockly.Block) => [`millis()`, 0];
 
   // Variáveis
-  cppGenerator.forBlock['declarar_variavel_global'] = (b: Blockly.Block) => {
-    const tipo = b.getFieldValue('TIPO');
-    const nome = (b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_');
-    const valor = cppGenerator.valueToCode(b, 'VALOR', 99) || '0';
-    return `${tipo} ${nome} = ${valor};\n`;
-  };
-  cppGenerator.forBlock['atribuir_variavel'] = (b: Blockly.Block) => {
-    const nome = (b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_');
-    const valor = cppGenerator.valueToCode(b, 'VALOR', 99) || '0';
-    return `  ${nome} = ${valor};\n`;
-  };
+  cppGenerator.forBlock['declarar_variavel_global'] = (b: Blockly.Block) => `${b.getFieldValue('TIPO')} ${(b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'};\n`;
+  cppGenerator.forBlock['atribuir_variavel'] = (b: Blockly.Block) => `  ${(b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'};\n`;
   cppGenerator.forBlock['ler_variavel'] = (b: Blockly.Block) => [(b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_'), 0];
-  cppGenerator.forBlock['incrementar_variavel'] = (b: Blockly.Block) => {
-    const nome = (b.getFieldValue('NOME') || 'contador').replace(/\s+/g, '_');
-    const valor = cppGenerator.valueToCode(b, 'VALOR', 99) || '1';
-    return `  ${nome} += ${valor};\n`;
-  };
+  cppGenerator.forBlock['incrementar_variavel'] = (b: Blockly.Block) => `  ${(b.getFieldValue('NOME') || 'contador').replace(/\s+/g, '_')} += ${cppGenerator.valueToCode(b, 'VALOR', 99) || '1'};\n`;
+  cppGenerator.forBlock['valor_booleano_fixo'] = (b: Blockly.Block) => [b.getFieldValue('VALOR'), 0];
 
-  // Funções
+  // Funções (Eixo 6)
   cppGenerator.forBlock['definir_funcao'] = (b: Blockly.Block) => {
-    const nome = (b.getFieldValue('NOME') || 'minhaFuncao').replace(/\s+/g, '_');
+    return `void ${(b.getFieldValue('NOME') || 'minhaFuncao').replace(/\s+/g, '_')}() {\n${cppGenerator.statementToCode(b, 'DO') || ''}}\n\n`;
+  };
+  cppGenerator.forBlock['chamar_funcao'] = (b: Blockly.Block) => `  ${(b.getFieldValue('NOME') || 'minhaFuncao').replace(/\s+/g, '_')}();\n`;
+  cppGenerator.forBlock['definir_funcao_retorno'] = (b: Blockly.Block) => {
+    const nome = (b.getFieldValue('NOME') || 'calcular').replace(/\s+/g, '_');
     const corpo = cppGenerator.statementToCode(b, 'DO') || '';
-    return `void ${nome}() {\n${corpo}}\n\n`;
+    const ret = cppGenerator.valueToCode(b, 'RETURN', 99) || '0.0f';
+    return `float ${nome}() {\n${corpo}  return (float)(${ret});\n}\n\n`;
   };
-  cppGenerator.forBlock['chamar_funcao'] = (b: Blockly.Block) => {
-    const nome = (b.getFieldValue('NOME') || 'minhaFuncao').replace(/\s+/g, '_');
-    return `  ${nome}();\n`;
-  };
+  cppGenerator.forBlock['chamar_funcao_retorno'] = (b: Blockly.Block) => [`${(b.getFieldValue('NOME') || 'calcular').replace(/\s+/g, '_')}()`, 0];
 
-  // Servo
-  cppGenerator.forBlock['servo_configurar'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.attach(${b.getFieldValue('PIN')});\n`;
-  cppGenerator.forBlock['servo_mover'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.write(${cppGenerator.valueToCode(b, 'ANGULO', 99) || '90'});\n`;
-  cppGenerator.forBlock['servo_ler'] = (b: Blockly.Block) => [`_servoObj_${b.getFieldValue('PIN')}.read()`, 0];
-
-  // Buzzer
-  cppGenerator.forBlock['buzzer_tocar'] = (b: Blockly.Block) => `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')});\n`;
-  cppGenerator.forBlock['buzzer_tocar_tempo'] = (b: Blockly.Block) => `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')}, ${b.getFieldValue('DUR')});\n`;
-  cppGenerator.forBlock['buzzer_parar'] = (b: Blockly.Block) => `  noTone(${b.getFieldValue('PIN')});\n`;
-
-  // ESP-NOW / MPU / Ponte H e Outros Omidos aqui por brevidade (Mantenha igual ao original, apenas referenciando `cppGenerator`)
-  // ── ESP-NOW COMUM ──────────────────────────────────────────────────────────
+  // ESP-NOW (C3 compatível com C++ Padrão)
   cppGenerator.forBlock['espnow_iniciar_wifi'] = (_b: Blockly.Block) => `  WiFi.mode(WIFI_STA);\n  WiFi.disconnect();\n  delay(100);\n`;
   cppGenerator.forBlock['espnow_mac_serial'] = (_b: Blockly.Block) => `  Serial.print("[INFO] MAC: ");\n  Serial.println(WiFi.macAddress());\n`;
-
   cppGenerator.forBlock['espnow_transmissor_init'] = (_b: Blockly.Block) => `  if (esp_now_init() != ESP_OK) {\n    Serial.println("[ERRO] ESP-NOW falhou");\n    while(true) delay(1000);\n  }\n`;
-
+  
   cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
     const mac = (b.getFieldValue('MAC') || 'AA:BB:CC:DD:EE:FF');
     const parts = mac.split(':').map((p: string) => `0x${p.toUpperCase()}`);
     return (
-      `  memcpy(_espnow_peer_mac, (uint8_t[]){${parts.join(', ')}}, 6);\n` +
-      `  {\n    esp_now_peer_info_t _pi = {};\n` +
-      `    memcpy(_pi.peer_addr, _espnow_peer_mac, 6);\n` +
-      `    _pi.channel = 0;\n    _pi.encrypt = false;\n` +
-      `    esp_now_add_peer(&_pi);\n  }\n`
+      `  uint8_t _tmp_mac[6] = {${parts.join(', ')}};\n` +
+      `  memcpy(_espnow_peer_mac, _tmp_mac, 6);\n` +
+      `  esp_now_peer_info_t _pi = {};\n` +
+      `  memcpy(_pi.peer_addr, _espnow_peer_mac, 6);\n` +
+      `  _pi.channel = 0;\n  _pi.encrypt = false;\n` +
+      `  esp_now_add_peer(&_pi);\n`
     );
   };
 
-  cppGenerator.forBlock['espnow_enviar_pacote'] = (b: Blockly.Block) => {
-    const pitch = cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f';
-    const roll  = cppGenerator.valueToCode(b, 'ROLL',  99) || '0.0f';
-    const parar = cppGenerator.valueToCode(b, 'PARAR', 0)  || 'false';
-    return (
-      `  {\n    _PacoteDados _pkt;\n` +
-      `    _pkt.pitch = (float)(${pitch});\n` +
-      `    _pkt.roll  = (float)(${roll});\n` +
-      `    _pkt.parar = ${parar};\n` +
-      `    esp_now_send(_espnow_peer_mac, (uint8_t*)&_pkt, sizeof(_pkt));\n  }\n`
-    );
-  };
-
+  cppGenerator.forBlock['espnow_enviar_pacote'] = (b: Blockly.Block) => `  _PacoteDados _pkt;\n  _pkt.pitch = (float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'});\n  _pkt.roll  = (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'});\n  _pkt.parar = ${cppGenerator.valueToCode(b, 'PARAR', 0) || 'false'};\n  esp_now_send(_espnow_peer_mac, (uint8_t*)&_pkt, sizeof(_pkt));\n`;
   cppGenerator.forBlock['espnow_receptor_init'] = (_b: Blockly.Block) => `  if (esp_now_init() != ESP_OK) {\n    Serial.println("[ERRO] ESP-NOW falhou");\n    while(true) delay(1000);\n  }\n  esp_now_register_recv_cb(_bloquin_OnDataRecv);\n`;
   cppGenerator.forBlock['espnow_tem_dados_novos'] = (_b: Blockly.Block) => [`_espnow_dadosNovos`, 0];
   cppGenerator.forBlock['espnow_ler_pitch'] = (_b: Blockly.Block) => [`_espnow_pacote.pitch`, 0];
@@ -139,44 +101,58 @@ export function initGenerators() {
   cppGenerator.forBlock['espnow_ler_flag_parar'] = (_b: Blockly.Block) => [`_espnow_pacote.parar`, 0];
   cppGenerator.forBlock['espnow_timeout_ms'] = (b: Blockly.Block) => [`(_espnow_primeiroRx && (millis() - _espnow_ultimoRx > ${b.getFieldValue('MS')}UL))`, 0];
 
-  cppGenerator.forBlock['mpu_iniciar'] = (b: Blockly.Block) => {
-    const sda = b.getFieldValue('SDA');
-    const scl = b.getFieldValue('SCL');
-    return (
-      `  Wire.begin(${sda}, ${scl});\n` +
-      `  _mpu.initialize();\n` +
-      `  if (!_mpu.testConnection()) {\n` +
-      `    Serial.println("[ERRO] MPU-6050 nao encontrado!");\n` +
-      `  } else {\n    Serial.println("[OK] MPU-6050 pronto.");\n  }\n`
-    );
-  };
+  // Restantes iguais (reduzido para focar nas mudanças)
+  cppGenerator.forBlock['configurar_ultrassonico'] = (b: Blockly.Block) => `  pinMode(${b.getFieldValue('TRIG')}, OUTPUT);\n  pinMode(${b.getFieldValue('ECHO')}, INPUT);\n`;
+  cppGenerator.forBlock['ler_distancia_cm'] = (b: Blockly.Block) => [`_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')})`, 0];
+  cppGenerator.forBlock['mostrar_distancia'] = (b: Blockly.Block) => `  Serial.println(_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}));\n`;
+  cppGenerator.forBlock['objeto_esta_perto'] = (b: Blockly.Block) => [`(_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}) < ${b.getFieldValue('CM')})`, 0];
+  cppGenerator.forBlock['distancia_entre'] = (b: Blockly.Block) => [`_distanciaEntre(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}, ${b.getFieldValue('MIN')}.0f, ${b.getFieldValue('MAX')}.0f)`, 0];
+  cppGenerator.forBlock['escrever_serial'] = (b: Blockly.Block) => `  Serial.println("${b.getFieldValue('TEXT')}");\n`;
+  cppGenerator.forBlock['escrever_serial_valor'] = (b: Blockly.Block) => `  Serial.println(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
+  cppGenerator.forBlock['servo_configurar'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.attach(${b.getFieldValue('PIN')});\n`;
+  cppGenerator.forBlock['servo_mover'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.write(${cppGenerator.valueToCode(b, 'ANGULO', 99) || '90'});\n`;
+  cppGenerator.forBlock['servo_ler'] = (b: Blockly.Block) => [`_servoObj_${b.getFieldValue('PIN')}.read()`, 0];
+  cppGenerator.forBlock['buzzer_tocar'] = (b: Blockly.Block) => `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')});\n`;
+  cppGenerator.forBlock['buzzer_tocar_tempo'] = (b: Blockly.Block) => `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')}, ${b.getFieldValue('DUR')});\n`;
+  cppGenerator.forBlock['buzzer_parar'] = (b: Blockly.Block) => `  noTone(${b.getFieldValue('PIN')});\n`;
+  cppGenerator.forBlock['mpu_iniciar'] = (b: Blockly.Block) => `  Wire.begin(${b.getFieldValue('SDA')}, ${b.getFieldValue('SCL')});\n  _mpu.initialize();\n  if (!_mpu.testConnection()) { Serial.println("[ERRO] MPU-6050"); } else { Serial.println("[OK] MPU-6050"); }\n`;
   cppGenerator.forBlock['mpu_ler_pitch'] = (_b: Blockly.Block) => [`_bloquin_lerPitch()`, 0];
   cppGenerator.forBlock['mpu_ler_roll'] = (_b: Blockly.Block) => [`_bloquin_lerRoll()`, 0];
 
-  cppGenerator.forBlock['l298n_configurar'] = (b: Blockly.Block) => {
+  // Ponte H (C4 Validação Global)
+  cppGenerator.forBlock['l298n_configurar_simples'] = (b: Blockly.Block) => {
     const ena = b.getFieldValue('ENA'), in1 = b.getFieldValue('IN1'), in2 = b.getFieldValue('IN2');
-    const in3 = b.getFieldValue('IN3'), in4 = b.getFieldValue('IN4'), enb = b.getFieldValue('ENB');
+    const enb = b.getFieldValue('ENB'), in3 = b.getFieldValue('IN3'), in4 = b.getFieldValue('IN4');
     return (
       `  _l298n_ENA=${ena}; _l298n_IN1=${in1}; _l298n_IN2=${in2};\n` +
-      `  _l298n_IN3=${in3}; _l298n_IN4=${in4}; _l298n_ENB=${enb};\n` +
-      `  pinMode(${ena},OUTPUT); digitalWrite(${ena},LOW);\n` +
-      `  pinMode(${enb},OUTPUT); digitalWrite(${enb},LOW);\n` +
-      `  pinMode(${in1},OUTPUT); digitalWrite(${in1},LOW);\n` +
-      `  pinMode(${in2},OUTPUT); digitalWrite(${in2},LOW);\n` +
-      `  pinMode(${in3},OUTPUT); digitalWrite(${in3},LOW);\n` +
-      `  pinMode(${in4},OUTPUT); digitalWrite(${in4},LOW);\n`
+      `  _l298n_ENB=${enb}; _l298n_IN3=${in3}; _l298n_IN4=${in4};\n` +
+      `  pinMode(${ena},OUTPUT); pinMode(${enb},OUTPUT);\n` +
+      `  pinMode(${in1},OUTPUT); pinMode(${in2},OUTPUT);\n` +
+      `  pinMode(${in3},OUTPUT); pinMode(${in4},OUTPUT);\n` +
+      `  digitalWrite(${in1},LOW); digitalWrite(${in2},LOW);\n` +
+      `  digitalWrite(${in3},LOW); digitalWrite(${in4},LOW);\n` +
+      `  ledcAttach(${ena}, 1000, 8); ledcWrite(${ena}, 0);\n` +
+      `  ledcAttach(${enb}, 1000, 8); ledcWrite(${enb}, 0);\n`
     );
   };
-
-  cppGenerator.forBlock['l298n_pwm_configurar'] = (b: Blockly.Block) => `  ledcAttach(${b.getFieldValue('ENA')}, 1000, 8);\n  ledcAttach(${b.getFieldValue('ENB')}, 1000, 8);\n  ledcWrite(${b.getFieldValue('ENA')}, 0);\n  ledcWrite(${b.getFieldValue('ENB')}, 0);\n`;
-  cppGenerator.forBlock['l298n_motor_esquerdo'] = (b: Blockly.Block) => `  _bloquin_motorE(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
-  cppGenerator.forBlock['l298n_motor_direito'] = (b: Blockly.Block) => `  _bloquin_motorD(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
-  cppGenerator.forBlock['l298n_parar_motores'] = (_b: Blockly.Block) => `  _bloquin_motorE(0);\n  _bloquin_motorD(0);\n`;
-  cppGenerator.forBlock['l298n_velocidade_por_pitch_roll'] = (b: Blockly.Block) => `  _bloquin_aplicarControle((float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'}), (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'}), ${b.getFieldValue('ZONA_P')}.0f, ${b.getFieldValue('ZONA_R')}.0f);\n`;
-
+  cppGenerator.forBlock['l298n_mover_robo'] = (b: Blockly.Block) => {
+    const dir = b.getFieldValue('DIRECAO'), forca = cppGenerator.valueToCode(b, 'FORCA', 99) || '0';
+    if (dir === 'FRENTE') return `  _bloquin_motorE(${forca});\n  _bloquin_motorD(${forca});\n`;
+    if (dir === 'TRAS') return `  _bloquin_motorE(-(${forca}));\n  _bloquin_motorD(-(${forca}));\n`;
+    if (dir === 'ESQUERDA') return `  _bloquin_motorE(-(${forca}));\n  _bloquin_motorD(${forca});\n`;
+    if (dir === 'DIREITA') return `  _bloquin_motorE(${forca});\n  _bloquin_motorD(-(${forca}));\n`;
+    return `  _bloquin_motorE(0);\n  _bloquin_motorD(0);\n`;
+  };
+  cppGenerator.forBlock['l298n_mover_motor'] = (b: Blockly.Block) => {
+    const func = b.getFieldValue('MOTOR') === 'E' ? '_bloquin_motorE' : '_bloquin_motorD';
+    const dir = b.getFieldValue('DIRECAO'), forca = cppGenerator.valueToCode(b, 'FORCA', 99) || '0';
+    if (dir === 'FRENTE') return `  ${func}(${forca});\n`;
+    if (dir === 'TRAS') return `  ${func}(-(${forca}));\n`;
+    return `  ${func}(0);\n`;
+  };
+  cppGenerator.forBlock['l298n_velocidade_por_pitch_roll'] = (b: Blockly.Block) => `  _bloquin_aplicarControle((float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'}), (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'}), 10.0f, 8.0f);\n`;
   cppGenerator.forBlock['util_map_float'] = (b: Blockly.Block) => [`_bloquin_mapFloat((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}), ${b.getFieldValue('DE_MIN')}.0f, ${b.getFieldValue('DE_MAX')}.0f, ${b.getFieldValue('PARA_MIN')}.0f, ${b.getFieldValue('PARA_MAX')}.0f)`, 0];
   cppGenerator.forBlock['util_fabsf'] = (b: Blockly.Block) => [`fabsf((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}))`, 0];
-  cppGenerator.forBlock['valor_booleano_fixo'] = (b: Blockly.Block) => [b.getFieldValue('VALOR'), 0];
 }
 
 export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
@@ -194,17 +170,16 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
       loopCode = cppGenerator.blockToCode(block) as string;
     } else if (block.type === 'declarar_variavel_global') {
       globalVarLines.push(cppGenerator.blockToCode(block) as string);
-    } else if (block.type === 'definir_funcao') {
+    } else if (block.type === 'definir_funcao' || block.type === 'definir_funcao_retorno') {
       funcDefLines.push(cppGenerator.blockToCode(block) as string);
     }
   }
 
   const mainCode = [
-    ...globalVarLines,
-    globalVarLines.length > 0 ? '\n' : '',
+    ...globalVarLines, globalVarLines.length > 0 ? '\n' : '',
     ...funcDefLines,
-    setupCode || 'void setup() {\n  Serial.begin(115200);\n  // Suas configurações entrarão aqui...\n}\n\n',
-    loopCode || 'void loop() {\n  // Suas ações principais entrarão aqui...\n}\n\n',
+    setupCode || 'void setup() {\n  Serial.begin(115200);\n}\n\n',
+    loopCode || 'void loop() {\n}\n\n',
   ].filter(Boolean).join('');
 
   // ── Servo ─────────────────────────────────────────────────────────────────
@@ -295,17 +270,18 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
       '}\n\n';
   }
 
-  // ── Ponte H L298N ─────────────────────────────────────────────────────────
+// ── Ponte H L298N ─────────────────────────────────────────────────────────
   const needsL298N = mainCode.includes('_bloquin_motorE') || mainCode.includes('_bloquin_motorD') || mainCode.includes('_l298n_');
   const needsAplicarControle = mainCode.includes('_bloquin_aplicarControle');
   const needsMapFloat = mainCode.includes('_bloquin_mapFloat');
 
   let l298nHeader = '';
+  
   if (needsL298N) {
     l298nHeader =
-      '// Pinos da Ponte H (configurados pelo bloco "Configurar Ponte H")\n' +
-      'int _l298n_ENA=25, _l298n_IN1=26, _l298n_IN2=27;\n' +
-      'int _l298n_IN3=14, _l298n_IN4=33, _l298n_ENB=32;\n\n';
+      '// Pinos globais L298N gerenciados dinamicamente pelo bloco de Setup\n' +
+      'int _l298n_ENA=0, _l298n_IN1=0, _l298n_IN2=0;\n' +
+      'int _l298n_ENB=0, _l298n_IN3=0, _l298n_IN4=0;\n\n';
 
     if (needsMapFloat || needsAplicarControle) {
       l298nHeader +=

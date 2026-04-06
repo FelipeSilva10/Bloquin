@@ -319,7 +319,7 @@ const { error } = await ProjectService.saveProject(
             className={`${isDirty && !readOnly && projectId ? 'btn-danger' : 'btn-secondary'} topbar-btn`}
             onClick={handleAttemptBack}
           >
-            {isDirty && !readOnly && projectId ? '⚠ Sair' : 'Sair'}
+            {isDirty && !readOnly && projectId ? 'Sair' : 'Sair'}
           </button>
         </div>
         

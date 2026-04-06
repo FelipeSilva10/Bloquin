@@ -2,7 +2,7 @@ export const toolboxConfig = {
   kind: 'categoryToolbox',
   contents: [
     {
-      kind: 'category', name: 'Pinos', colour: '230',
+      kind: 'category', name: 'Pinos', colour: '165',
       contents: [
         { kind: 'block', type: 'configurar_pino' },
         { kind: 'block', type: 'escrever_pino' },
@@ -15,6 +15,7 @@ export const toolboxConfig = {
       kind: 'category', name: 'Controle', colour: '120',
       contents: [
         { kind: 'block', type: 'esperar' },
+        { kind: 'block', type: 'a_cada_x_ms' }, // Eixo 6
         { kind: 'block', type: 'repetir_vezes' },
         { kind: 'block', type: 'enquanto_verdadeiro' },
         { kind: 'block', type: 'parar_repeticao' },
@@ -26,16 +27,17 @@ export const toolboxConfig = {
         { kind: 'block', type: 'se_entao' },
         { kind: 'block', type: 'se_entao_senao' },
         { kind: 'block', type: 'comparar_valores', inputs: { A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, B: { block: { type: 'numero_fixo', fields: { VALOR: 10 } } } } },
-        { kind: 'block', type: 'numero_fixo' },
+        { kind: 'block', type: 'valor_booleano_fixo' }, // MM2 (Movido de Variáveis)
         { kind: 'block', type: 'e_ou_logico' },
         { kind: 'block', type: 'nao_logico' },
-        { kind: 'block', type: 'mapear_valor', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 512 } } } } },
       ],
     },
     {
-      kind: 'category', name: 'Matemática', colour: '200',
+      kind: 'category', name: 'Matemática', colour: '255',
       contents: [
+        { kind: 'block', type: 'numero_fixo' }, // MM2 (Movido de Condições)
         { kind: 'block', type: 'operacao_matematica', inputs: { A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, B: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
+        { kind: 'block', type: 'mapear_valor', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 512 } } } } }, // MM2 (Movido de Condições)
         { kind: 'block', type: 'valor_absoluto', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
         { kind: 'block', type: 'constrain_valor', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
         { kind: 'block', type: 'random_valor' },
@@ -51,7 +53,6 @@ export const toolboxConfig = {
         { kind: 'block', type: 'atribuir_variavel', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
         { kind: 'block', type: 'ler_variavel' },
         { kind: 'block', type: 'incrementar_variavel', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 1 } } } } },
-        { kind: 'block', type: 'valor_booleano_fixo' },
       ],
     },
     {
@@ -59,10 +60,12 @@ export const toolboxConfig = {
       contents: [
         { kind: 'block', type: 'definir_funcao' },
         { kind: 'block', type: 'chamar_funcao' },
+        { kind: 'block', type: 'definir_funcao_retorno', inputs: { RETURN: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } }, // Eixo 6
+        { kind: 'block', type: 'chamar_funcao_retorno' }, // Eixo 6
       ],
     },
     {
-      kind: 'category', name: 'Ultrassônico', colour: '40',
+      kind: 'category', name: 'Ultrassônico', colour: '30',
       contents: [
         { kind: 'block', type: 'configurar_ultrassonico' },
         { kind: 'block', type: 'ler_distancia_cm' },
@@ -80,7 +83,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Buzzer', colour: '50',
+      kind: 'category', name: 'Buzzer', colour: '75',
       contents: [
         { kind: 'block', type: 'buzzer_tocar' },
         { kind: 'block', type: 'buzzer_tocar_tempo' },
@@ -95,7 +98,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'ESP-NOW', colour: '70',
+      kind: 'category', name: 'Sem Fio (Luva)', colour: '300',
       contents: [
         { kind: 'block', type: 'espnow_iniciar_wifi' },
         { kind: 'block', type: 'espnow_mac_serial' },
@@ -120,7 +123,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'MPU-6050', colour: '310',
+      kind: 'category', name: 'Acelerômetro', colour: '310',
       contents: [
         { kind: 'block', type: 'mpu_iniciar' },
         { kind: 'block', type: 'mpu_ler_pitch' },
@@ -128,13 +131,11 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Ponte H L298N', colour: '0',
+      kind: 'category', name: 'Motores do Robô', colour: '120',
       contents: [
-        { kind: 'block', type: 'l298n_configurar' },
-        { kind: 'block', type: 'l298n_pwm_configurar' },
-        { kind: 'block', type: 'l298n_motor_esquerdo', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 200 } } } } },
-        { kind: 'block', type: 'l298n_motor_direito', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 200 } } } } },
-        { kind: 'block', type: 'l298n_parar_motores' },
+        { kind: 'block', type: 'l298n_configurar_simples' },
+        { kind: 'block', type: 'l298n_mover_robo', inputs: { FORCA: { block: { type: 'numero_fixo', fields: { VALOR: 200 } } } } },
+        { kind: 'block', type: 'l298n_mover_motor', inputs: { FORCA: { block: { type: 'numero_fixo', fields: { VALOR: 200 } } } } },
         {
           kind: 'block', type: 'l298n_velocidade_por_pitch_roll',
           inputs: {
@@ -148,39 +149,43 @@ export const toolboxConfig = {
 };
 
 export const BLOCK_NAMES: Record<string, string> = {
+  // Mantém exatamente o mesmo dicionário de nomes anterior + os novos:
+  a_cada_x_ms: 'A cada X ms (Temporizador)',
+  definir_funcao_retorno: 'Definir Função com Resposta',
+  chamar_funcao_retorno: 'Executar e Pegar Resposta',
   configurar_pino: 'Configurar Pino',
   escrever_pino: 'Ligar/Desligar Pino',
   ler_pino_digital: 'Ler Pino Digital',
-  escrever_pino_pwm: 'Intensidade (PWM)',
+  escrever_pino_pwm: 'Força do Pino (PWM)',
   ler_pino_analogico: 'Ler Sensor Analógico',
   esperar: 'Esperar',
   repetir_vezes: 'Repetir Vezes',
   enquanto_verdadeiro: 'Enquanto... Fizer',
-  parar_repeticao: 'Parar de Repetir',
+  parar_repeticao: 'Parar Repetição',
   se_entao: 'Se... Então',
   se_entao_senao: 'Se... Então... Senão',
   comparar_valores: 'Comparar Valores',
   numero_fixo: 'Número',
   e_ou_logico: 'E / Ou',
   nao_logico: 'NÃO',
-  mapear_valor: 'Converter Valor',
+  mapear_valor: 'Converter Escala',
   operacao_matematica: 'Operação Matemática',
-  valor_absoluto: 'Valor Absoluto',
+  valor_absoluto: 'Valor Positivo',
   constrain_valor: 'Limitar Valor',
   random_valor: 'Número Aleatório',
   millis_atual: 'Tempo Ligado (ms)',
-  util_map_float: 'Converter (float)',
-  util_fabsf: 'Valor Absoluto (float)',
-  declarar_variavel_global: 'Variável Global',
+  util_map_float: 'Converter (Decimal)',
+  util_fabsf: 'Valor Positivo (Decimal)',
+  declarar_variavel_global: 'Variável',
   atribuir_variavel: 'Guardar em Variável',
   ler_variavel: 'Ler Variável',
   incrementar_variavel: 'Aumentar Variável',
   valor_booleano_fixo: 'Verdadeiro / Falso',
   definir_funcao: 'Definir Função',
   chamar_funcao: 'Executar Função',
-  configurar_ultrassonico: 'Configurar Sensor HC-SR04',
+  configurar_ultrassonico: 'Configurar Sensor de Distância',
   ler_distancia_cm: 'Ler Distância (cm)',
-  mostrar_distancia: 'Mostrar Distância',
+  mostrar_distancia: 'Mostrar Distância no Ecrã',
   objeto_esta_perto: 'Objeto Está Perto?',
   distancia_entre: 'Distância Entre... e...?',
   servo_configurar: 'Conectar Servo',
@@ -191,24 +196,22 @@ export const BLOCK_NAMES: Record<string, string> = {
   buzzer_parar: 'Parar Som',
   escrever_serial: 'O Robô Diz (texto)',
   escrever_serial_valor: 'O Robô Diz (valor)',
-  espnow_iniciar_wifi: 'Iniciar Wi-Fi (ESP-NOW)',
-  espnow_mac_serial: 'Mostrar MAC no Serial',
-  espnow_transmissor_init: 'Iniciar ESP-NOW Transmissor',
-  espnow_adicionar_receptor: 'Adicionar Receptor (MAC)',
-  espnow_enviar_pacote: 'Enviar Pacote ESP-NOW',
-  espnow_receptor_init: 'Iniciar ESP-NOW Receptor',
-  espnow_tem_dados_novos: 'Chegou Novo Pacote?',
-  espnow_ler_pitch: 'Pitch Recebido',
-  espnow_ler_roll: 'Roll Recebido',
-  espnow_ler_flag_parar: 'Flag Parar Recebido',
-  espnow_timeout_ms: 'Timeout Sem Pacote',
-  mpu_iniciar: 'Iniciar MPU-6050',
-  mpu_ler_pitch: 'Ler Pitch (MPU-6050)',
-  mpu_ler_roll: 'Ler Roll (MPU-6050)',
-  l298n_configurar: 'Configurar Ponte H',
-  l298n_pwm_configurar: 'Configurar PWM LEDC',
-  l298n_motor_esquerdo: 'Motor Esquerdo',
-  l298n_motor_direito: 'Motor Direito',
-  l298n_parar_motores: 'Parar Motores',
-  l298n_velocidade_por_pitch_roll: 'Controlar por Pitch/Roll',
+  espnow_iniciar_wifi: 'Preparar Antena Wi-Fi',
+  espnow_mac_serial: 'Mostrar Código do Robô',
+  espnow_transmissor_init: 'Preparar Luva (Transmissor)',
+  espnow_adicionar_receptor: 'Conectar ao Robô',
+  espnow_enviar_pacote: 'Enviar Movimentos ao Robô',
+  espnow_receptor_init: 'Preparar Robô (Receptor)',
+  espnow_tem_dados_novos: 'Recebeu comandos?',
+  espnow_ler_pitch: 'Inclinação Frente/Trás (Luva)',
+  espnow_ler_roll: 'Inclinação Esquerda/Direita (Luva)',
+  espnow_ler_flag_parar: 'Comando Parar (Luva)',
+  espnow_timeout_ms: 'Caiu a Conexão?',
+  mpu_iniciar: 'Iniciar Acelerômetro',
+  mpu_ler_pitch: 'Ler Inclinação Frente/Trás',
+  mpu_ler_roll: 'Ler Inclinação Lateral',
+  l298n_configurar_simples: 'Configurar Motores do Robô',
+  l298n_mover_robo: 'Mover Robô (Controlo Duplo)',
+  l298n_mover_motor: 'Girar Motor Individual',
+  l298n_velocidade_por_pitch_roll: 'Mover por Inclinação (Avançado)',
 };
