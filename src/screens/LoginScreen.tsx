@@ -26,7 +26,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     setError('');
 
     // 1. Autenticação centralizada
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    // Autocompletar: username simples → email com domínio padrão
+    const domain = import.meta.env.VITE_EMAIL_DOMAIN ?? 'oficina.com';
+    const resolvedEmail = email.includes('@') ? email.trim() : `${email.trim()}@${domain}`;
+
+    // 1. Autenticação centralizada
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password });
 
     if (authError || !authData.user) {
       setError('Email ou senha incorretos.');
@@ -64,8 +69,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         {/* Formulário único e centralizado */}
         <form className="login-form" onSubmit={handleLogin}>
           <input 
-            type="email" 
-            placeholder="Email" 
+            type="text" 
+            placeholder="Usuário ou email" 
             value={email} 
             onChange={e => setEmail(e.target.value)} 
             disabled={loading}

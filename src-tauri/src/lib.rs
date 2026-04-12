@@ -374,7 +374,7 @@ async fn open_admin_panel(
     );
 
     let webview_url = tauri::WebviewUrl::External(
-        "https://oficinaadmin.vercel.app/auto-login"
+        "https://sagsite.vercel.app/login?next=%2F"
             .parse()
             .map_err(|e| format!("URL inválida: {}", e))?,
     );

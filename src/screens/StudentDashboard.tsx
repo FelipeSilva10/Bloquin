@@ -26,7 +26,16 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
 
   // Estados do Modal de Exclusão
   const [projectToDelete, setProjectToDelete] = useState<Projeto | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false); // Novo estado de loading
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Estados da seção de alteração de senha
+  const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [senhaAtual, setSenhaAtual] = useState('');
+  const [novaSenha, setNovaSenha] = useState('');
+  const [confirmarSenha, setConfirmarSenha] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   const fetchProjects = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -108,6 +117,62 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
     setCreateError('');
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    // Validações no frontend
+    if (novaSenha.length < 8) {
+      setPasswordError('A nova senha precisa ter pelo menos 8 caracteres.');
+      return;
+    }
+    if (novaSenha !== confirmarSenha) {
+      setPasswordError('A nova senha e a confirmação não coincidem.');
+      return;
+    }
+    if (novaSenha === senhaAtual) {
+      setPasswordError('A nova senha não pode ser igual à senha atual.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+
+    // Re-autenticação para confirmar a senha atual (o Supabase não valida isso no updateUser)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.email) {
+      setPasswordError('Não foi possível identificar o usuário. Tente sair e entrar novamente.');
+      setIsChangingPassword(false);
+      return;
+    }
+
+    const { error: reAuthError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: senhaAtual,
+    });
+
+    if (reAuthError) {
+      setPasswordError('Senha atual incorreta.');
+      setIsChangingPassword(false);
+      return;
+    }
+
+    // Troca a senha — o Supabase invalida tokens antigos e emite um novo
+    const { error: updateError } = await supabase.auth.updateUser({ password: novaSenha });
+
+    setIsChangingPassword(false);
+
+    if (updateError) {
+      setPasswordError('Erro ao alterar a senha. Tente novamente.');
+      return;
+    }
+
+    setPasswordSuccess('Senha alterada com sucesso!');
+    setSenhaAtual('');
+    setNovaSenha('');
+    setConfirmarSenha('');
+  };
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--background)', padding: '20px' }}>
       
@@ -117,7 +182,12 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
           <img src={logoSimples} alt="bloquin" style={{ height: '40px' }} />
           <h1 style={{ color: 'var(--dark)', fontSize: '1.5rem', fontWeight: 900 }}>Meus Projetos</h1>
         </div>
-        <button className="btn-outline" onClick={onLogout} style={{ padding: '10px 20px' }}>Sair</button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="btn-outline" style={{ padding: '10px 20px' }} onClick={() => { setShowPasswordSection(true); setPasswordError(''); setPasswordSuccess(''); }}>
+            🔒 Alterar senha
+          </button>
+          <button className="btn-outline" onClick={onLogout} style={{ padding: '10px 20px' }}>Sair</button>
+        </div>
       </header>
 
       {/* CONTROLES */}
@@ -154,6 +224,83 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* MODAL: ALTERAR SENHA */}
+      {showPasswordSection && (
+        <div className="modal-overlay">
+          <form
+            onSubmit={handleChangePassword}
+            style={{ backgroundColor: 'var(--white)', padding: '30px', borderRadius: '24px', width: '90%', maxWidth: '420px', boxShadow: 'var(--shadow-xl)', display: 'flex', flexDirection: 'column', gap: '16px' }}
+          >
+            <h2 style={{ color: 'var(--dark)', fontWeight: 900, margin: 0 }}>🔒 Alterar senha</h2>
+            <p style={{ color: 'var(--text-muted)', fontWeight: 600, margin: 0, fontSize: '0.95rem' }}>Preencha os campos abaixo para criar uma nova senha.</p>
+
+            <div>
+              <label style={{ display: 'block', fontWeight: 700, color: 'var(--dark)', marginBottom: '6px', fontSize: '0.9rem' }}>Senha atual</label>
+              <input
+                type="password"
+                value={senhaAtual}
+                onChange={e => setSenhaAtual(e.target.value)}
+                disabled={isChangingPassword}
+                style={{ width: '100%', padding: '13px', borderRadius: '12px', border: '2px solid var(--border)', fontSize: '1rem', fontWeight: 600, boxSizing: 'border-box' }}
+                autoComplete="current-password"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontWeight: 700, color: 'var(--dark)', marginBottom: '6px', fontSize: '0.9rem' }}>Nova senha</label>
+              <input
+                type="password"
+                value={novaSenha}
+                onChange={e => setNovaSenha(e.target.value)}
+                disabled={isChangingPassword}
+                placeholder="Mínimo 8 caracteres"
+                style={{ width: '100%', padding: '13px', borderRadius: '12px', border: '2px solid var(--border)', fontSize: '1rem', fontWeight: 600, boxSizing: 'border-box' }}
+                autoComplete="new-password"
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontWeight: 700, color: 'var(--dark)', marginBottom: '6px', fontSize: '0.9rem' }}>Confirmar nova senha</label>
+              <input
+                type="password"
+                value={confirmarSenha}
+                onChange={e => setConfirmarSenha(e.target.value)}
+                disabled={isChangingPassword}
+                style={{ width: '100%', padding: '13px', borderRadius: '12px', border: `2px solid ${confirmarSenha && confirmarSenha !== novaSenha ? 'var(--danger)' : 'var(--border)'}`, fontSize: '1rem', fontWeight: 600, boxSizing: 'border-box' }}
+                autoComplete="new-password"
+              />
+              {confirmarSenha && confirmarSenha !== novaSenha && (
+                <p style={{ color: 'var(--danger)', fontSize: '0.82rem', marginTop: '5px', fontWeight: 700 }}>As senhas não coincidem</p>
+              )}
+            </div>
+
+            {passwordError && <p style={{ color: 'var(--danger)', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>{passwordError}</p>}
+            {passwordSuccess && <p style={{ color: '#1a6b3c', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>{passwordSuccess}</p>}
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+              <button
+                type="button"
+                className="btn-text"
+                style={{ flex: 1 }}
+                onClick={() => { setShowPasswordSection(false); setSenhaAtual(''); setNovaSenha(''); setConfirmarSenha(''); setPasswordError(''); setPasswordSuccess(''); }}
+                disabled={isChangingPassword}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{ flex: 1 }}
+                disabled={isChangingPassword || !senhaAtual || !novaSenha || !confirmarSenha}
+              >
+                {isChangingPassword ? 'Alterando...' : 'Alterar senha'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
