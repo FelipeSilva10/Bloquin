@@ -5,6 +5,9 @@ on:
       - main
 
 jobs:
+  # ──────────────────────────────────────────────────────────────────────────────
+  # BUILD WINDOWS (.exe via NSIS)
+  # ──────────────────────────────────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
     steps:
@@ -55,8 +58,22 @@ jobs:
         env:
           CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
-          $installer = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
+          # Encontra o signtool.exe dinamicamente (independente da versão do Kit)
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter "signtool.exe" `
+            | Where-Object { $_.FullName -match "x64" } `
+            | Sort-Object FullName -Descending `
+            | Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $signtool) {
+            Write-Error "signtool.exe não encontrado!"
+            exit 1
+          }
+          Write-Host "Usando signtool: $signtool"
+
+          $installer = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" `
+            -Filter "*.exe" | Select-Object -First 1
+
           & $signtool sign `
             /fd SHA256 `
             /p $env:CERTIFICATE_PASSWORD `
@@ -64,6 +81,7 @@ jobs:
             /du "https://github.com/${{ github.repository }}" `
             /t "http://timestamp.digicert.com" `
             $installer.FullName
+
           Write-Host "Assinado: $($installer.FullName)"
 
       - name: Upload instalador Windows
@@ -71,3 +89,4 @@ jobs:
         with:
           name: Bloquin-windows
           path: src-tauri/target/release/bundle/nsis/*.exe
+
