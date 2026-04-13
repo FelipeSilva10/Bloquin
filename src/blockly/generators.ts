@@ -118,7 +118,10 @@ cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
   cppGenerator.forBlock['buzzer_tocar'] = (b: Blockly.Block) => `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')});\n`;
   cppGenerator.forBlock['buzzer_tocar_tempo'] = (b: Blockly.Block) => `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')}, ${b.getFieldValue('DUR')});\n`;
   cppGenerator.forBlock['buzzer_parar'] = (b: Blockly.Block) => `  noTone(${b.getFieldValue('PIN')});\n`;
-  cppGenerator.forBlock['mpu_iniciar'] = (b: Blockly.Block) => `  Wire.begin(${b.getFieldValue('SDA')}, ${b.getFieldValue('SCL')});\n  _mpu.initialize();\n  if (!_mpu.testConnection()) { Serial.println("[ERRO] MPU-6050"); } else { Serial.println("[OK] MPU-6050"); }\n`;
+  cppGenerator.forBlock['mpu_iniciar'] = (b: Blockly.Block) =>
+  `  Wire.begin(${b.getFieldValue('SDA')}, ${b.getFieldValue('SCL')});\n` +
+  `  Wire.beginTransmission(0x68);\n  Wire.write(0x6B);\n  Wire.write(0);\n` +
+  `  Wire.endTransmission(true);\n  Serial.println("[OK] MPU-6050 iniciado");\n`;
   cppGenerator.forBlock['mpu_ler_pitch'] = (_b: Blockly.Block) => [`_bloquin_lerPitch()`, 0];
   cppGenerator.forBlock['mpu_ler_roll'] = (_b: Blockly.Block) => [`_bloquin_lerRoll()`, 0];
 
@@ -262,30 +265,41 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
     espNowHeader += '\n';
   }
 
-// ── MPU-6050 ─────────────────────────────────────────────────────────────
-  const needsMPU = mainCode.includes('_mpu') || mainCode.includes('_bloquin_lerPitch') || mainCode.includes('_bloquin_lerRoll');
-  let mpuHeader = '';
-  if (needsMPU) {
-    mpuHeader =
-      '#include <Wire.h>\n' +
-      '#include <MPU6050.h>\n\n' +
-      'MPU6050 _mpu;\n\n' +
-      'float _bloquin_lerPitch() {\n' +
-      '  int16_t ax, ay, az, gx, gy, gz;\n' +
-      '  _mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);\n' +
-      '  float aX = ax / 16384.0f;\n' +
-      '  float aY = ay / 16384.0f;\n' +
-      '  float aZ = az / 16384.0f;\n' +
-      '  return atan2f(-aX, sqrtf(aY * aY + aZ * aZ)) * 180.0f / PI;\n' +
-      '}\n' +
-      'float _bloquin_lerRoll() {\n' +
-      '  int16_t ax, ay, az, gx, gy, gz;\n' +
-      '  _mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);\n' +
-      '  float aY = ay / 16384.0f;\n' +
-      '  float aZ = az / 16384.0f;\n' +
-      '  return atan2f(aY, aZ) * 180.0f / PI;\n' +
-      '}\n\n';
-  }
+  // ── MPU-6050 ─────────────────────────────────────────────────────────────
+const needsMPU = mainCode.includes('_bloquin_lerPitch') || mainCode.includes('_bloquin_lerRoll');
+
+let mpuHeader = '';
+if (needsMPU) {
+  mpuHeader =
+    '#include <Wire.h>\n\n' +
+    'const int _MPU_ADDR = 0x68;\n' +
+    'static unsigned long _mpu_lastRead = 0;\n' +
+    'static float _mpu_pitchCache = 0.0f, _mpu_rollCache = 0.0f;\n\n' +
+    // Lê sensor UMA vez e armazena em cache — evita 2 leituras I2C por loop
+    'static void _bloquin_lerAngulos() {\n' +
+    '  if (millis() - _mpu_lastRead < 10) return;\n' +
+    '  _mpu_lastRead = millis();\n' +
+    '  Wire.beginTransmission(_MPU_ADDR);\n' +
+    '  Wire.write(0x3B);\n' +
+    '  Wire.endTransmission(false);\n' +
+    '  Wire.requestFrom(_MPU_ADDR, 6, true);\n' +
+    '  int16_t ax = Wire.read() << 8 | Wire.read();\n' +
+    '  int16_t ay = Wire.read() << 8 | Wire.read();\n' +
+    '  int16_t az = Wire.read() << 8 | Wire.read();\n' +
+    '  float accelX = ax / 16384.0f;\n' +
+    '  float accelY = ay / 16384.0f;\n' +
+    '  float accelZ = az / 16384.0f;\n' +
+    '  // Correcao de eixo: MPU montado na luva com orientacao rotacionada 90 graus\n' +
+    '  // sensorRoll fisico  -> pitch do carrinho (frente/re)\n' +
+    '  // sensorPitch fisico -> roll do carrinho (direita/esq, invertido)\n' +
+    '  float sensorPitch = atan2f(-accelX, sqrtf(accelY*accelY + accelZ*accelZ)) * 180.0f / PI;\n' +
+    '  float sensorRoll  = atan2f(accelY, accelZ) * 180.0f / PI;\n' +
+    '  _mpu_pitchCache = sensorRoll;\n' +
+    '  _mpu_rollCache  = -sensorPitch;\n' +
+    '}\n' +
+    'float _bloquin_lerPitch() { _bloquin_lerAngulos(); return _mpu_pitchCache; }\n' +
+    'float _bloquin_lerRoll()  { _bloquin_lerAngulos(); return _mpu_rollCache;  }\n\n';
+}
 
 // ── Ponte H L298N ─────────────────────────────────────────────────────────
   const needsL298N = mainCode.includes('_bloquin_motorE') || mainCode.includes('_bloquin_motorD') || mainCode.includes('_l298n_');
