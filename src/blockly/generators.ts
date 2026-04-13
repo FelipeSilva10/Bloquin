@@ -80,24 +80,23 @@ export function initGenerators() {
   cppGenerator.forBlock['espnow_mac_serial'] = (_b: Blockly.Block) => `  Serial.print("[INFO] MAC: ");\n  Serial.println(WiFi.macAddress());\n`;
   cppGenerator.forBlock['espnow_transmissor_init'] = (_b: Blockly.Block) => `  if (esp_now_init() != ESP_OK) {\n    Serial.println("[ERRO] ESP-NOW falhou");\n    while(true) delay(1000);\n  }\n`;
   
-  cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
+cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
     const mac = (b.getFieldValue('MAC') || 'AA:BB:CC:DD:EE:FF');
-    const parts = mac.split(':').map((p: string) => `0x${p.toUpperCase()}`);
+    const safeMac = mac.replace(/-/g, ':').trim();
+    const parts = safeMac.split(':').map((p: string) => `0x${p.toUpperCase()}`);
     return (
       `  uint8_t _tmp_mac[6] = {${parts.join(', ')}};\n` +
       `  memcpy(_espnow_peer_mac, _tmp_mac, 6);\n` +
       `  esp_now_peer_info_t _pi = {};\n` +
       `  memcpy(_pi.peer_addr, _espnow_peer_mac, 6);\n` +
       `  _pi.channel = 0;\n  _pi.encrypt = false;\n` +
+      `  _pi.ifidx = WIFI_IF_STA;\n` + // Essencial para placas ESP32 mais recentes
       `  esp_now_add_peer(&_pi);\n`
     );
   };
 
   cppGenerator.forBlock['espnow_enviar_pacote'] = (b: Blockly.Block) => `  _PacoteDados _pkt;\n  _pkt.pitch = (float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'});\n  _pkt.roll  = (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'});\n  _pkt.parar = ${cppGenerator.valueToCode(b, 'PARAR', 0) || 'false'};\n  esp_now_send(_espnow_peer_mac, (uint8_t*)&_pkt, sizeof(_pkt));\n`;
   cppGenerator.forBlock['espnow_receptor_init'] = (_b: Blockly.Block) => `  if (esp_now_init() != ESP_OK) {\n    Serial.println("[ERRO] ESP-NOW falhou");\n    while(true) delay(1000);\n  }\n  esp_now_register_recv_cb(_bloquin_OnDataRecv);\n`;
-  // Bug #2 corrigido: ao inves de expor o flag diretamente, usamos uma funcao auxiliar
-  // que checa E limpa o flag atomicamente. Isso garante que cada pacote seja processado
-  // exatamente uma vez, impedindo que o timeout seja sobrescrito pelo ultimo pacote.
   cppGenerator.forBlock['espnow_tem_dados_novos'] = (_b: Blockly.Block) => [`_bloquin_temDadosNovos()`, 0];
   cppGenerator.forBlock['espnow_ler_pitch'] = (_b: Blockly.Block) => [`_espnow_pacote.pitch`, 0];
   cppGenerator.forBlock['espnow_ler_roll'] = (_b: Blockly.Block) => [`_espnow_pacote.roll`, 0];
@@ -154,7 +153,8 @@ export function initGenerators() {
     if (dir === 'TRAS') return `  ${func}(-(${forca}));\n`;
     return `  ${func}(0);\n`;
   };
-  cppGenerator.forBlock['l298n_velocidade_por_pitch_roll'] = (b: Blockly.Block) => `  _bloquin_aplicarControle(-(float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'}), -(float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'}), 10.0f, 8.0f);\n`;
+  cppGenerator.forBlock['l298n_parar'] = (_b: Blockly.Block) =>`  _bloquin_motorE(0);\n  _bloquin_motorD(0);\n`;
+  cppGenerator.forBlock['l298n_velocidade_por_pitch_roll'] = (b: Blockly.Block) =>`  _bloquin_aplicarControle((float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'}), (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'}), 10.0f, 8.0f);\n`;
   cppGenerator.forBlock['util_map_float'] = (b: Blockly.Block) => [`_bloquin_mapFloat((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}), ${b.getFieldValue('DE_MIN')}.0f, ${b.getFieldValue('DE_MAX')}.0f, ${b.getFieldValue('PARA_MIN')}.0f, ${b.getFieldValue('PARA_MAX')}.0f)`, 0];
   cppGenerator.forBlock['util_fabsf'] = (b: Blockly.Block) => [`fabsf((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}))`, 0];
 }
@@ -262,7 +262,7 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
     espNowHeader += '\n';
   }
 
-  // ── MPU-6050 ─────────────────────────────────────────────────────────────
+// ── MPU-6050 ─────────────────────────────────────────────────────────────
   const needsMPU = mainCode.includes('_mpu') || mainCode.includes('_bloquin_lerPitch') || mainCode.includes('_bloquin_lerRoll');
   let mpuHeader = '';
   if (needsMPU) {
@@ -273,12 +273,17 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
       'float _bloquin_lerPitch() {\n' +
       '  int16_t ax, ay, az, gx, gy, gz;\n' +
       '  _mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);\n' +
-      '  return atan2f((float)ay, (float)az) * 180.0f / PI;\n' +
+      '  float aX = ax / 16384.0f;\n' +
+      '  float aY = ay / 16384.0f;\n' +
+      '  float aZ = az / 16384.0f;\n' +
+      '  return atan2f(-aX, sqrtf(aY * aY + aZ * aZ)) * 180.0f / PI;\n' +
       '}\n' +
       'float _bloquin_lerRoll() {\n' +
       '  int16_t ax, ay, az, gx, gy, gz;\n' +
       '  _mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);\n' +
-      '  return atan2f((float)ax, (float)az) * 180.0f / PI;\n' +
+      '  float aY = ay / 16384.0f;\n' +
+      '  float aZ = az / 16384.0f;\n' +
+      '  return atan2f(aY, aZ) * 180.0f / PI;\n' +
       '}\n\n';
   }
 
