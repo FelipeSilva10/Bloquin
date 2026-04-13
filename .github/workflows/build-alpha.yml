@@ -55,8 +55,6 @@ jobs:
 
       - name: Assinar instalador NSIS
         shell: powershell
-        env:
-          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           # Encontra o signtool.exe dinamicamente (independente da versão do Kit)
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" `
@@ -74,9 +72,11 @@ jobs:
           $installer = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" `
             -Filter "*.exe" | Select-Object -First 1
 
+          # /n referencia o certificado pelo Subject já importado no store
+          # Não precisa de /f nem /p — evita o erro "The /p option requires the /f option"
           & $signtool sign `
+            /n "Bloquin" `
             /fd SHA256 `
-            /p $env:CERTIFICATE_PASSWORD `
             /d "Bloquin" `
             /du "https://github.com/${{ github.repository }}" `
             /t "http://timestamp.digicert.com" `
@@ -89,4 +89,3 @@ jobs:
         with:
           name: Bloquin-windows
           path: src-tauri/target/release/bundle/nsis/*.exe
-
