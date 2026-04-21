@@ -2,17 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import * as Blockly from 'blockly/core';
 import 'blockly/blocks';
 import * as PtBr from 'blockly/msg/pt-br';
+import { supabase } from '../lib/supabase'; // Adicionado para buscar o ID do aluno
 import { ProjectService } from '../services/projectService';
 import { HardwareService } from '../services/hardwareService';
+import { watchIntervention, stopWatchingIntervention } from "../services/sessionService"; // Novo serviço de sessão
 import { BoardSelectionModal } from '../components/modals/BoardSelectionModal';
 import { UploadModal, UploadStage } from '../components/modals/UploadModal';
 import { OrphanModal } from '../components/modals/OrphanModal';
 import { SerialMonitor, SerialMessage } from '../components/modals/SerialMonitor';
 import { ErrorModal, FriendlyError, getFriendlyError } from '../components/modals/ErrorModal';
+import InterventionModal from "../components/modals/InterventionModal"; // Modal de bloqueio de tela
 import logoSimples from '../assets/LogoSimples.png';
 import LZString from 'lz-string';
 
-// Imports estáticos apenas para os TIPOS e constantes cruciais para a UI inicial
 import { BoardKey, BOARD_UNSET, BOARDS } from '../blockly/blocks';
 import { BLOCK_NAMES, toolboxConfig } from '../blockly/toolbox';
 
@@ -32,10 +34,11 @@ function BoardBadge({ boardKey }: { boardKey: BoardKey }) {
 interface IdeScreenProps { role: 'student' | 'teacher' | 'visitor'; readOnly?: boolean; onBack: () => void; projectId?: string; }
 type BoardLoadState = 'resolving' | 'selecting' | 'ready' | 'error';
 const TOP_LEVEL_BLOCK_TYPES = new Set(['bloco_setup', 'bloco_loop', 'declarar_variavel_global', 'definir_funcao', 'definir_funcao_retorno']);
+
 export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScreenProps) {
   const blocklyDiv = useRef<HTMLDivElement>(null);
   const workspace  = useRef<Blockly.WorkspaceSvg | null>(null);
-  const codeGeneratorRef = useRef<any>(null); // Guardará a função generateCode lazy-loaded
+  const codeGeneratorRef = useRef<any>(null);
 
   const [board, setBoard]                   = useState<BoardKey | null>(null);
   const [boardLoadState, setBoardLoadState] = useState<BoardLoadState>(projectId ? 'resolving' : 'selecting');
@@ -57,6 +60,11 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   const [orphanWarning, setOrphanWarning]       = useState<string[]>([]);
   const isUploadingRef                          = useRef(false);
   const [friendlyError, setFriendlyError]       = useState<FriendlyError | null>(null);
+
+  // Novos estados do patch
+  const [copied, setCopied] = useState(false);
+  const [intervention, setIntervention] = useState<{ teacher_name: string } | null>(null);
+  const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const bloquinTheme = Blockly.Theme.defineTheme('bloquinTheme', {
     name: 'bloquinTheme', base: Blockly.Themes.Classic,
@@ -81,7 +89,6 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
 
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-  // Função auxiliar para inicializar as dependências lazily importadas
   const initializeBlocklyModules = async () => {
     const { initBlocks } = await import('../blockly/blocks');
     const { initGenerators, generateCode } = await import('../blockly/generators');
@@ -90,6 +97,28 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
     codeGeneratorRef.current = generateCode;
   };
 
+  // ─── Watcher de Intervenção do Professor ────────────────────────────────────
+  useEffect(() => {
+    if (role !== "student") return;
+
+    let isMounted = true;
+    
+    // Busca o ID do usuário de forma assíncrona já que não está nas props
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user && isMounted) {
+        watchIntervention(data.user.id, (payload) => {
+          setIntervention(payload); // null desbloqueia a tela
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      stopWatchingIntervention();
+    };
+  }, [role]);
+
+  // ─── Carregamento Inicial do Projeto ────────────────────────────────────────
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
@@ -107,10 +136,10 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
 
       if (raw in BOARDS) {
         const key = raw as BoardKey;
-        const { syncBoardPins } = await import('../blockly/blocks'); // Importa e aplica os pinos
+        const { syncBoardPins } = await import('../blockly/blocks'); 
         syncBoardPins(key);
         setBoard(key);
-        await initializeBlocklyModules(); // Garante que tudo esteja pronto antes de ir para 'ready'
+        await initializeBlocklyModules();
         setBoardLoadState('ready');
       } else {
         setBoardLoadState('error');
@@ -198,7 +227,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
       trackChanges.current = false;
       if (workspace.current) { workspace.current.dispose(); workspace.current = null; }
     };
-  }, [boardLoadState]); // Corrigido a dependência para não reinstanciar à toa
+  }, [boardLoadState, readOnly]); 
 
   useEffect(() => { if (workspace.current) Blockly.svgResize(workspace.current); }, [role, isCodeVisible, isFullscreenCode, boardLoadState]);
 
@@ -226,7 +255,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId }: IdeScre
   const handleSaveProject = async () => {
     if (!projectId || !workspace.current || !board) return;
     setIsSaving(true);
-const { error } = await ProjectService.saveProject(
+    const { error } = await ProjectService.saveProject(
       projectId, 
       board, 
       LZString.compressToBase64(JSON.stringify(Blockly.serialization.workspaces.save(workspace.current)))
@@ -253,6 +282,39 @@ const { error } = await ProjectService.saveProject(
     setUploadStage('sending');
   };
 
+  // ─── Função Otimizada para Cópia (Suporte a Rede Local HTTP) ────────────────
+  const handleCopyCode = async () => {
+    if (!generatedCode) return;
+
+    const triggerFeedback = () => {
+      setCopied(true);
+      if (copyTimeout.current) clearTimeout(copyTimeout.current);
+      copyTimeout.current = setTimeout(() => setCopied(false), 2000);
+    };
+
+    try {
+      // Tenta a API moderna (funciona em HTTPS/Localhost)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(generatedCode);
+        triggerFeedback();
+      } else {
+        throw new Error("Clipboard API indisponível");
+      }
+    } catch {
+      // Fallback robusto para redes HTTP
+      const ta = document.createElement("textarea");
+      ta.value = generatedCode;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      triggerFeedback();
+    }
+  };
+
   const handleAttemptBack = () => {
     if (readOnly || !projectId) { onBack(); return; }
     if (isDirty) { setShowExitConfirm(true); } else { onBack(); }
@@ -272,10 +334,8 @@ const { error } = await ProjectService.saveProject(
         </div>
       )}
 
-{/* TOPBAR */}
+      {/* TOPBAR */}
       <div className="topbar">
-        
-        {/* BLOCO ESQUERDO */}
         <div className="topbar-left">
           <img src={logoSimples} draggable={false} alt="bloquin" style={{ height: '34px' }} />
           {projectTitle && (
@@ -286,7 +346,6 @@ const { error } = await ProjectService.saveProject(
           )}
         </div>
 
-        {/* BLOCO CENTRAL (Seguro, sem position absolute) */}
         <div className="topbar-center">
           <div className="hardware-controls">
             {boardLoadState === 'ready' && board && <BoardBadge boardKey={board} />}
@@ -310,7 +369,6 @@ const { error } = await ProjectService.saveProject(
           </div>
         </div>
 
-        {/* BLOCO DIREITO (Alinhado com flex-end) */}
         <div className="topbar-right">
           {role !== 'student' && <button className="btn-secondary topbar-btn" onClick={() => setIsCodeVisible(!isCodeVisible)}>{isCodeVisible ? '🙈 Ocultar Código' : 'Ver Código'}</button>}
           {(role === 'student' || (role === 'teacher' && !readOnly)) && projectId && <button className="btn-primary topbar-btn" onClick={handleSaveProject} disabled={isSaving}>{isSaving ? '⏳ Salvando…' : '💾 Salvar'}</button>}
@@ -321,7 +379,6 @@ const { error } = await ProjectService.saveProject(
             {isDirty && !readOnly && projectId ? 'Sair' : 'Sair'}
           </button>
         </div>
-        
       </div>
 
       {readOnly && (
@@ -334,20 +391,32 @@ const { error } = await ProjectService.saveProject(
       {/* WORKSPACE */}
       <div className="workspace-area">
         <div ref={blocklyDiv} id="blocklyDiv" />
+        
         {isCodeVisible && (
           <div className={`code-panel ${isFullscreenCode ? 'fullscreen' : ''}`}>
-            <div className="code-panel-header">
+            <div className="code-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 className="code-panel-title">Código C++</h3>
-              <button onClick={() => setIsFullscreenCode(!isFullscreenCode)} className="code-fullscreen-btn">
-                {isFullscreenCode ? '↙️ Reduzir' : '⛶ Tela Cheia'}
-              </button>
+              
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  className={`btn-action ${copied ? "btn-send" : ""}`} 
+                  onClick={handleCopyCode}
+                  style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                >
+                  {copied ? '✅ Copiado!' : '📋 Copiar'}
+                </button>
+                
+                <button onClick={() => setIsFullscreenCode(!isFullscreenCode)} className="code-fullscreen-btn">
+                  {isFullscreenCode ? '↙️ Reduzir' : '⛶ Tela Cheia'}
+                </button>
+              </div>
             </div>
             <pre>{generatedCode}</pre>
           </div>
         )}
       </div>
 
-{/* MODAIS COMPONENTIZADOS */}
+      {/* MODAIS COMPONENTIZADOS */}
       {uploadStage && (
         <UploadModal stage={uploadStage} onClose={() => setUploadStage(null)} />
       )}
@@ -374,7 +443,7 @@ const { error } = await ProjectService.saveProject(
         messages={serialMessages} 
         onClose={handleToggleSerial} 
         onClear={() => setSerialMessages([])} 
-        isCodeOpen={isCodeVisible} /* ADICIONE ESTA LINHA */
+        isCodeOpen={isCodeVisible} 
       />
 
       {friendlyError && (
@@ -396,6 +465,11 @@ const { error } = await ProjectService.saveProject(
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Intervenção (Apenas para Alunos) */}
+      {intervention && (
+        <InterventionModal teacherName={intervention.teacher_name} />
       )}
     </div>
   );

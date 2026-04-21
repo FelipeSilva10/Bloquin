@@ -2,15 +2,22 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import logoSimples from '../assets/LogoSimples.png';
 import { BOARD_UNSET } from '../blockly/blocks';
+import { ProjectService } from '../services/projectService';
+import { watchSession, stopWatchingSession } from "../services/sessionService";
+// Certifique-se de que o ProjectModal aceita as propriedades em português (nome, descricao)
+import ProjectModal from "../components/modals/ProjectModal"; 
 
 interface StudentDashboardProps {
   onLogout: () => void;
   onOpenIde: (projectId: string) => void;
 }
 
-interface Projeto {
+// Atualizado para incluir as colunas novas do banco
+export interface Projeto {
   id: string;
   nome: string;
+  descricao?: string;
+  target_board?: string;
   updated_at: string;
 }
 
@@ -22,7 +29,7 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
   const [showModal, setShowModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [createError, setCreateError] = useState('');
-  const [isCreating, setIsCreating] = useState(false); // Novo estado de loading
+  const [isCreating, setIsCreating] = useState(false);
 
   // Estados do Modal de Exclusão
   const [projectToDelete, setProjectToDelete] = useState<Projeto | null>(null);
@@ -37,13 +44,17 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
+  // Novos estados do Patch (Detalhes e Sessão)
+  const [selectedProject, setSelectedProject] = useState<Projeto | null>(null);
+  const [sessionKilled, setSessionKilled] = useState(false);
+
   const fetchProjects = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     const { data } = await supabase
       .from('projetos')
-      .select('id, nome, updated_at')
+      .select('id, nome, descricao, target_board, updated_at') // Atualizado
       .eq('dono_id', user.id)
       .order('updated_at', { ascending: false });
 
@@ -53,8 +64,40 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
 
   useEffect(() => { fetchProjects(); }, []);
 
+  // ─── Watcher de Sessão ──────────────────────────────────────────────────────
+  useEffect(() => {
+    let isMounted = true;
+
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user && isMounted) {
+        watchSession(data.user.id, async () => {
+          // Sessão foi tomada por outro dispositivo
+          await supabase.auth.signOut();
+          setSessionKilled(true);
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      stopWatchingSession();
+    };
+  }, []);
+
+  // ─── Funções de Ação de Projetos ────────────────────────────────────────────
+  const handleSaveProjectMeta = async (id: string, nome: string, descricao: string) => {
+    try {
+      await ProjectService.updateProjectMeta(id, nome, descricao);
+      setProjects((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, nome, descricao } : p))
+      );
+    } catch (error) {
+      console.error("Erro ao salvar os detalhes do projeto:", error);
+    }
+  };
+
   const handleCreateProject = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault(); // Evita recarregamento da página se submetido via <form>
+    if (e) e.preventDefault();
     if (!newProjectName.trim() || isCreating) return;
 
     setIsCreating(true);
@@ -86,7 +129,7 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
         nome: newProjectName.trim(),
         target_board: BOARD_UNSET,
       }])
-      .select('id, nome, updated_at')
+      .select('id, nome, descricao, target_board, updated_at')
       .single();
 
     setIsCreating(false);
@@ -104,7 +147,7 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
     if (!projectToDelete || isDeleting) return;
     
     setIsDeleting(true);
-    await supabase.from('projetos').delete().eq('id', projectToDelete.id);
+    await ProjectService.deleteProject(projectToDelete.id); // Usando o service
     
     setProjects(prev => prev.filter(p => p.id !== projectToDelete.id));
     setProjectToDelete(null);
@@ -117,12 +160,12 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
     setCreateError('');
   };
 
+  // ─── Senha ──────────────────────────────────────────────────────────────────
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess('');
 
-    // Validações no frontend
     if (novaSenha.length < 8) {
       setPasswordError('A nova senha precisa ter pelo menos 8 caracteres.');
       return;
@@ -138,7 +181,6 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
 
     setIsChangingPassword(true);
 
-    // Re-autenticação para confirmar a senha atual (o Supabase não valida isso no updateUser)
     const { data: { user } } = await supabase.auth.getUser();
     if (!user?.email) {
       setPasswordError('Não foi possível identificar o usuário. Tente sair e entrar novamente.');
@@ -157,7 +199,6 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
       return;
     }
 
-    // Troca a senha — o Supabase invalida tokens antigos e emite um novo
     const { error: updateError } = await supabase.auth.updateUser({ password: novaSenha });
 
     setIsChangingPassword(false);
@@ -210,10 +251,29 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
           {projects.map((proj) => (
             <div key={proj.id} style={{ backgroundColor: 'var(--white)', padding: '25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)', borderTop: '5px solid var(--secondary)', display: 'flex', flexDirection: 'column' }}>
-              <h3 style={{ color: 'var(--dark)', marginBottom: '10px', fontSize: '1.4rem', fontWeight: 800 }}>{proj.nome}</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px', fontWeight: 600 }}>
-                Salvo em: {new Date(proj.updated_at).toLocaleDateString('pt-BR')}
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <h3 style={{ color: 'var(--dark)', marginBottom: '5px', fontSize: '1.4rem', fontWeight: 800 }}>{proj.nome}</h3>
+                <button 
+                  className="btn-icon" 
+                  onClick={() => setSelectedProject(proj)} 
+                  title="Editar informações do projeto"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}
+                >
+                  ✏️
+                </button>
+              </div>
+              
+              {proj.descricao && (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '10px', fontStyle: 'italic' }}>
+                  {proj.descricao}
+                </p>
+              )}
+
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px', fontWeight: 600 }}>
+                Salvo em: {new Date(proj.updated_at).toLocaleDateString('pt-BR')} • {proj.target_board !== BOARD_UNSET ? proj.target_board : 'Sem placa'}
               </p>
+
               <div style={{ display: 'flex', gap: '10px', marginTop: 'auto' }}>
                 <button className="btn-secondary" style={{ flex: 1, padding: '10px' }} onClick={() => onOpenIde(proj.id)}>
                   Abrir Código
@@ -359,6 +419,47 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
           </div>
         </div>
       )}
+
+      {/* MODAL: DETALHES DO PROJETO (PATCH) */}
+      {selectedProject && (
+        <ProjectModal
+          project={{
+            id: selectedProject.id,
+            name: selectedProject.nome,
+            description: selectedProject.descricao || '',
+            board: selectedProject.target_board || 'uno'
+          }}
+          onSave={handleSaveProjectMeta}
+          onOpen={(proj) => {
+            setSelectedProject(null);
+            onOpenIde(proj.id); // Extrai apenas a string do ID para abrir a IDE
+          }}
+          onClose={() => setSelectedProject(null)}
+        />
+      )}
+
+      {/* MODAL: AVISO DE SESSÃO ENCERRADA (PATCH) */}
+      {sessionKilled && (
+        <div className="modal-overlay" role="alertdialog" aria-modal="true">
+          <div style={{ backgroundColor: 'var(--white)', padding: '35px', borderRadius: '24px', width: '90%', maxWidth: '400px', textAlign: 'center', boxShadow: 'var(--shadow-xl)' }}>
+            <h2 style={{ color: 'var(--danger)', marginBottom: '10px', fontWeight: 900 }}>Sessão Encerrada</h2>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '25px', fontSize: '1.1rem', fontWeight: 600 }}>
+              Sua conta foi acessada em outro dispositivo. Por segurança, esta sessão foi desconectada.
+            </p>
+            <button
+              className="btn-primary"
+              style={{ width: '100%', padding: '14px', fontSize: '1.1rem' }}
+              onClick={() => {
+                setSessionKilled(false);
+                onLogout(); // Retorna o usuário para o login
+              }}
+            >
+              Ir para o login
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
