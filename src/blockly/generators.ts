@@ -20,7 +20,7 @@ export function initGenerators() {
   cppGenerator.forBlock['escrever_pino_pwm'] = (b: Blockly.Block) => `  analogWrite(${b.getFieldValue('PIN')}, ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
   cppGenerator.forBlock['ler_pino_analogico'] = (b: Blockly.Block) => [`analogRead(${b.getFieldValue('PIN')})`, 0];
 
-  // Controle e Temporizadores (C1, Eixo 6)
+  // Controle e Temporizadores
   cppGenerator.forBlock['esperar'] = (b: Blockly.Block) => `  delay(${b.getFieldValue('TIME')});\n`;
   cppGenerator.forBlock['repetir_vezes'] = (b: Blockly.Block) => {
     if (!cppGenerator.nameDB_) cppGenerator.nameDB_ = new Blockly.Names((cppGenerator as any).RESERVED_WORDS_);
@@ -62,7 +62,7 @@ export function initGenerators() {
   cppGenerator.forBlock['incrementar_variavel'] = (b: Blockly.Block) => `  ${(b.getFieldValue('NOME') || 'contador').replace(/\s+/g, '_')} += ${cppGenerator.valueToCode(b, 'VALOR', 99) || '1'};\n`;
   cppGenerator.forBlock['valor_booleano_fixo'] = (b: Blockly.Block) => [b.getFieldValue('VALOR'), 0];
 
-  // Funções (Eixo 6)
+  // Funções
   cppGenerator.forBlock['definir_funcao'] = (b: Blockly.Block) => {
     return `void ${(b.getFieldValue('NOME') || 'minhaFuncao').replace(/\s+/g, '_')}() {\n${cppGenerator.statementToCode(b, 'DO') || ''}}\n\n`;
   };
@@ -75,12 +75,9 @@ export function initGenerators() {
   };
   cppGenerator.forBlock['chamar_funcao_retorno'] = (b: Blockly.Block) => [`${(b.getFieldValue('NOME') || 'calcular').replace(/\s+/g, '_')}()`, 0];
 
-  // ESP-NOW (C3 compatível com C++ Padrão)
+  // ESP-NOW
   cppGenerator.forBlock['espnow_iniciar_wifi'] = (_b: Blockly.Block) => `  WiFi.mode(WIFI_STA);\n  WiFi.disconnect();\n  delay(100);\n`;
   cppGenerator.forBlock['espnow_mac_serial'] = (_b: Blockly.Block) => `  Serial.print("[INFO] MAC: ");\n  Serial.println(WiFi.macAddress());\n`;
-  // espnow_transmissor_init: faz init + registra o peer com o MAC ja guardado por
-  // espnow_adicionar_receptor. Garante que esp_now_add_peer sempre ocorra
-  // DEPOIS de esp_now_init(), independente da ordem dos blocos no editor.
   cppGenerator.forBlock['espnow_transmissor_init'] = (_b: Blockly.Block) =>
     `  if (esp_now_init() != ESP_OK) {\n    Serial.println("[ERRO] ESP-NOW falhou");\n    while(true) delay(1000);\n  }\n` +
     `  {\n` +
@@ -92,13 +89,11 @@ export function initGenerators() {
     `    if (esp_now_add_peer(&_pi) != ESP_OK) {\n      Serial.println("[ERRO] Falha ao adicionar peer");\n      while(true) delay(1000);\n    }\n` +
     `    Serial.println("[OK] ESP-NOW pronto.");\n` +
     `  }\n`;
-  
-cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
+
+  cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
     const mac = (b.getFieldValue('MAC') || 'AA:BB:CC:DD:EE:FF');
     const safeMac = mac.replace(/-/g, ':').trim();
     const parts = safeMac.split(':').map((p: string) => `0x${p.toUpperCase()}`);
-    // Apenas guarda o MAC — o esp_now_add_peer é chamado em espnow_transmissor_init,
-    // DEPOIS do esp_now_init(), garantindo a ordem correta independente dos blocos.
     return (
       `  uint8_t _tmp_mac[6] = {${parts.join(', ')}};\n` +
       `  memcpy(_espnow_peer_mac, _tmp_mac, 6);\n`
@@ -114,7 +109,7 @@ cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
   cppGenerator.forBlock['espnow_timeout_ms'] = (b: Blockly.Block) => [`(_espnow_primeiroRx && (millis() - _espnow_ultimoRx > ${b.getFieldValue('MS')}UL))`, 0];
   cppGenerator.forBlock['espnow_marcar_lido'] = (_b: Blockly.Block) => `  _espnow_dadosNovos = false;\n`;
 
-  // Restantes iguais (reduzido para focar nas mudanças)
+  // Ultrassônico
   cppGenerator.forBlock['configurar_ultrassonico'] = (b: Blockly.Block) => `  pinMode(${b.getFieldValue('TRIG')}, OUTPUT);\n  pinMode(${b.getFieldValue('ECHO')}, INPUT);\n`;
   cppGenerator.forBlock['ler_distancia_cm'] = (b: Blockly.Block) => [`_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')})`, 0];
   cppGenerator.forBlock['mostrar_distancia'] = (b: Blockly.Block) => `  Serial.println(_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}));\n`;
@@ -129,18 +124,20 @@ cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
   cppGenerator.forBlock['buzzer_tocar_tempo'] = (b: Blockly.Block) => `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')}, ${b.getFieldValue('DUR')});\n`;
   cppGenerator.forBlock['buzzer_parar'] = (b: Blockly.Block) => `  noTone(${b.getFieldValue('PIN')});\n`;
   cppGenerator.forBlock['buzzer_tocar_musica'] = (b: Blockly.Block) => {
-  const musica = b.getFieldValue('MUSICA');
-  const pin    = b.getFieldValue('PIN');
-  return `  _bloquin_tocarMusica(_bloquin_mel_${musica}, _bloquin_notes_${musica}, _bloquin_tempo_${musica}, ${pin});\n`;
-};
+    const musica = b.getFieldValue('MUSICA');
+    const pin    = b.getFieldValue('PIN');
+    return `  _bloquin_tocarMusica(_bloquin_mel_${musica}, _bloquin_notes_${musica}, _bloquin_tempo_${musica}, ${pin});\n`;
+  };
   cppGenerator.forBlock['mpu_iniciar'] = (b: Blockly.Block) =>
-  `  Wire.begin(${b.getFieldValue('SDA')}, ${b.getFieldValue('SCL')});\n` +
-  `  Wire.beginTransmission(0x68);\n  Wire.write(0x6B);\n  Wire.write(0);\n` +
-  `  Wire.endTransmission(true);\n  Serial.println("[OK] MPU-6050 iniciado");\n`;
+    `  Wire.begin(${b.getFieldValue('SDA')}, ${b.getFieldValue('SCL')});\n` +
+    `  Wire.beginTransmission(0x68);\n  Wire.write(0x6B);\n  Wire.write(0);\n` +
+    `  Wire.endTransmission(true);\n  Serial.println("[OK] MPU-6050 iniciado");\n`;
   cppGenerator.forBlock['mpu_ler_pitch'] = (_b: Blockly.Block) => [`_bloquin_lerPitch()`, 0];
   cppGenerator.forBlock['mpu_ler_roll'] = (_b: Blockly.Block) => [`_bloquin_lerRoll()`, 0];
 
-  // Ponte H (C4 Validação Global)
+  // ── Ponte H — FIX Bug 4: usa macros _LEDC_ATTACH/_LEDC_WRITE compatíveis
+  //    com Core 2.x (ledcSetup/ledcAttachPin/ledcWrite por canal) e
+  //    Core 3.x (ledcAttach/ledcWrite por pino). Canais fixos: 0=ENA, 1=ENB.
   cppGenerator.forBlock['l298n_configurar_simples'] = (b: Blockly.Block) => {
     const ena = b.getFieldValue('ENA'), in1 = b.getFieldValue('IN1'), in2 = b.getFieldValue('IN2');
     const enb = b.getFieldValue('ENB'), in3 = b.getFieldValue('IN3'), in4 = b.getFieldValue('IN4');
@@ -152,8 +149,9 @@ cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
       `  pinMode(${in3},OUTPUT); pinMode(${in4},OUTPUT);\n` +
       `  digitalWrite(${in1},LOW); digitalWrite(${in2},LOW);\n` +
       `  digitalWrite(${in3},LOW); digitalWrite(${in4},LOW);\n` +
-      `  ledcAttach(${ena}, 1000, 8); ledcWrite(${ena}, 0);\n` +
-      `  ledcAttach(${enb}, 1000, 8); ledcWrite(${enb}, 0);\n`
+      // Bug 4 fix: canais 0 e 1 → compatível Core 2.x e Core 3.x via macro
+      `  _LEDC_ATTACH(${ena}, 0, 1000, 8); _LEDC_WRITE(${ena}, 0, 0);\n` +
+      `  _LEDC_ATTACH(${enb}, 1, 1000, 8); _LEDC_WRITE(${enb}, 1, 0);\n`
     );
   };
   cppGenerator.forBlock['l298n_mover_robo'] = (b: Blockly.Block) => {
@@ -171,8 +169,8 @@ cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
     if (dir === 'TRAS') return `  ${func}(-(${forca}));\n`;
     return `  ${func}(0);\n`;
   };
-  cppGenerator.forBlock['l298n_parar'] = (_b: Blockly.Block) =>`  _bloquin_motorE(0);\n  _bloquin_motorD(0);\n`;
-  cppGenerator.forBlock['l298n_velocidade_por_pitch_roll'] = (b: Blockly.Block) =>`  _bloquin_aplicarControle((float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'}), (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'}), 10.0f, 8.0f);\n`;
+  cppGenerator.forBlock['l298n_parar'] = (_b: Blockly.Block) => `  _bloquin_motorE(0);\n  _bloquin_motorD(0);\n`;
+  cppGenerator.forBlock['l298n_velocidade_por_pitch_roll'] = (b: Blockly.Block) => `  _bloquin_aplicarControle((float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'}), (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'}), 10.0f, 8.0f);\n`;
   cppGenerator.forBlock['util_map_float'] = (b: Blockly.Block) => [`_bloquin_mapFloat((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}), ${b.getFieldValue('DE_MIN')}.0f, ${b.getFieldValue('DE_MAX')}.0f, ${b.getFieldValue('PARA_MIN')}.0f, ${b.getFieldValue('PARA_MAX')}.0f)`, 0];
   cppGenerator.forBlock['util_fabsf'] = (b: Blockly.Block) => [`fabsf((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}))`, 0];
 }
@@ -251,9 +249,15 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
       '#include <WiFi.h>\n\n' +
       'typedef struct { float pitch; float roll; bool parar; } _PacoteDados;\n' +
       '_PacoteDados _espnow_pacote;\n' +
+      // Bug 1 fix: volatile em dadosNovos já existia; adicionado em ultimoRx e primeiroRx
+      // Sem volatile o compilador pode cachear os valores lidos no loop() e nunca
+      // enxergar as atualizações feitas dentro do callback (outra task do WiFi stack).
       'volatile bool _espnow_dadosNovos = false;\n' +
-      'unsigned long _espnow_ultimoRx = 0;\n' +
-      'bool _espnow_primeiroRx = false;\n';
+      'volatile unsigned long _espnow_ultimoRx = 0;\n' +
+      'volatile bool _espnow_primeiroRx = false;\n' +
+      // Bug 3 fix: mutex protege o struct _espnow_pacote contra leitura simultânea
+      // no loop() enquanto o callback ainda está escrevendo (race condition).
+      'portMUX_TYPE _espnow_mux = portMUX_INITIALIZER_UNLOCKED;\n';
 
     if (mainCode.includes('_espnow_peer_mac')) {
       espNowHeader += 'uint8_t _espnow_peer_mac[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};\n';
@@ -261,19 +265,28 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
 
     if (needsEspNowRx) {
       espNowHeader +=
-        '\nvoid _bloquin_OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {\n' +
+        // Bug 2 fix: IRAM_ATTR força o callback para a RAM interna do ESP32.
+        // Sem ele, um cache miss durante execução causa panic/reset quando o
+        // código está em flash e o WiFi stack chama o callback de outra task.
+        '\nvoid IRAM_ATTR _bloquin_OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {\n' +
         '  if (len != sizeof(_PacoteDados)) return;\n' +
+        // Bug 3 fix: seção crítica garante que o memcpy seja atômico em relação
+        // ao loop(). portENTER_CRITICAL_ISR é a versão correta para contextos de
+        // callback (pode ser chamada de task ou de ISR sem travar o sistema).
+        '  portENTER_CRITICAL_ISR(&_espnow_mux);\n' +
         '  memcpy(&_espnow_pacote, data, sizeof(_PacoteDados));\n' +
         '  _espnow_dadosNovos = true;\n' +
         '  _espnow_ultimoRx = millis();\n' +
         '  _espnow_primeiroRx = true;\n' +
+        '  portEXIT_CRITICAL_ISR(&_espnow_mux);\n' +
         '}\n' +
-        // Funcao auxiliar: checa e limpa o flag atomicamente (Bug #2)
-        // Garante que cada pacote seja processado exatamente uma vez,
-        // impedindo que o timeout seja sobrescrito pelo ultimo comando recebido.
         '\nbool _bloquin_temDadosNovos() {\n' +
         '  if (!_espnow_dadosNovos) return false;\n' +
+        // Bug 3 fix: mesma proteção no lado da leitura para garantir que o flag
+        // e o pacote sejam vistos em estado consistente pelo loop().
+        '  portENTER_CRITICAL(&_espnow_mux);\n' +
         '  _espnow_dadosNovos = false;\n' +
+        '  portEXIT_CRITICAL(&_espnow_mux);\n' +
         '  return true;\n' +
         '}\n';
     }
@@ -281,50 +294,62 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
   }
 
   // ── MPU-6050 ─────────────────────────────────────────────────────────────
-const needsMPU = mainCode.includes('_bloquin_lerPitch') || mainCode.includes('_bloquin_lerRoll');
+  const needsMPU = mainCode.includes('_bloquin_lerPitch') || mainCode.includes('_bloquin_lerRoll');
 
-let mpuHeader = '';
-if (needsMPU) {
-  mpuHeader =
-    '#include <Wire.h>\n\n' +
-    'const int _MPU_ADDR = 0x68;\n' +
-    'static unsigned long _mpu_lastRead = 0;\n' +
-    'static float _mpu_pitchCache = 0.0f, _mpu_rollCache = 0.0f;\n\n' +
-    // Lê sensor UMA vez e armazena em cache — evita 2 leituras I2C por loop
-    'static void _bloquin_lerAngulos() {\n' +
-    '  if (millis() - _mpu_lastRead < 10) return;\n' +
-    '  _mpu_lastRead = millis();\n' +
-    '  Wire.beginTransmission(_MPU_ADDR);\n' +
-    '  Wire.write(0x3B);\n' +
-    '  Wire.endTransmission(false);\n' +
-    '  Wire.requestFrom(_MPU_ADDR, 6, true);\n' +
-    '  int16_t ax = Wire.read() << 8 | Wire.read();\n' +
-    '  int16_t ay = Wire.read() << 8 | Wire.read();\n' +
-    '  int16_t az = Wire.read() << 8 | Wire.read();\n' +
-    '  float accelX = ax / 16384.0f;\n' +
-    '  float accelY = ay / 16384.0f;\n' +
-    '  float accelZ = az / 16384.0f;\n' +
-    '  // Correcao de eixo: MPU montado na luva com orientacao rotacionada 90 graus\n' +
-    '  // sensorRoll fisico  -> pitch do carrinho (frente/re)\n' +
-    '  // sensorPitch fisico -> roll do carrinho (direita/esq, invertido)\n' +
-    '  float sensorPitch = atan2f(-accelX, sqrtf(accelY*accelY + accelZ*accelZ)) * 180.0f / PI;\n' +
-    '  float sensorRoll  = atan2f(accelY, accelZ) * 180.0f / PI;\n' +
-    '  _mpu_pitchCache = sensorRoll;\n' +
-    '  _mpu_rollCache  = -sensorPitch;\n' +
-    '}\n' +
-    'float _bloquin_lerPitch() { _bloquin_lerAngulos(); return _mpu_pitchCache; }\n' +
-    'float _bloquin_lerRoll()  { _bloquin_lerAngulos(); return _mpu_rollCache;  }\n\n';
-}
+  let mpuHeader = '';
+  if (needsMPU) {
+    mpuHeader =
+      '#include <Wire.h>\n\n' +
+      'const int _MPU_ADDR = 0x68;\n' +
+      'static unsigned long _mpu_lastRead = 0;\n' +
+      'static float _mpu_pitchCache = 0.0f, _mpu_rollCache = 0.0f;\n\n' +
+      'static void _bloquin_lerAngulos() {\n' +
+      '  if (millis() - _mpu_lastRead < 10) return;\n' +
+      '  _mpu_lastRead = millis();\n' +
+      '  Wire.beginTransmission(_MPU_ADDR);\n' +
+      '  Wire.write(0x3B);\n' +
+      '  Wire.endTransmission(false);\n' +
+      '  Wire.requestFrom(_MPU_ADDR, 6, true);\n' +
+      '  int16_t ax = Wire.read() << 8 | Wire.read();\n' +
+      '  int16_t ay = Wire.read() << 8 | Wire.read();\n' +
+      '  int16_t az = Wire.read() << 8 | Wire.read();\n' +
+      '  float accelX = ax / 16384.0f;\n' +
+      '  float accelY = ay / 16384.0f;\n' +
+      '  float accelZ = az / 16384.0f;\n' +
+      '  // Correcao de eixo: MPU montado na luva com orientacao rotacionada 90 graus\n' +
+      '  // sensorRoll fisico  -> pitch do carrinho (frente/re)\n' +
+      '  // sensorPitch fisico -> roll do carrinho (direita/esq, invertido)\n' +
+      '  float sensorPitch = atan2f(-accelX, sqrtf(accelY*accelY + accelZ*accelZ)) * 180.0f / PI;\n' +
+      '  float sensorRoll  = atan2f(accelY, accelZ) * 180.0f / PI;\n' +
+      '  _mpu_pitchCache = sensorRoll;\n' +
+      '  _mpu_rollCache  = -sensorPitch;\n' +
+      '}\n' +
+      'float _bloquin_lerPitch() { _bloquin_lerAngulos(); return _mpu_pitchCache; }\n' +
+      'float _bloquin_lerRoll()  { _bloquin_lerAngulos(); return _mpu_rollCache;  }\n\n';
+  }
 
-// ── Ponte H L298N ─────────────────────────────────────────────────────────
+  // ── Ponte H L298N ─────────────────────────────────────────────────────────
   const needsL298N = mainCode.includes('_bloquin_motorE') || mainCode.includes('_bloquin_motorD') || mainCode.includes('_l298n_');
   const needsAplicarControle = mainCode.includes('_bloquin_aplicarControle');
   const needsMapFloat = mainCode.includes('_bloquin_mapFloat');
 
   let l298nHeader = '';
-  
+
   if (needsL298N) {
     l298nHeader =
+      // Bug 4 fix: macros de compatibilidade entre ESP32 Core 2.x e Core 3.x.
+      // No Core 2.x: ledcAttach não existe; usa-se ledcSetup(canal)+ledcAttachPin(pino,canal)
+      //              e ledcWrite(canal, valor).
+      // No Core 3.x: ledcAttach(pino, freq, res) e ledcWrite(pino, valor).
+      // Os canais 0 (ENA) e 1 (ENB) são fixos — suficiente para um único L298N.
+      '// Compatibilidade ledcAttach: ESP32 Core 2.x e Core 3.x\n' +
+      '#if !defined(ESP_ARDUINO_VERSION_MAJOR) || ESP_ARDUINO_VERSION_MAJOR < 3\n' +
+      '  #define _LEDC_ATTACH(pin,ch,freq,res) ledcSetup(ch,freq,res); ledcAttachPin(pin,ch)\n' +
+      '  #define _LEDC_WRITE(pin,ch,val)       ledcWrite(ch,val)\n' +
+      '#else\n' +
+      '  #define _LEDC_ATTACH(pin,ch,freq,res) ledcAttach(pin,freq,res)\n' +
+      '  #define _LEDC_WRITE(pin,ch,val)       ledcWrite(pin,val)\n' +
+      '#endif\n\n' +
       '// Pinos globais L298N gerenciados dinamicamente pelo bloco de Setup\n' +
       'int _l298n_ENA=0, _l298n_IN1=0, _l298n_IN2=0;\n' +
       'int _l298n_ENB=0, _l298n_IN3=0, _l298n_IN4=0;\n\n';
@@ -341,13 +366,15 @@ if (needsMPU) {
       '  v = constrain(v, -255, 255);\n' +
       '  digitalWrite(_l298n_IN1, v > 0 ? HIGH : LOW);\n' +
       '  digitalWrite(_l298n_IN2, v < 0 ? HIGH : LOW);\n' +
-      '  ledcWrite(_l298n_ENA, abs(v));\n' +
+      // Bug 4 fix: usa macro _LEDC_WRITE com canal 0 (ENA)
+      '  _LEDC_WRITE(_l298n_ENA, 0, abs(v));\n' +
       '}\n' +
       'void _bloquin_motorD(int v) {\n' +
       '  v = constrain(v, -255, 255);\n' +
       '  digitalWrite(_l298n_IN3, v > 0 ? HIGH : LOW);\n' +
       '  digitalWrite(_l298n_IN4, v < 0 ? HIGH : LOW);\n' +
-      '  ledcWrite(_l298n_ENB, abs(v));\n' +
+      // Bug 4 fix: usa macro _LEDC_WRITE com canal 1 (ENB)
+      '  _LEDC_WRITE(_l298n_ENB, 1, abs(v));\n' +
       '}\n\n';
 
     if (needsAplicarControle) {
@@ -371,157 +398,156 @@ if (needsMPU) {
       '  return (x - iMin) * (oMax - oMin) / (iMax - iMin) + oMin;\n' +
       '}\n\n';
   }
-// ── Músicas prontas (Buzzer) ──────────────────────────────────────────────
-const needsMusica   = mainCode.includes('_bloquin_tocarMusica');
-const needsMario    = mainCode.includes('_bloquin_mel_mario');
-const needsParabens = mainCode.includes('_bloquin_mel_parabens');
 
-let musicaHeader = '';
-if (needsMusica) {
-  // Defines de notas (padrão Arduino / Robson Couto)
-  musicaHeader =
-    '#define REST      0\n' +
-    '#define NOTE_B0   31\n#define NOTE_C1   33\n#define NOTE_CS1  35\n' +
-    '#define NOTE_D1   37\n#define NOTE_DS1  39\n#define NOTE_E1   41\n' +
-    '#define NOTE_F1   44\n#define NOTE_FS1  46\n#define NOTE_G1   49\n' +
-    '#define NOTE_GS1  52\n#define NOTE_A1   55\n#define NOTE_AS1  58\n' +
-    '#define NOTE_B1   62\n#define NOTE_C2   65\n#define NOTE_CS2  69\n' +
-    '#define NOTE_D2   73\n#define NOTE_DS2  78\n#define NOTE_E2   82\n' +
-    '#define NOTE_F2   87\n#define NOTE_FS2  93\n#define NOTE_G2   98\n' +
-    '#define NOTE_GS2 104\n#define NOTE_A2  110\n#define NOTE_AS2 117\n' +
-    '#define NOTE_B2  123\n#define NOTE_C3  131\n#define NOTE_CS3 139\n' +
-    '#define NOTE_D3  147\n#define NOTE_DS3 156\n#define NOTE_E3  165\n' +
-    '#define NOTE_F3  175\n#define NOTE_FS3 185\n#define NOTE_G3  196\n' +
-    '#define NOTE_GS3 208\n#define NOTE_A3  220\n#define NOTE_AS3 233\n' +
-    '#define NOTE_B3  247\n#define NOTE_C4  262\n#define NOTE_CS4 277\n' +
-    '#define NOTE_D4  294\n#define NOTE_DS4 311\n#define NOTE_E4  330\n' +
-    '#define NOTE_F4  349\n#define NOTE_FS4 370\n#define NOTE_G4  392\n' +
-    '#define NOTE_GS4 415\n#define NOTE_A4  440\n#define NOTE_AS4 466\n' +
-    '#define NOTE_B4  494\n#define NOTE_C5  523\n#define NOTE_CS5 554\n' +
-    '#define NOTE_D5  587\n#define NOTE_DS5 622\n#define NOTE_E5  659\n' +
-    '#define NOTE_F5  698\n#define NOTE_FS5 740\n#define NOTE_G5  784\n' +
-    '#define NOTE_GS5 831\n#define NOTE_A5  880\n#define NOTE_AS5 932\n' +
-    '#define NOTE_B5  988\n#define NOTE_C6 1047\n#define NOTE_CS6 1109\n' +
-    '#define NOTE_D6 1175\n#define NOTE_DS6 1245\n#define NOTE_E6 1319\n' +
-    '#define NOTE_F6 1397\n#define NOTE_FS6 1480\n#define NOTE_G6 1568\n' +
-    '#define NOTE_GS6 1661\n#define NOTE_A6 1760\n#define NOTE_AS6 1865\n' +
-    '#define NOTE_B6 1976\n#define NOTE_C7 2093\n#define NOTE_CS7 2217\n' +
-    '#define NOTE_D7 2349\n#define NOTE_DS7 2489\n#define NOTE_E7 2637\n' +
-    '#define NOTE_F7 2794\n#define NOTE_FS7 2960\n#define NOTE_G7 3136\n' +
-    '#define NOTE_GS7 3322\n#define NOTE_A7 3520\n#define NOTE_AS7 3729\n' +
-    '#define NOTE_B7 3951\n#define NOTE_C8 4186\n#define NOTE_CS8 4435\n' +
-    '#define NOTE_D8 4699\n#define NOTE_DS8 4978\n\n';
+  // ── Músicas prontas (Buzzer) ──────────────────────────────────────────────
+  const needsMusica   = mainCode.includes('_bloquin_tocarMusica');
+  const needsMario    = mainCode.includes('_bloquin_mel_mario');
+  const needsParabens = mainCode.includes('_bloquin_mel_parabens');
 
-  // Helper de reprodução (bloqueante — igual ao padrão do arduino-songs)
-  musicaHeader +=
-    'void _bloquin_tocarMusica(const int* mel, int notes, int tempo, int pin) {\n' +
-    '  int wholenote = (60000 * 4) / tempo;\n' +
-    '  for (int i = 0; i < notes * 2; i += 2) {\n' +
-    '    int divider = mel[i + 1];\n' +
-    '    int dur = (divider > 0)\n' +
-    '      ? wholenote / divider\n' +
-    '      : (int)((wholenote / abs(divider)) * 1.5f);\n' +
-    '    if (mel[i] != REST) tone(pin, mel[i], (int)(dur * 0.9f));\n' +
-    '    delay(dur);\n' +
-    '    noTone(pin);\n' +
-    '  }\n' +
-    '}\n\n';
+  let musicaHeader = '';
+  if (needsMusica) {
+    musicaHeader =
+      '#define REST      0\n' +
+      '#define NOTE_B0   31\n#define NOTE_C1   33\n#define NOTE_CS1  35\n' +
+      '#define NOTE_D1   37\n#define NOTE_DS1  39\n#define NOTE_E1   41\n' +
+      '#define NOTE_F1   44\n#define NOTE_FS1  46\n#define NOTE_G1   49\n' +
+      '#define NOTE_GS1  52\n#define NOTE_A1   55\n#define NOTE_AS1  58\n' +
+      '#define NOTE_B1   62\n#define NOTE_C2   65\n#define NOTE_CS2  69\n' +
+      '#define NOTE_D2   73\n#define NOTE_DS2  78\n#define NOTE_E2   82\n' +
+      '#define NOTE_F2   87\n#define NOTE_FS2  93\n#define NOTE_G2   98\n' +
+      '#define NOTE_GS2 104\n#define NOTE_A2  110\n#define NOTE_AS2 117\n' +
+      '#define NOTE_B2  123\n#define NOTE_C3  131\n#define NOTE_CS3 139\n' +
+      '#define NOTE_D3  147\n#define NOTE_DS3 156\n#define NOTE_E3  165\n' +
+      '#define NOTE_F3  175\n#define NOTE_FS3 185\n#define NOTE_G3  196\n' +
+      '#define NOTE_GS3 208\n#define NOTE_A3  220\n#define NOTE_AS3 233\n' +
+      '#define NOTE_B3  247\n#define NOTE_C4  262\n#define NOTE_CS4 277\n' +
+      '#define NOTE_D4  294\n#define NOTE_DS4 311\n#define NOTE_E4  330\n' +
+      '#define NOTE_F4  349\n#define NOTE_FS4 370\n#define NOTE_G4  392\n' +
+      '#define NOTE_GS4 415\n#define NOTE_A4  440\n#define NOTE_AS4 466\n' +
+      '#define NOTE_B4  494\n#define NOTE_C5  523\n#define NOTE_CS5 554\n' +
+      '#define NOTE_D5  587\n#define NOTE_DS5 622\n#define NOTE_E5  659\n' +
+      '#define NOTE_F5  698\n#define NOTE_FS5 740\n#define NOTE_G5  784\n' +
+      '#define NOTE_GS5 831\n#define NOTE_A5  880\n#define NOTE_AS5 932\n' +
+      '#define NOTE_B5  988\n#define NOTE_C6 1047\n#define NOTE_CS6 1109\n' +
+      '#define NOTE_D6 1175\n#define NOTE_DS6 1245\n#define NOTE_E6 1319\n' +
+      '#define NOTE_F6 1397\n#define NOTE_FS6 1480\n#define NOTE_G6 1568\n' +
+      '#define NOTE_GS6 1661\n#define NOTE_A6 1760\n#define NOTE_AS6 1865\n' +
+      '#define NOTE_B6 1976\n#define NOTE_C7 2093\n#define NOTE_CS7 2217\n' +
+      '#define NOTE_D7 2349\n#define NOTE_DS7 2489\n#define NOTE_E7 2637\n' +
+      '#define NOTE_F7 2794\n#define NOTE_FS7 2960\n#define NOTE_G7 3136\n' +
+      '#define NOTE_GS7 3322\n#define NOTE_A7 3520\n#define NOTE_AS7 3729\n' +
+      '#define NOTE_B7 3951\n#define NOTE_C8 4186\n#define NOTE_CS8 4435\n' +
+      '#define NOTE_D8 4699\n#define NOTE_DS8 4978\n\n';
 
-  if (needsMario) {
     musicaHeader +=
-      '// Melodia: Super Mario Bros (Koji Kondo) — arr. Robson Couto 2019\n' +
-      'const int _bloquin_mel_mario[] = {\n' +
-      '  NOTE_E5,8, NOTE_E5,8, REST,8, NOTE_E5,8, REST,8, NOTE_C5,8, NOTE_E5,8,\n' +
-      '  NOTE_G5,4, REST,4, NOTE_G4,8, REST,4,\n' +
-      '  NOTE_C5,-4, NOTE_G4,8, REST,4, NOTE_E4,-4,\n' +
-      '  NOTE_A4,4, NOTE_B4,4, NOTE_AS4,8, NOTE_A4,4,\n' +
-      '  NOTE_G4,-8, NOTE_E5,-8, NOTE_G5,-8, NOTE_A5,4, NOTE_F5,8, NOTE_G5,8,\n' +
-      '  REST,8, NOTE_E5,4, NOTE_C5,8, NOTE_D5,8, NOTE_B4,-4,\n' +
-      '  NOTE_C5,-4, NOTE_G4,8, REST,4, NOTE_E4,-4,\n' +
-      '  NOTE_A4,4, NOTE_B4,4, NOTE_AS4,8, NOTE_A4,4,\n' +
-      '  NOTE_G4,-8, NOTE_E5,-8, NOTE_G5,-8, NOTE_A5,4, NOTE_F5,8, NOTE_G5,8,\n' +
-      '  REST,8, NOTE_E5,4, NOTE_C5,8, NOTE_D5,8, NOTE_B4,-4,\n' +
-      '  REST,4, NOTE_G5,8, NOTE_FS5,8, NOTE_F5,8, NOTE_DS5,4, NOTE_E5,8,\n' +
-      '  REST,8, NOTE_GS4,8, NOTE_A4,8, NOTE_C4,8, REST,8, NOTE_A4,8, NOTE_C5,8, NOTE_D5,8,\n' +
-      '  REST,4, NOTE_DS5,4, REST,8, NOTE_D5,-4,\n' +
-      '  NOTE_C5,2, REST,2,\n' +
-      '  REST,4, NOTE_G5,8, NOTE_FS5,8, NOTE_F5,8, NOTE_DS5,4, NOTE_E5,8,\n' +
-      '  REST,8, NOTE_GS4,8, NOTE_A4,8, NOTE_C4,8, REST,8, NOTE_A4,8, NOTE_C5,8, NOTE_D5,8,\n' +
-      '  REST,4, NOTE_DS5,4, REST,8, NOTE_D5,-4,\n' +
-      '  NOTE_C5,2, REST,2,\n' +
-      '  NOTE_C5,8, NOTE_C5,4, NOTE_C5,8, REST,8, NOTE_C5,8, NOTE_D5,4,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
-      '  NOTE_C5,8, NOTE_C5,4, NOTE_C5,8, REST,8, NOTE_C5,8, NOTE_D5,8, NOTE_E5,8,\n' +
-      '  REST,1,\n' +
-      '  NOTE_C5,8, NOTE_C5,4, NOTE_C5,8, REST,8, NOTE_C5,8, NOTE_D5,4,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
-      '  NOTE_E5,8, NOTE_E5,8, REST,8, NOTE_E5,8, REST,8, NOTE_C5,8, NOTE_E5,4,\n' +
-      '  NOTE_G5,4, REST,4, NOTE_G4,4, REST,4,\n' +
-      '  NOTE_C5,-4, NOTE_G4,8, REST,4, NOTE_E4,-4,\n' +
-      '  NOTE_A4,4, NOTE_B4,4, NOTE_AS4,8, NOTE_A4,4,\n' +
-      '  NOTE_G4,-8, NOTE_E5,-8, NOTE_G5,-8, NOTE_A5,4, NOTE_F5,8, NOTE_G5,8,\n' +
-      '  REST,8, NOTE_E5,4, NOTE_C5,8, NOTE_D5,8, NOTE_B4,-4,\n' +
-      '  NOTE_C5,-4, NOTE_G4,8, REST,4, NOTE_E4,-4,\n' +
-      '  NOTE_A4,4, NOTE_B4,4, NOTE_AS4,8, NOTE_A4,4,\n' +
-      '  NOTE_G4,-8, NOTE_E5,-8, NOTE_G5,-8, NOTE_A5,4, NOTE_F5,8, NOTE_G5,8,\n' +
-      '  REST,8, NOTE_E5,4, NOTE_C5,8, NOTE_D5,8, NOTE_B4,-4,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
-      '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
-      '  NOTE_D5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_G5,-8, NOTE_F5,-8,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
-      '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
-      '  NOTE_B4,8, NOTE_F5,4, NOTE_F5,8, NOTE_F5,-8, NOTE_E5,-8, NOTE_D5,-8,\n' +
-      '  NOTE_C5,8, NOTE_E4,4, NOTE_E4,8, NOTE_C4,2,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
-      '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
-      '  NOTE_D5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_G5,-8, NOTE_F5,-8,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
-      '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
-      '  NOTE_B4,8, NOTE_F5,4, NOTE_F5,8, NOTE_F5,-8, NOTE_E5,-8, NOTE_D5,-8,\n' +
-      '  NOTE_C5,8, NOTE_E4,4, NOTE_E4,8, NOTE_C4,2,\n' +
-      '  NOTE_C5,8, NOTE_C5,4, NOTE_C5,8, REST,8, NOTE_C5,8, NOTE_D5,8, NOTE_E5,8,\n' +
-      '  REST,1,\n' +
-      '  NOTE_C5,8, NOTE_C5,4, NOTE_C5,8, REST,8, NOTE_C5,8, NOTE_D5,4,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
-      '  NOTE_E5,8, NOTE_E5,8, REST,8, NOTE_E5,8, REST,8, NOTE_C5,8, NOTE_E5,4,\n' +
-      '  NOTE_G5,4, REST,4, NOTE_G4,4, REST,4,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
-      '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
-      '  NOTE_D5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_G5,-8, NOTE_F5,-8,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
-      '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
-      '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
-      '  NOTE_B4,8, NOTE_F5,4, NOTE_F5,8, NOTE_F5,-8, NOTE_E5,-8, NOTE_D5,-8,\n' +
-      '  NOTE_C5,8, NOTE_E4,4, NOTE_E4,8, NOTE_C4,2,\n' +
-      '  NOTE_C5,-4, NOTE_G4,-4, NOTE_E4,4,\n' +
-      '  NOTE_A4,-8, NOTE_B4,-8, NOTE_A4,-8, NOTE_GS4,-8, NOTE_AS4,-8, NOTE_GS4,-8,\n' +
-      '  NOTE_G4,8, NOTE_D4,8, NOTE_E4,-2,\n' +
-      '};\n' +
-      'const int _bloquin_notes_mario = sizeof(_bloquin_mel_mario) / sizeof(_bloquin_mel_mario[0]) / 2;\n' +
-      'const int _bloquin_tempo_mario = 200;\n\n';
+      'void _bloquin_tocarMusica(const int* mel, int notes, int tempo, int pin) {\n' +
+      '  int wholenote = (60000 * 4) / tempo;\n' +
+      '  for (int i = 0; i < notes * 2; i += 2) {\n' +
+      '    int divider = mel[i + 1];\n' +
+      '    int dur = (divider > 0)\n' +
+      '      ? wholenote / divider\n' +
+      '      : (int)((wholenote / abs(divider)) * 1.5f);\n' +
+      '    if (mel[i] != REST) tone(pin, mel[i], (int)(dur * 0.9f));\n' +
+      '    delay(dur);\n' +
+      '    noTone(pin);\n' +
+      '  }\n' +
+      '}\n\n';
+
+    if (needsMario) {
+      musicaHeader +=
+        '// Melodia: Super Mario Bros (Koji Kondo) — arr. Robson Couto 2019\n' +
+        'const int _bloquin_mel_mario[] = {\n' +
+        '  NOTE_E5,8, NOTE_E5,8, REST,8, NOTE_E5,8, REST,8, NOTE_C5,8, NOTE_E5,8,\n' +
+        '  NOTE_G5,4, REST,4, NOTE_G4,8, REST,4,\n' +
+        '  NOTE_C5,-4, NOTE_G4,8, REST,4, NOTE_E4,-4,\n' +
+        '  NOTE_A4,4, NOTE_B4,4, NOTE_AS4,8, NOTE_A4,4,\n' +
+        '  NOTE_G4,-8, NOTE_E5,-8, NOTE_G5,-8, NOTE_A5,4, NOTE_F5,8, NOTE_G5,8,\n' +
+        '  REST,8, NOTE_E5,4, NOTE_C5,8, NOTE_D5,8, NOTE_B4,-4,\n' +
+        '  NOTE_C5,-4, NOTE_G4,8, REST,4, NOTE_E4,-4,\n' +
+        '  NOTE_A4,4, NOTE_B4,4, NOTE_AS4,8, NOTE_A4,4,\n' +
+        '  NOTE_G4,-8, NOTE_E5,-8, NOTE_G5,-8, NOTE_A5,4, NOTE_F5,8, NOTE_G5,8,\n' +
+        '  REST,8, NOTE_E5,4, NOTE_C5,8, NOTE_D5,8, NOTE_B4,-4,\n' +
+        '  REST,4, NOTE_G5,8, NOTE_FS5,8, NOTE_F5,8, NOTE_DS5,4, NOTE_E5,8,\n' +
+        '  REST,8, NOTE_GS4,8, NOTE_A4,8, NOTE_C4,8, REST,8, NOTE_A4,8, NOTE_C5,8, NOTE_D5,8,\n' +
+        '  REST,4, NOTE_DS5,4, REST,8, NOTE_D5,-4,\n' +
+        '  NOTE_C5,2, REST,2,\n' +
+        '  REST,4, NOTE_G5,8, NOTE_FS5,8, NOTE_F5,8, NOTE_DS5,4, NOTE_E5,8,\n' +
+        '  REST,8, NOTE_GS4,8, NOTE_A4,8, NOTE_C4,8, REST,8, NOTE_A4,8, NOTE_C5,8, NOTE_D5,8,\n' +
+        '  REST,4, NOTE_DS5,4, REST,8, NOTE_D5,-4,\n' +
+        '  NOTE_C5,2, REST,2,\n' +
+        '  NOTE_C5,8, NOTE_C5,4, NOTE_C5,8, REST,8, NOTE_C5,8, NOTE_D5,4,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
+        '  NOTE_C5,8, NOTE_C5,4, NOTE_C5,8, REST,8, NOTE_C5,8, NOTE_D5,8, NOTE_E5,8,\n' +
+        '  REST,1,\n' +
+        '  NOTE_C5,8, NOTE_C5,4, NOTE_C5,8, REST,8, NOTE_C5,8, NOTE_D5,4,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
+        '  NOTE_E5,8, NOTE_E5,8, REST,8, NOTE_E5,8, REST,8, NOTE_C5,8, NOTE_E5,4,\n' +
+        '  NOTE_G5,4, REST,4, NOTE_G4,4, REST,4,\n' +
+        '  NOTE_C5,-4, NOTE_G4,8, REST,4, NOTE_E4,-4,\n' +
+        '  NOTE_A4,4, NOTE_B4,4, NOTE_AS4,8, NOTE_A4,4,\n' +
+        '  NOTE_G4,-8, NOTE_E5,-8, NOTE_G5,-8, NOTE_A5,4, NOTE_F5,8, NOTE_G5,8,\n' +
+        '  REST,8, NOTE_E5,4, NOTE_C5,8, NOTE_D5,8, NOTE_B4,-4,\n' +
+        '  NOTE_C5,-4, NOTE_G4,8, REST,4, NOTE_E4,-4,\n' +
+        '  NOTE_A4,4, NOTE_B4,4, NOTE_AS4,8, NOTE_A4,4,\n' +
+        '  NOTE_G4,-8, NOTE_E5,-8, NOTE_G5,-8, NOTE_A5,4, NOTE_F5,8, NOTE_G5,8,\n' +
+        '  REST,8, NOTE_E5,4, NOTE_C5,8, NOTE_D5,8, NOTE_B4,-4,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
+        '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
+        '  NOTE_D5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_G5,-8, NOTE_F5,-8,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
+        '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
+        '  NOTE_B4,8, NOTE_F5,4, NOTE_F5,8, NOTE_F5,-8, NOTE_E5,-8, NOTE_D5,-8,\n' +
+        '  NOTE_C5,8, NOTE_E4,4, NOTE_E4,8, NOTE_C4,2,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
+        '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
+        '  NOTE_D5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_G5,-8, NOTE_F5,-8,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
+        '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
+        '  NOTE_B4,8, NOTE_F5,4, NOTE_F5,8, NOTE_F5,-8, NOTE_E5,-8, NOTE_D5,-8,\n' +
+        '  NOTE_C5,8, NOTE_E4,4, NOTE_E4,8, NOTE_C4,2,\n' +
+        '  NOTE_C5,8, NOTE_C5,4, NOTE_C5,8, REST,8, NOTE_C5,8, NOTE_D5,8, NOTE_E5,8,\n' +
+        '  REST,1,\n' +
+        '  NOTE_C5,8, NOTE_C5,4, NOTE_C5,8, REST,8, NOTE_C5,8, NOTE_D5,4,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
+        '  NOTE_E5,8, NOTE_E5,8, REST,8, NOTE_E5,8, REST,8, NOTE_C5,8, NOTE_E5,4,\n' +
+        '  NOTE_G5,4, REST,4, NOTE_G4,4, REST,4,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
+        '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
+        '  NOTE_D5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_A5,-8, NOTE_G5,-8, NOTE_F5,-8,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_A4,8, NOTE_G4,2,\n' +
+        '  NOTE_E5,8, NOTE_C5,4, NOTE_G4,8, REST,4, NOTE_GS4,4,\n' +
+        '  NOTE_A4,8, NOTE_F5,4, NOTE_F5,8, NOTE_A4,2,\n' +
+        '  NOTE_B4,8, NOTE_F5,4, NOTE_F5,8, NOTE_F5,-8, NOTE_E5,-8, NOTE_D5,-8,\n' +
+        '  NOTE_C5,8, NOTE_E4,4, NOTE_E4,8, NOTE_C4,2,\n' +
+        '  NOTE_C5,-4, NOTE_G4,-4, NOTE_E4,4,\n' +
+        '  NOTE_A4,-8, NOTE_B4,-8, NOTE_A4,-8, NOTE_GS4,-8, NOTE_AS4,-8, NOTE_GS4,-8,\n' +
+        '  NOTE_G4,8, NOTE_D4,8, NOTE_E4,-2,\n' +
+        '};\n' +
+        'const int _bloquin_notes_mario = sizeof(_bloquin_mel_mario) / sizeof(_bloquin_mel_mario[0]) / 2;\n' +
+        'const int _bloquin_tempo_mario = 200;\n\n';
+    }
+
+    if (needsParabens) {
+      musicaHeader +=
+        '// Melodia: Parabéns a Você — arr. Robson Couto 2019\n' +
+        'const int _bloquin_mel_parabens[] = {\n' +
+        '  NOTE_C4,4, NOTE_C4,8,\n' +
+        '  NOTE_D4,-4, NOTE_C4,-4, NOTE_F4,-4,\n' +
+        '  NOTE_E4,-2, NOTE_C4,4, NOTE_C4,8,\n' +
+        '  NOTE_D4,-4, NOTE_C4,-4, NOTE_G4,-4,\n' +
+        '  NOTE_F4,-2, NOTE_C4,4, NOTE_C4,8,\n' +
+        '  NOTE_C5,-4, NOTE_A4,-4, NOTE_F4,-4,\n' +
+        '  NOTE_E4,-4, NOTE_D4,-4, NOTE_AS4,4, NOTE_AS4,8,\n' +
+        '  NOTE_A4,-4, NOTE_F4,-4, NOTE_G4,-4,\n' +
+        '  NOTE_F4,-2,\n' +
+        '};\n' +
+        'const int _bloquin_notes_parabens = sizeof(_bloquin_mel_parabens) / sizeof(_bloquin_mel_parabens[0]) / 2;\n' +
+        'const int _bloquin_tempo_parabens = 140;\n\n';
+    }
   }
 
-  if (needsParabens) {
-    musicaHeader +=
-      '// Melodia: Parabéns a Você — arr. Robson Couto 2019\n' +
-      'const int _bloquin_mel_parabens[] = {\n' +
-      '  NOTE_C4,4, NOTE_C4,8,\n' +
-      '  NOTE_D4,-4, NOTE_C4,-4, NOTE_F4,-4,\n' +
-      '  NOTE_E4,-2, NOTE_C4,4, NOTE_C4,8,\n' +
-      '  NOTE_D4,-4, NOTE_C4,-4, NOTE_G4,-4,\n' +
-      '  NOTE_F4,-2, NOTE_C4,4, NOTE_C4,8,\n' +
-      '  NOTE_C5,-4, NOTE_A4,-4, NOTE_F4,-4,\n' +
-      '  NOTE_E4,-4, NOTE_D4,-4, NOTE_AS4,4, NOTE_AS4,8,\n' +
-      '  NOTE_A4,-4, NOTE_F4,-4, NOTE_G4,-4,\n' +
-      '  NOTE_F4,-2,\n' +
-      '};\n' +
-      'const int _bloquin_notes_parabens = sizeof(_bloquin_mel_parabens) / sizeof(_bloquin_mel_parabens[0]) / 2;\n' +
-      'const int _bloquin_tempo_parabens = 140;\n\n';
-  }
-}
-
-const prefix = musicaHeader + espNowHeader + mpuHeader + l298nHeader + servoHeader + helperLer + helperEntre + (needsUltrass ? '\n' : '');
+  const prefix = musicaHeader + espNowHeader + mpuHeader + l298nHeader + servoHeader + helperLer + helperEntre + (needsUltrass ? '\n' : '');
   return prefix + mainCode;
 };
