@@ -1,66 +1,73 @@
+// src/screens/LoginScreen.tsx
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import logoCompleta from '../assets/LogoCompleta.png';
 import TutorialModal from "../components/modals/TutorialModal";
 import GuestInfoModal from "../components/modals/GuestInfoModal";
-import { registerSession } from "../services/sessionService"; 
+import { registerSession, isSessionActive } from "../services/sessionService";
 
 interface LoginScreenProps {
   onLogin: (role: 'student' | 'teacher' | 'visitor') => void;
 }
 
 export function LoginScreen({ onLogin }: LoginScreenProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail]             = useState('');
+  const [password, setPassword]       = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  // Novos estados do Patch
+  const [error, setError]             = useState('');
+  const [loading, setLoading]         = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showGuestInfo, setShowGuestInfo] = useState(false);
-  const [sessionWarning, setSessionWarning] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!email || !password) {
-      setError('Por favor, preencha email e senha.');
+      setError('Por favor, preencha usuário e senha.');
       return;
     }
 
     setLoading(true);
     setError('');
-    setSessionWarning(false);
 
-    // 1. Autenticação centralizada com autocompletar domínio
-    const domain = import.meta.env.VITE_EMAIL_DOMAIN ?? 'oficina.com';
-    const resolvedEmail = email.includes('@') ? email.trim() : `${email.trim()}@${domain}`;
+    // 1. Resolve e-mail (alunos digitam só o nome de usuário)
+    const domain        = import.meta.env.VITE_EMAIL_DOMAIN ?? 'oficina.com';
+    const resolvedEmail = email.includes('@')
+      ? email.trim()
+      : `${email.trim()}@${domain}`;
 
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ 
-      email: resolvedEmail, 
-      password 
+    // 2. Autentica no Supabase
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: resolvedEmail,
+      password,
     });
 
     if (authError || !authData.user) {
-      setError('Email ou senha incorretos.');
+      setError('Usuário ou senha incorretos.');
       setLoading(false);
       return;
     }
 
-    // 2. Verifica se já havia sessão ativa em outro dispositivo
-    const { data: existing } = await supabase
-      .from("user_sessions")
-      .select("session_token")
-      .eq("user_id", authData.user.id)
-      .single();
+    // 3. Bloqueia se já existe sessão ativa em outro dispositivo.
+    //    O heartbeat atualiza updated_at a cada 2 min; se passou mais de
+    //    12 min sem atualização, a sessão é considerada expirada e o
+    //    próximo usuário pode entrar normalmente.
+    const active = await isSessionActive(authData.user.id);
+    if (active) {
+      // Desfaz o login — impede que o token seja usado
+      await supabase.auth.signOut();
+      setError(
+        '⚠️ Esta conta já está em uso em outro dispositivo. ' +
+        'A sessão é liberada automaticamente após 10 minutos de inatividade.'
+      );
+      setLoading(false);
+      return;
+    }
 
-    const hadActiveSession = !!existing?.session_token;
-
-    // Registra nova sessão (invalida a anterior automaticamente via DB constraint/upsert)
+    // 4. Registra a nova sessão (invalida qualquer sessão anterior via upsert)
     await registerSession(authData.user.id);
 
-    // 3. Busca de perfil baseada no usuário autenticado (Lógica Original Mantida)
+    // 5. Busca o perfil para determinar o papel
     const { data: perfil, error: perfilError } = await supabase
       .from('perfis')
       .select('role')
@@ -74,102 +81,91 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       return;
     }
 
-    // Função interna para finalizar e rotear
-    const finalizeLogin = () => {
-      if (perfil.role === 'teacher') onLogin('teacher');
-      else if (perfil.role === 'student') onLogin('student');
-      else onLogin('visitor');
-    };
-
-    // 4. Fluxo de redirecionamento (Com pausa se houver aviso)
-    if (hadActiveSession) {
-      setSessionWarning(true);
-      // Aguarda 3 segundos para o usuário ler a mensagem antes de sumir com a tela
-      setTimeout(() => {
-        finalizeLogin();
-      }, 3000);
-    } else {
-      finalizeLogin();
-    }
+    if (perfil.role === 'teacher')      onLogin('teacher');
+    else if (perfil.role === 'student') onLogin('student');
+    else                                onLogin('visitor');
   };
 
-  // Funções para fluxo do visitante
-  const handleEnterAsGuest = () => {
-    setShowGuestInfo(true);
-  };
-
-  const handleGuestConfirmed = () => {
-    setShowGuestInfo(false);
-    onLogin('visitor');
-  };
+  const handleEnterAsGuest = () => setShowGuestInfo(true);
+  const handleGuestConfirmed = () => { setShowGuestInfo(false); onLogin('visitor'); };
 
   return (
-  <div className="login-container">
-    <div className="login-card">
-      <img src={logoCompleta} alt="bloquin" style={{ height: '50px', marginBottom: '24px' }} />
-
-      <form className="login-form" onSubmit={handleLogin}>
-        <input
-          type="text"
-          placeholder="Usuário ou email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          disabled={loading}
+    <div className="login-container">
+      <div className="login-card">
+        <img
+          src={logoCompleta}
+          alt="bloquin"
+          style={{ height: '50px', marginBottom: '24px' }}
         />
 
-        <div className="password-wrapper">
+        <form className="login-form" onSubmit={handleLogin}>
           <input
-            type={showPassword ? 'text' : 'password'}
-            placeholder="Senha"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
+            type="text"
+            placeholder="Usuário ou email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             disabled={loading}
           />
-          <button
-            type="button"
-            className="btn-toggle-password"
-            onClick={() => setShowPassword(v => !v)}
-            title={showPassword ? 'Ocultar senha' : 'Ver senha'}
-            disabled={loading}
-          >
-            {showPassword ? '🙈' : '👀'}
-          </button>
-        </div>
 
-        {error && (
-          <p style={{ color: 'var(--danger)', fontWeight: 700, margin: '8px 0' }}>{error}</p>
-        )}
-
-        {sessionWarning && (
-          <div className="session-warning" role="alert" style={{ color: 'orange', fontWeight: 600, marginTop: '8px', fontSize: '0.9rem' }}>
-            ⚠ Você tinha uma sessão ativa em outro dispositivo. Ela foi encerrada. Entrando...
+          <div className="password-wrapper">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Senha"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+            />
+            <button
+              type="button"
+              className="btn-toggle-password"
+              onClick={() => setShowPassword((v) => !v)}
+              title={showPassword ? 'Ocultar senha' : 'Ver senha'}
+              disabled={loading}
+            >
+              {showPassword ? '🙈' : '👀'}
+            </button>
           </div>
-        )}
 
-        <button type="submit" className="btn-primary" disabled={loading} style={{ marginTop: '16px' }}>
-          {loading ? 'Entrando...' : 'Entrar'}
+          {error && (
+            <p style={{ color: 'var(--danger)', fontWeight: 700, margin: '8px 0', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={loading}
+            style={{ marginTop: '16px' }}
+          >
+            {loading ? 'Entrando...' : 'Entrar'}
+          </button>
+        </form>
+
+        <div className="login-divider" />
+
+        <button
+          type="button"
+          className="btn-text"
+          onClick={handleEnterAsGuest}
+          disabled={loading}
+        >
+          Entrar como Visitante
         </button>
-      </form>
+      </div>
 
-      <div className="login-divider"></div>
-
-      <button type="button" className="btn-text" onClick={handleEnterAsGuest} disabled={loading}>
-        Entrar como Visitante
+      {/* Botão de tutorial fixo no canto inferior direito */}
+      <button
+        type="button"
+        className="tutorial-corner-btn"
+        onClick={() => setShowTutorial(true)}
+        disabled={loading}
+      >
+        Tutorial
       </button>
+
+      {showTutorial  && <TutorialModal  onClose={() => setShowTutorial(false)} />}
+      {showGuestInfo && <GuestInfoModal onClose={handleGuestConfirmed} />}
     </div>
-
-    {/* Tutorial - canto inferior direito da tela */}
-    <button
-      type="button"
-      className="tutorial-corner-btn"
-      onClick={() => setShowTutorial(true)}
-      disabled={loading}
-    >
-      Tutorial
-    </button>
-
-    {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
-    {showGuestInfo && <GuestInfoModal onClose={handleGuestConfirmed} />}
-  </div>
-);
+  );
 }

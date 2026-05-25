@@ -1,11 +1,16 @@
 // src/services/sessionService.ts
 import { supabase } from '../lib/supabase';
-import { v4 as uuidv4 } from "uuid"; // Certifique-se de ter rodado: npm i uuid @types/uuid
+import { v4 as uuidv4 } from "uuid";
 
-const SESSION_TOKEN_KEY = "bloquin_session_token";
+const SESSION_TOKEN_KEY    = "bloquin_session_token";
 const INTERVENTION_CHANNEL = "intervention";
 
-// ─── Token de sessão local ───────────────────────────────────────────────────
+// Sessão considerada expirada se não houver heartbeat nos últimos 12 minutos.
+// O timer de inatividade no cliente dispara com 10 min, então os 12 min
+// aqui servem de margem para o servidor reconhecer o logout.
+const SESSION_TTL_MS = 12 * 60 * 1000;
+
+// ─── Token local ──────────────────────────────────────────────────────────────
 
 function getLocalToken(): string | null {
   return localStorage.getItem(SESSION_TOKEN_KEY);
@@ -19,28 +24,63 @@ function clearLocalToken() {
   localStorage.removeItem(SESSION_TOKEN_KEY);
 }
 
-// ─── Registro de sessão no banco ─────────────────────────────────────────────
+// ─── Registro de sessão ───────────────────────────────────────────────────────
 
 export async function registerSession(userId: string): Promise<void> {
   const token = uuidv4();
   setLocalToken(token);
-
   await supabase.from("user_sessions").upsert(
     { user_id: userId, session_token: token, updated_at: new Date().toISOString() },
     { onConflict: "user_id" }
   );
 }
 
+// ─── Verificação de sessão ativa ──────────────────────────────────────────────
+
+/**
+ * Retorna true se já existe uma sessão ativa para este userId,
+ * ou seja, o campo updated_at foi atualizado nos últimos SESSION_TTL_MS.
+ * Usado na tela de login para impedir duplo acesso.
+ */
+export async function isSessionActive(userId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("user_sessions")
+    .select("updated_at")
+    .eq("user_id", userId)
+    .single();
+
+  if (!data) return false;
+  const lastSeen = new Date(data.updated_at).getTime();
+  return Date.now() - lastSeen < SESSION_TTL_MS;
+}
+
+// ─── Heartbeat ────────────────────────────────────────────────────────────────
+
+/**
+ * Atualiza o timestamp da sessão no banco a cada 2 minutos.
+ * Mantém a sessão "viva" enquanto o usuário está ativo.
+ * Se o usuário sair sem logout explícito, a sessão expira após SESSION_TTL_MS.
+ */
+export async function heartbeat(userId: string): Promise<void> {
+  const localToken = getLocalToken();
+  if (!localToken) return;
+  await supabase
+    .from("user_sessions")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("session_token", localToken);
+}
+
+// ─── Validação e limpeza ──────────────────────────────────────────────────────
+
 export async function isSessionValid(userId: string): Promise<boolean> {
   const localToken = getLocalToken();
   if (!localToken) return false;
-
   const { data } = await supabase
     .from("user_sessions")
     .select("session_token")
     .eq("user_id", userId)
     .single();
-
   return data?.session_token === localToken;
 }
 
@@ -49,14 +89,13 @@ export async function clearSession(userId: string): Promise<void> {
   await supabase.from("user_sessions").delete().eq("user_id", userId);
 }
 
-// ─── Listener de invalidação ─────────────────────────────────────────────────
+// ─── Watcher de sessão roubada ────────────────────────────────────────────────
 
 type SessionKilledCallback = () => void;
 let sessionChannel: ReturnType<typeof supabase.channel> | null = null;
 
 export function watchSession(userId: string, onKilled: SessionKilledCallback) {
   stopWatchingSession();
-
   sessionChannel = supabase
     .channel(`session:${userId}`)
     .on(
@@ -69,9 +108,7 @@ export function watchSession(userId: string, onKilled: SessionKilledCallback) {
       },
       (payload) => {
         const remoteToken = (payload.new as { session_token: string }).session_token;
-        if (remoteToken !== getLocalToken()) {
-          onKilled();
-        }
+        if (remoteToken !== getLocalToken()) onKilled();
       }
     )
     .subscribe();
@@ -84,11 +121,10 @@ export function stopWatchingSession() {
   }
 }
 
-// ─── Intervenção do professor ────────────────────────────────────────────────
+// ─── Intervenção do professor ─────────────────────────────────────────────────
 
 type InterventionPayload = { teacher_name: string } | null;
 type InterventionCallback = (payload: InterventionPayload) => void;
-
 let interventionChannel: ReturnType<typeof supabase.channel> | null = null;
 
 export function watchIntervention(userId: string, onIntervention: InterventionCallback) {
