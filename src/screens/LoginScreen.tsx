@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import logoCompleta from '../assets/LogoCompleta.png';
 import TutorialModal from "../components/modals/TutorialModal";
 import GuestInfoModal from "../components/modals/GuestInfoModal";
-import { registerSession, isSessionActive } from "../services/sessionService";
+import { registerSession } from "../services/sessionService";
 
 interface LoginScreenProps {
   onLogin: (role: 'student' | 'teacher' | 'visitor') => void;
@@ -30,7 +30,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     setLoading(true);
     setError('');
 
-    // 1. Resolve e-mail (alunos digitam só o nome de usuário)
+    // 1. Resolve e-mail
     const domain        = import.meta.env.VITE_EMAIL_DOMAIN ?? 'bloquin.com';
     const resolvedEmail = email.includes('@')
       ? email.trim()
@@ -48,26 +48,11 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       return;
     }
 
-    // 3. Bloqueia se já existe sessão ativa em outro dispositivo.
-    //    O heartbeat atualiza updated_at a cada 2 min; se passou mais de
-    //    12 min sem atualização, a sessão é considerada expirada e o
-    //    próximo usuário pode entrar normalmente.
-    const active = await isSessionActive(authData.user.id);
-    if (active) {
-      // Desfaz o login — impede que o token seja usado
-      await supabase.auth.signOut();
-      setError(
-        '⚠️ Esta conta já está em uso em outro dispositivo. ' +
-        'A sessão é liberada automaticamente após 10 minutos de inatividade.'
-      );
-      setLoading(false);
-      return;
-    }
-
-    // 4. Registra a nova sessão (invalida qualquer sessão anterior via upsert)
+    // 3. Registra a nova sessão — invalida qualquer sessão anterior via upsert,
+    //    o que dispara o watchSession no outro dispositivo e o desconecta.
     await registerSession(authData.user.id);
 
-    // 5. Busca o perfil para determinar o papel
+    // 4. Busca o perfil para determinar o papel
     const { data: perfil, error: perfilError } = await supabase
       .from('perfis')
       .select('role')
