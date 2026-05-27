@@ -45,7 +45,6 @@ Desenvolvido e mantido por Felipe da Conceição Silva (https://www.linkedin.com
 | Plataforma | Link |
 |---|---|
 | **Windows 10/11** (64-bit) | [Bloquin-Setup-Windows.exe](https://github.com/FelipeSilva10/Bloquin/releases/latest/download/Bloquin-Setup-Windows.exe) |
-| **Linux** x64 (AppImage) | [Bloquin-Linux.AppImage](https://github.com/FelipeSilva10/Bloquin/releases/latest/download/Bloquin-Linux.AppImage) |
 
 > **Windows SmartScreen:** o instalador é assinado digitalmente. Se aparecer aviso, clique em **"Mais informações" → "Executar assim mesmo"**.
 >
