@@ -3,7 +3,7 @@ name: Release — Build e Publicação
 # ─────────────────────────────────────────────────────────────────────────────
 # DISPARO: somente por tags semânticas.
 #
-#   Stable:  git tag v1.0.0   && git push origin v1.0.0
+#   Stable:  git tag v1.0.0        && git push origin v1.0.0
 #   Beta:    git tag v1.0.0-beta.1 && git push origin v1.0.0-beta.1
 #   RC:      git tag v1.0.0-rc.1   && git push origin v1.0.0-rc.1
 #
@@ -24,13 +24,12 @@ env:
   RUST_BACKTRACE: 1
 
   # ─────────────────────────────────────────────────────────
-  # NOMES FIXOS DOS ASSETS — NUNCA altere sem atualizar o site.
-  # Estes valores garantem os links permanentes /releases/latest/download/...
+  # NOME FIXO DO ASSET — NUNCA altere sem atualizar o site.
+  # Garante o link permanente /releases/latest/download/...
   # ─────────────────────────────────────────────────────────
   ASSET_WINDOWS: "Bloquin-Setup-Windows.exe"
-  ASSET_LINUX:   "Bloquin-Linux.AppImage"
 
-  # Versão do arduino-cli — altere conscientemente e mantenha em sincronia com ci.yml
+  # Versão do arduino-cli — altere conscientemente
   ARDUINO_CLI_VERSION: "1.4.1"
 
 jobs:
@@ -105,12 +104,6 @@ jobs:
       - name: Instalar dependências npm
         run: npm ci
 
-      # ─────────────────────────────────────────────────────
-      # Sincroniza a versão do tauri.conf.json com a tag.
-      # Garante que o instalador mostre a versão correta
-      # em Adicionar/Remover Programas e nos metadados NSIS.
-      # Usa shell: bash (Git Bash disponível em windows-latest).
-      # ─────────────────────────────────────────────────────
       - name: Sincronizar versão com a tag
         shell: bash
         run: |
@@ -119,9 +112,6 @@ jobs:
           echo "Versão definida:"
           grep '"version"' src-tauri/tauri.conf.json
 
-      # ─────────────────────────────────────────────────────
-      # Download do arduino-cli (Windows)
-      # ─────────────────────────────────────────────────────
       - name: Baixar arduino-cli (Windows)
         shell: powershell
         run: |
@@ -136,9 +126,6 @@ jobs:
           Remove-Item arduino-cli.zip
           Write-Host "OK: $(Test-Path src-tauri/resources/arduino-cli.exe)"
 
-      # ─────────────────────────────────────────────────────
-      # Importar certificado PFX
-      # ─────────────────────────────────────────────────────
       - name: Importar certificado PFX
         shell: powershell
         env:
@@ -156,17 +143,9 @@ jobs:
           Remove-Item $certPath
           Write-Host "Certificado importado."
 
-      # ─────────────────────────────────────────────────────
-      # Build — somente NSIS (não MSI, não setup.exe extra)
-      # targets: ["nsis", "appimage"] no tauri.conf.json já filtra,
-      # mas --bundles garante mesmo se alguém alterar o conf.
-      # ─────────────────────────────────────────────────────
       - name: Build Tauri (Windows — NSIS)
         run: npm run tauri build -- --bundles nsis
 
-      # ─────────────────────────────────────────────────────
-      # Assinar instalador NSIS
-      # ─────────────────────────────────────────────────────
       - name: Assinar instalador NSIS
         shell: powershell
         run: |
@@ -189,13 +168,11 @@ jobs:
             Select-Object -First 1
 
           if (-not $installer) {
-            Write-Error "Instalador NSIS não encontrado em src-tauri/target/release/bundle/nsis/"
+            Write-Error "Instalador NSIS não encontrado!"
             exit 1
           }
           Write-Host "Assinando: $($installer.FullName)"
 
-          # /n: referencia pelo Subject já importado no store
-          # Não usa /f nem /p para evitar o erro "The /p option requires the /f option"
           & $signtool sign `
             /n "Bloquin" `
             /fd SHA256 `
@@ -206,11 +183,6 @@ jobs:
 
           Write-Host "✅ Assinado: $($installer.FullName)"
 
-      # ─────────────────────────────────────────────────────
-      # Renomear para nome fixo — garante o link permanente
-      # Tauri gera:   bloquin_1.0.0_x64-setup.exe
-      # Precisamos:   Bloquin-Setup-Windows.exe
-      # ─────────────────────────────────────────────────────
       - name: Renomear instalador para nome fixo
         id: rename
         shell: powershell
@@ -234,121 +206,11 @@ jobs:
           retention-days: 1
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # JOB 2 — Build Linux (AppImage)
-  # ═══════════════════════════════════════════════════════════════════════════
-  build-linux:
-    name: Build — Linux (AppImage)
-    needs: metadata
-    runs-on: ubuntu-22.04
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependências do sistema (WebKit2GTK + AppImage)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev \
-            pkg-config \
-            libglib2.0-dev \
-            libgtk-3-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            libudev-dev \
-            file
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "src-tauri -> target"
-          key: linux-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Instalar dependências npm
-        run: npm ci
-
-      # ─────────────────────────────────────────────────────
-      # Sincronizar versão (mesmo step do Windows, para consistência)
-      # ─────────────────────────────────────────────────────
-      - name: Sincronizar versão com a tag
-        run: |
-          VERSION="${{ needs.metadata.outputs.version }}"
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
-          echo "Versão definida:"
-          grep '"version"' src-tauri/tauri.conf.json
-
-      # ─────────────────────────────────────────────────────
-      # Download do arduino-cli (Linux)
-      # O binário Linux não tem extensão .exe.
-      # O glob "resources/*" no tauri.conf.json embute os dois
-      # automaticamente — sem conflito entre plataformas.
-      # ─────────────────────────────────────────────────────
-      - name: Baixar arduino-cli (Linux)
-        run: |
-          mkdir -p src-tauri/resources/
-          URL="https://github.com/arduino/arduino-cli/releases/download/v${{ env.ARDUINO_CLI_VERSION }}/arduino-cli_${{ env.ARDUINO_CLI_VERSION }}_Linux_64bit.tar.gz"
-          echo "Baixando arduino-cli ${{ env.ARDUINO_CLI_VERSION }}..."
-          curl -fsSL "$URL" -o arduino-cli.tar.gz
-          tar -xzf arduino-cli.tar.gz -C src-tauri/resources/ arduino-cli
-          rm arduino-cli.tar.gz
-          chmod +x src-tauri/resources/arduino-cli
-          echo "OK: $(src-tauri/resources/arduino-cli version 2>/dev/null | head -1)"
-
-      # ─────────────────────────────────────────────────────
-      # Build — somente AppImage
-      # ─────────────────────────────────────────────────────
-      - name: Build Tauri (Linux — AppImage)
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: npm run tauri build -- --bundles appimage
-
-      # ─────────────────────────────────────────────────────
-      # Renomear para nome fixo
-      # Tauri gera:   bloquin_1.0.0_amd64.AppImage
-      # Precisamos:   Bloquin-Linux.AppImage
-      # ─────────────────────────────────────────────────────
-      - name: Renomear AppImage para nome fixo
-        id: rename
-        run: |
-          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
-
-          if [ -z "$APPIMAGE" ]; then
-            echo "::error::AppImage não encontrado em src-tauri/target/release/bundle/appimage/"
-            exit 1
-          fi
-
-          DEST="$RUNNER_TEMP/$ASSET_LINUX"
-          cp "$APPIMAGE" "$DEST"
-          chmod +x "$DEST"
-          echo "Asset final: $DEST ($(du -h "$DEST" | cut -f1))"
-          echo "path=$DEST" >> $GITHUB_OUTPUT
-
-      - name: Upload artifact — Linux
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-appimage
-          path: ${{ steps.rename.outputs.path }}
-          retention-days: 1
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # JOB 3 — Publicar GitHub Release
-  # Só executa quando Windows E Linux concluem com sucesso.
+  # JOB 2 — Publicar GitHub Release
   # ═══════════════════════════════════════════════════════════════════════════
   publish-release:
     name: Publicar Release
-    needs: [metadata, build-windows, build-linux]
+    needs: [metadata, build-windows]
     runs-on: ubuntu-22.04
 
     steps:
@@ -362,34 +224,26 @@ jobs:
           name: windows-installer
           path: ./dist
 
-      - name: Download — Linux AppImage
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-appimage
-          path: ./dist
-
-      - name: Verificar assets
+      - name: Verificar asset
         run: |
           echo "Assets prontos:"
           ls -lh ./dist/
           [ -f "dist/$ASSET_WINDOWS" ] || { echo "::error::$ASSET_WINDOWS ausente!"; exit 1; }
-          [ -f "dist/$ASSET_LINUX" ]   || { echo "::error::$ASSET_LINUX ausente!";   exit 1; }
 
       # ─────────────────────────────────────────────────────
-      # Changelog automático via git-cliff
-      # Lê cliff.toml na raiz do repositório
+      # Changelog via git-cliff (binário direto, sem Docker)
       # ─────────────────────────────────────────────────────
+      - name: Instalar git-cliff
+        run: |
+          curl -fsSL https://github.com/orhun/git-cliff/releases/download/v2.4.0/git-cliff-x86_64-unknown-linux-gnu.tar.gz \
+            | tar xz --strip-components=1 -C /tmp git-cliff-x86_64-unknown-linux-gnu/git-cliff
+          sudo mv /tmp/git-cliff /usr/local/bin/git-cliff
+
       - name: Gerar notas da release
-        uses: orhun/git-cliff-action@v3
-        with:
-          config: cliff.toml
-          args: --latest --strip header
+        run: git-cliff --config cliff.toml --latest --strip header > RELEASE_NOTES.md || true
         env:
-          OUTPUT: RELEASE_NOTES.md
           GITHUB_REPO: ${{ github.repository }}
-        continue-on-error: true
 
-      # Fallback se o cliff não produzir conteúdo (ex: primeira tag ou commits não convencionais)
       - name: Garantir conteúdo das notas
         run: |
           if [ ! -s "RELEASE_NOTES.md" ]; then
@@ -398,17 +252,12 @@ jobs:
             echo "Consulte o [histórico de commits](https://github.com/${{ github.repository }}/commits/${{ needs.metadata.outputs.tag }}) para detalhes das mudanças." >> RELEASE_NOTES.md
           fi
 
-      # ─────────────────────────────────────────────────────
-      # Calcula SHA256 e monta o corpo final da release
-      # ─────────────────────────────────────────────────────
       - name: Montar corpo final da release
         run: |
           cd dist
-          sha256sum "$ASSET_WINDOWS" "$ASSET_LINUX" > SHA256SUMS.txt
+          sha256sum "$ASSET_WINDOWS" > SHA256SUMS.txt
           cd ..
 
-          TAG="${{ needs.metadata.outputs.tag }}"
-          VERSION="${{ needs.metadata.outputs.version }}"
           REPO="${{ github.repository }}"
 
           cat >> RELEASE_NOTES.md << BODY
@@ -420,12 +269,10 @@ jobs:
           | Plataforma | Arquivo |
           |---|---|
           | Windows 10/11 (64-bit) | \`$ASSET_WINDOWS\` |
-          | Linux x64 | \`$ASSET_LINUX\` |
 
-          **Links permanentes (última versão estável):**
+          **Link permanente (última versão estável):**
           \`\`\`
-          Windows: https://github.com/$REPO/releases/latest/download/$ASSET_WINDOWS
-          Linux:   https://github.com/$REPO/releases/latest/download/$ASSET_LINUX
+          https://github.com/$REPO/releases/latest/download/$ASSET_WINDOWS
           \`\`\`
 
           ## ⚠️ Windows SmartScreen
@@ -433,7 +280,7 @@ jobs:
           O instalador é **assinado digitalmente**. Para instalar, clique em **"Mais informações" → "Executar assim mesmo"**.
 
           ## 🐛 Problemas ou dúvidas?
-          Abra uma [issue](https://github.com/$REPO/issues) com a descrição do problema e sua versão do sistema operacional.
+          Abra uma [issue](https://github.com/$REPO/issues) com a descrição do problema e sua versão do Windows.
 
           ## 🔐 Verificação de integridade (SHA256)
           \`\`\`
@@ -441,10 +288,6 @@ jobs:
           \`\`\`
           BODY
 
-      # ─────────────────────────────────────────────────────
-      # Criar a GitHub Release
-      # make_latest=true apenas para stable — beta não afeta /latest
-      # ─────────────────────────────────────────────────────
       - name: Criar GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -458,14 +301,13 @@ jobs:
           make_latest: ${{ needs.metadata.outputs.is_stable == 'true' }}
           files: |
             dist/${{ env.ASSET_WINDOWS }}
-            dist/${{ env.ASSET_LINUX }}
             dist/SHA256SUMS.txt
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # JOB 4 — Sumário final no GitHub Actions
+  # JOB 3 — Sumário final no GitHub Actions
   # ═══════════════════════════════════════════════════════════════════════════
   summary:
     name: Sumário
@@ -477,7 +319,6 @@ jobs:
       - name: Escrever sumário
         run: |
           TAG="${{ needs.metadata.outputs.tag }}"
-          VERSION="${{ needs.metadata.outputs.version }}"
           CANAL="${{ needs.metadata.outputs.canal }}"
           REPO="${{ github.repository }}"
           STATUS="${{ needs.publish-release.result }}"
@@ -492,9 +333,8 @@ jobs:
           echo "| | |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Versão | \`$TAG\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Canal | $CANAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| Canal  | $CANAL |" >> $GITHUB_STEP_SUMMARY
           echo "| Release | [ver no GitHub](https://github.com/$REPO/releases/tag/$TAG) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Links permanentes:**" >> $GITHUB_STEP_SUMMARY
+          echo "**Link permanente:**" >> $GITHUB_STEP_SUMMARY
           echo "- [Bloquin-Setup-Windows.exe](https://github.com/$REPO/releases/latest/download/Bloquin-Setup-Windows.exe)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Bloquin-Linux.AppImage](https://github.com/$REPO/releases/latest/download/Bloquin-Linux.AppImage)" >> $GITHUB_STEP_SUMMARY
