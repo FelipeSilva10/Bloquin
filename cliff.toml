@@ -1,43 +1,71 @@
+# -----------------------------------------------------------------------------
+# cliff.toml — Configuração do git-cliff
+#
+# Geração automática de CHANGELOG para o Bloquin IDE.
+#
+# Uso local:
+#   REPO_URL=https://github.com/FelipeSilva10/Bloquin git-cliff --latest
+#
+# Uso no GitHub Actions:
+#   git-cliff --latest --strip header
+# -----------------------------------------------------------------------------
+
 [changelog]
 header = """
-# Changelog — Bloquin IDE\n
+# Changelog — Bloquin IDE
+
+Todas as mudanças relevantes deste projeto serão documentadas aqui.
+
+Formato baseado em Keep a Changelog:
+https://keepachangelog.com/pt-BR/1.0.0/
+
+Versionamento:
+https://semver.org/lang/pt-BR/
 """
+
 body = """
-{% if version %}\
+{% if version %}
 ## [{{ version | trim_start_matches(pat="v") }}] — {{ timestamp | date(format="%d/%m/%Y") }}
-{% else %}\
-## [Não lançado]
-{% endif %}\
+{% else %}
+## [Unreleased]
+{% endif %}
+
 {% for group, commits in commits | group_by(attribute="group") %}
-### {{ group | upper_first }}
-{% for commit in commits %}\
-- {% if commit.breaking %}⚠️ **BREAKING:** {% endif %}{{ commit.message | upper_first }} \
-([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/SEU_USUARIO/bloquin-ide/commit/{{ commit.id }}))
-{% endfor %}\
-{% endfor %}\n
+### {{ group }}
+
+{% for commit in commits %}
+- {% if commit.breaking %}BREAKING: {% endif %}{{ commit.message }} \
+([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/FelipeSilva10/Bloquin/commit/{{ commit.id }}))
+{% endfor %}
+
+{% endfor %}
 """
-trim = true
+
 footer = "<!-- gerado automaticamente pelo git-cliff -->"
+trim = true
 
 [git]
 conventional_commits = true
 filter_unconventional = false
 split_commits = false
+filter_commits = false
+
 commit_parsers = [
-  { message = "^feat",              group = "✨ Novas funcionalidades" },
-  { message = "^fix",               group = "🐛 Correções de bugs" },
-  { message = "^perf",              group = "⚡ Performance" },
-  { message = "^refactor",          group = "♻️ Refatorações" },
-  { message = "^docs",              group = "📚 Documentação" },
-  { message = "^style",             group = "🎨 Interface e visual" },
-  { message = "^test",              group = "🧪 Testes" },
-  { message = "^chore|^ci|^build",  group = "🔧 Manutenção" },
-  { message = "^revert",            group = "⏪ Revertidos" },
-  # Ignora commits gerados automaticamente pelo CI
+  { message = "^feat",              group = "Novas funcionalidades" },
+  { message = "^fix",               group = "Correções" },
+  { message = "^perf",              group = "Performance" },
+  { message = "^refactor",          group = "Refatoração" },
+  { message = "^docs",              group = "Documentação" },
+  { message = "^style",             group = "Interface" },
+  { message = "^test",              group = "Testes" },
+  { message = "^chore|^ci|^build",  group = "Manutenção" },
+  { message = "^revert",            group = "Revertidos" },
+
+  # Ignora commits automáticos
   { message = "^chore\\(release\\)", skip = true },
   { message = "^Merge",              skip = true },
 ]
-filter_commits = false
+
 tag_pattern = "v[0-9]*"
 topo_order = false
 sort_commits = "oldest"

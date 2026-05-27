@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: 💬 Perguntas e Discussões
+    url: https://github.com/FelipeSilva10/Bloquin/discussions
+    about: Para dúvidas de uso, ideias gerais ou bate-papo sobre o projeto, use as Discussions.
+  - name: 🔒 Vulnerabilidade de segurança
+    url: https://github.com/FelipeSilva10/Bloquin/security/advisories/new
+    about: Para reportar falhas de segurança de forma privada, use os Security Advisories do GitHub.

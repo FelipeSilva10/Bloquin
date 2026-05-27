@@ -31,7 +31,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     setError('');
 
     // 1. Resolve e-mail (alunos digitam só o nome de usuário)
-    const domain        = import.meta.env.VITE_EMAIL_DOMAIN ?? 'oficina.com';
+    const domain        = import.meta.env.VITE_EMAIL_DOMAIN ?? 'bloquin.com';
     const resolvedEmail = email.includes('@')
       ? email.trim()
       : `${email.trim()}@${domain}`;

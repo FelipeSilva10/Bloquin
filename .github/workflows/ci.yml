@@ -1,6 +1,6 @@
 name: CI — Validação
 
-# Roda em pushes normais e PRs.
+# Roda em pushes e PRs para main e dev.
 # NUNCA roda em tags — isso é responsabilidade do release.yml.
 on:
   push:
@@ -43,9 +43,7 @@ jobs:
         run: npm run lint --if-present
 
   # ─────────────────────────────────────────────────────────
-  # Verificação de compilação Rust (sem bundle, sem arduino-cli)
-  # O build.rs é trivial (só chama tauri_build::build()),
-  # então cargo check funciona sem os recursos em resources/.
+  # Verificação de compilação Rust
   # ─────────────────────────────────────────────────────────
   rust-check:
     name: Rust Check
@@ -71,8 +69,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri -> target"
-          # Salva cache apenas em push para main (evita gastar storage em PRs)
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - name: cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: cargo clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+        continue-on-error: true  # Avisa mas não bloqueia por ora; remover quando limpar warnings

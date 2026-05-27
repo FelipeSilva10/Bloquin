@@ -1,0 +1,95 @@
+name: Relatório de Bug
+description: Encontrou algo que não funciona? Nos conte!
+labels: ["bug", "precisa de triagem"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por reportar! Preencha o máximo de informações que puder para ajudar na investigação.
+        Antes de continuar, verifique se já existe uma [issue aberta](https://github.com/FelipeSilva10/Bloquin/issues) com o mesmo problema.
+
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do Bloquin
+      description: "Encontre em: barra de título da janela ou menu Ajuda → Sobre"
+      placeholder: "ex: v1.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sistema_operacional
+    attributes:
+      label: Sistema operacional
+      options:
+        - Windows 10
+        - Windows 11
+        - Linux (AppImage)
+        - Outro
+    validations:
+      required: true
+
+  - type: input
+    id: so_versao
+    attributes:
+      label: Versão do sistema operacional
+      placeholder: "ex: Windows 11 23H2 / Ubuntu 22.04"
+
+  - type: dropdown
+    id: placa
+    attributes:
+      label: Placa utilizada
+      options:
+        - Arduino Uno
+        - Arduino Nano
+        - ESP32 DevKit V1
+        - Nenhuma (bug de interface)
+        - Outra
+    validations:
+      required: true
+
+  - type: textarea
+    id: descricao
+    attributes:
+      label: Descrição do problema
+      description: O que aconteceu? Seja específico.
+      placeholder: "Ao clicar em 'Enviar para placa', o app trava e a janela fecha sozinha."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducao
+    attributes:
+      label: Passos para reproduzir
+      description: Liste os passos exatos para reproduzir o bug.
+      placeholder: |
+        1. Abra o Bloquin
+        2. Adicione um bloco 'piscar LED'
+        3. Conecte um Arduino Uno na porta USB
+        4. Clique em 'Enviar para placa'
+        5. O app fecha inesperadamente
+    validations:
+      required: true
+
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Comportamento esperado
+      placeholder: "O código deveria ser compilado e enviado para a placa com sucesso."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs de erro
+      description: "Cole aqui qualquer mensagem de erro. No Linux, rode via terminal para ver a saída. No Windows, verifique o log em Ajuda → Ver logs."
+      render: shell
+
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto adicional
+      description: Capturas de tela, GIFs, ou qualquer outra informação útil.

@@ -1,28 +1,30 @@
-# Logs
-logs
+# ── Ambiente local ──────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Node / Vite ──────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+
+# ── Rust / Tauri ─────────────────────────────────────────────────────────────
+src-tauri/target/
+# arduino-cli é baixado pelo CI; não commitar binários
+src-tauri/resources/arduino-cli
+src-tauri/resources/arduino-cli.exe
+
+# ── IDEs ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-.env
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# ── Sistema ──────────────────────────────────────────────────────────────────
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-.start-bloquin.sh
+Thumbs.db

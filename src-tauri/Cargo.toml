@@ -1,8 +1,10 @@
 [package]
 name = "bloquin"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Ambiente visual de programação para Arduino e ESP32 voltado para o ensino."
+authors = ["Felipe da Conceição Silva"]
+license = "MIT"
+repository = "https://github.com/FelipeSilva10/Bloquin"
 edition = "2021"
 
 [lib]
@@ -13,9 +15,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2.0.0-rc", features = ["webview-data-url"] }
-tauri-plugin-shell = "2.0.0-rc"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serialport = "4.3.0"
-urlencoding = "2.1"          # ← NOVO: codifica os tokens na query string
+tauri             = { version = "2", features = ["webview-data-url"] }
+tauri-plugin-shell = "2"
+serde             = { version = "1", features = ["derive"] }
+serde_json        = "1"
+serialport        = "4.3.0"
+urlencoding       = "2.1"

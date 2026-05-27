@@ -1,0 +1,66 @@
+name: Sugestão de funcionalidade
+description: Tem uma ideia para melhorar o Bloquin?
+labels: ["melhoria", "precisa de triagem"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Adoramos sugestões! Antes de continuar, verifique se já existe uma [issue ou discussion](https://github.com/FelipeSilva10/Bloquin/discussions) semelhante.
+        Para mudanças grandes, considere abrir uma [Discussion](https://github.com/FelipeSilva10/Bloquin/discussions) primeiro para alinhar com a equipe.
+
+  - type: dropdown
+    id: categoria
+    attributes:
+      label: Categoria
+      options:
+        - Novo bloco / categoria de blocos
+        - Interface / usabilidade
+        - Dashboard do professor
+        - Compilação / upload
+        - Monitor serial
+        - Suporte a nova placa
+        - Performance
+        - Documentação
+        - Outro
+    validations:
+      required: true
+
+  - type: textarea
+    id: problema
+    attributes:
+      label: Qual problema essa funcionalidade resolve?
+      description: Descreva a situação atual e por que ela é limitante.
+      placeholder: "Quando quero usar um sensor de temperatura, preciso escrever código C++ diretamente porque não existe um bloco para isso."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solucao
+    attributes:
+      label: Solução que você imagina
+      description: Descreva como essa funcionalidade deveria funcionar.
+      placeholder: "Uma categoria 'Sensores de temperatura' com blocos para DHT11, DHT22 e DS18B20, com leitura de temperatura e umidade."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas consideradas
+      description: Já tentou contornar o problema de outra forma?
+
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto educacional
+      description: Como essa funcionalidade ajudaria no ensino? Para qual faixa etária ou nível?
+      placeholder: "Usaria com alunos do 8º ano em aulas de ciências, para medir temperatura ambiente."
+
+  - type: checkboxes
+    id: contribuicao
+    attributes:
+      label: Disponibilidade
+      options:
+        - label: Estou disposto(a) a implementar essa funcionalidade com orientação
