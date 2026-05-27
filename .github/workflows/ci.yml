@@ -1,0 +1,78 @@
+name: CI — Validação
+
+# Roda em pushes normais e PRs.
+# NUNCA roda em tags — isso é responsabilidade do release.yml.
+on:
+  push:
+    branches: [main, dev]
+    tags-ignore: ["v*"]
+  pull_request:
+    branches: [main, dev]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ─────────────────────────────────────────────────────────
+  # Lint e verificação de tipos (falha rápido, sem compilar Rust)
+  # ─────────────────────────────────────────────────────────
+  lint:
+    name: Lint e Tipos
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: TypeScript — verificação de tipos
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint --if-present
+
+  # ─────────────────────────────────────────────────────────
+  # Verificação de compilação Rust (sem bundle, sem arduino-cli)
+  # O build.rs é trivial (só chama tauri_build::build()),
+  # então cargo check funciona sem os recursos em resources/.
+  # ─────────────────────────────────────────────────────────
+  rust-check:
+    name: Rust Check
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependências do sistema (WebKit2GTK)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          # Salva cache apenas em push para main (evita gastar storage em PRs)
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      - name: cargo check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
