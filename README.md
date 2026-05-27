@@ -47,14 +47,11 @@ Desenvolvido e mantido por Felipe da Conceição Silva (https://www.linkedin.com
 | **Windows 10/11** (64-bit) | [Bloquin-Setup-Windows.exe](https://github.com/FelipeSilva10/Bloquin/releases/latest/download/Bloquin-Setup-Windows.exe) |
 
 > **Windows SmartScreen:** o instalador é assinado digitalmente. Se aparecer aviso, clique em **"Mais informações" → "Executar assim mesmo"**.
->
-> **Linux:** após baixar, torne o arquivo executável: `chmod +x Bloquin-Linux.AppImage && ./Bloquin-Linux.AppImage`
 
 ### Links permanentes (sempre apontam para a última versão estável)
 
 ```
 Windows: https://github.com/FelipeSilva10/Bloquin/releases/latest/download/Bloquin-Setup-Windows.exe
-Linux:   https://github.com/FelipeSilva10/Bloquin/releases/latest/download/Bloquin-Linux.AppImage
 ```
 
 ---
@@ -78,7 +75,6 @@ cd bloquin
 npm install
 
 # 3. Copie o arduino-cli para src-tauri/resources/
-#    Linux:   https://github.com/arduino/arduino-cli/releases (Linux_64bit.tar.gz)
 #    Windows: https://github.com/arduino/arduino-cli/releases (Windows_64bit.zip)
 #    Renomeie o binário para arduino-cli (ou arduino-cli.exe no Windows)
 
