@@ -29,10 +29,14 @@ function clearLocalToken() {
 export async function registerSession(userId: string): Promise<void> {
   const token = uuidv4();
   setLocalToken(token);
-  await supabase.from("user_sessions").upsert(
+  const { error } = await supabase.from("user_sessions").upsert(
     { user_id: userId, session_token: token, updated_at: new Date().toISOString() },
     { onConflict: "user_id" }
   );
+  if (error) {
+    clearLocalToken();
+    throw error;
+  }
 }
 
 // ─── Verificação de sessão ativa ──────────────────────────────────────────────
@@ -86,7 +90,8 @@ export async function isSessionValid(userId: string): Promise<boolean> {
 
 export async function clearSession(userId: string): Promise<void> {
   clearLocalToken();
-  await supabase.from("user_sessions").delete().eq("user_id", userId);
+  const { error } = await supabase.from("user_sessions").delete().eq("user_id", userId);
+  if (error) throw error;
 }
 
 // ─── Watcher de sessão roubada ────────────────────────────────────────────────

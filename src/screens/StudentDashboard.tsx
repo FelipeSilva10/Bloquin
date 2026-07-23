@@ -1,10 +1,9 @@
 // src/screens/StudentDashboard.tsx
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import logoSimples from '../assets/LogoSimples.png';
-import { BOARD_UNSET } from '../blockly/blocks';
+import logoSimples from '../icons/LogoSimples.png';
+import { BOARD_UNSET } from '../blockly/boards';
 import { ProjectService } from '../services/projectService';
-import { watchSession, stopWatchingSession } from "../services/sessionService";
 import ProjectModal from "../components/modals/ProjectModal";
 
 interface StudentDashboardProps {
@@ -23,6 +22,8 @@ export interface Projeto {
 export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps) {
   const [projects, setProjects] = useState<Projeto[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
 
   // Modal de criação
   const [showModal, setShowModal]         = useState(false);
@@ -37,44 +38,28 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
   // Modal de detalhes / edição de meta
   const [selectedProject, setSelectedProject] = useState<Projeto | null>(null);
 
-  // Sessão roubada
-  const [sessionKilled, setSessionKilled] = useState(false);
-
   // ─── Carrega projetos ──────────────────────────────────────────────────────
   const fetchProjects = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw userError ?? new Error('Usuário não encontrado.');
 
-    const { data } = await supabase
-      .from('projetos')
-      .select('id, nome, descricao, target_board, updated_at')
-      .eq('dono_id', user.id)
-      .order('updated_at', { ascending: false });
-
-    setLoading(false);
-    if (data) setProjects(data);
+      const { data, error } = await supabase
+        .from('projetos')
+        .select('id, nome, descricao, target_board, updated_at')
+        .eq('dono_id', user.id)
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      setProjects(data ?? []);
+    } catch (error) {
+      console.error('Erro ao carregar projetos:', error);
+      setLoadError('Não consegui carregar seus projetos. Verifique a conexão e tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchProjects(); }, []);
-
-  // ─── Watcher de sessão roubada ─────────────────────────────────────────────
-  useEffect(() => {
-    let isMounted = true;
-
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user && isMounted) {
-        watchSession(data.user.id, async () => {
-          await supabase.auth.signOut();
-          setSessionKilled(true);
-        });
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      stopWatchingSession();
-    };
-  }, []);
 
   // ─── Ações ────────────────────────────────────────────────────────────────
   const handleSaveProjectMeta = async (id: string, nome: string, descricao: string) => {
@@ -91,47 +76,44 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
     setIsCreating(true);
     setCreateError('');
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setIsCreating(false); return; }
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw userError ?? new Error('Sessão não encontrada.');
 
-    const { data: perfil } = await supabase
-      .from('perfis').select('turma_id').eq('id', user.id).single();
+      const { data: perfil, error: profileError } = await supabase
+        .from('perfis').select('turma_id').eq('id', user.id).single();
+      if (profileError) throw profileError;
+      if (!perfil?.turma_id) throw new Error('Seu perfil não está vinculado a uma turma. Fale com o professor.');
 
-    if (!perfil?.turma_id) {
-      setCreateError('Seu perfil não está vinculado a uma turma. Fale com o professor.');
-      setIsCreating(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('projetos')
-      .insert([{
-        dono_id: user.id,
-        turma_id: perfil.turma_id,
-        nome: newProjectName.trim(),
-        target_board: BOARD_UNSET,
-      }])
-      .select('id, nome, descricao, target_board, updated_at')
-      .single();
-
-    setIsCreating(false);
-
-    if (!error && data) {
+      const { data, error } = await supabase
+        .from('projetos')
+        .insert([{ dono_id: user.id, turma_id: perfil.turma_id, nome: newProjectName.trim(), target_board: BOARD_UNSET }])
+        .select('id, nome, descricao, target_board, updated_at')
+        .single();
+      if (error || !data) throw error ?? new Error('Projeto não foi criado.');
       setProjects((prev) => [data, ...prev]);
       closeCreateModal();
       onOpenIde(data.id);
-    } else if (error) {
-      setCreateError(error.message);
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : 'Não consegui criar o projeto.');
+    } finally {
+      setIsCreating(false);
     }
   };
 
   const confirmDeleteProject = async () => {
     if (!projectToDelete || isDeleting) return;
     setIsDeleting(true);
-    await ProjectService.deleteProject(projectToDelete.id);
-    setProjects((prev) => prev.filter((p) => p.id !== projectToDelete.id));
-    setProjectToDelete(null);
-    setIsDeleting(false);
+    setDeleteError('');
+    try {
+      await ProjectService.deleteProject(projectToDelete.id);
+      setProjects((prev) => prev.filter((p) => p.id !== projectToDelete.id));
+      setProjectToDelete(null);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Não consegui excluir o projeto.');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const closeCreateModal = () => {
@@ -181,6 +163,11 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
         <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 700 }}>
           Carregando seus projetos...
         </p>
+      ) : loadError ? (
+        <div className="empty-state-panel" role="alert">
+          <p>{loadError}</p>
+          <button type="button" className="btn-secondary" onClick={() => { setLoading(true); setLoadError(''); void fetchProjects(); }}>Tentar novamente</button>
+        </div>
       ) : projects.length === 0 ? (
         <div style={{
           backgroundColor: 'var(--white)', padding: '40px', borderRadius: '16px',
@@ -212,8 +199,10 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
                 </h3>
                 <button
                   className="btn-icon"
+                  type="button"
                   onClick={() => setSelectedProject(proj)}
                   title="Editar informações do projeto"
+                  aria-label={`Editar informações de ${proj.nome}`}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}
                 >
                   ✏️
@@ -257,6 +246,9 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
       {showModal && (
         <div className="modal-overlay">
           <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-project-title"
             onSubmit={handleCreateProject}
             style={{
               backgroundColor: 'var(--white)', padding: '30px',
@@ -264,7 +256,7 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
               textAlign: 'center', boxShadow: 'var(--shadow-xl)',
             }}
           >
-            <h2 style={{ color: 'var(--dark)', marginBottom: '10px', fontWeight: 900 }}>
+            <h2 id="new-project-title" style={{ color: 'var(--dark)', marginBottom: '10px', fontWeight: 900 }}>
               Novo Projeto
             </h2>
             <p style={{ color: 'var(--text-muted)', marginBottom: '20px', fontWeight: 600 }}>
@@ -286,7 +278,7 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
             />
 
             {createError && (
-              <p style={{ color: 'var(--danger)', fontSize: '0.9rem', marginBottom: '12px', fontWeight: 700 }}>
+              <p role="alert" style={{ color: 'var(--danger)', fontSize: '0.9rem', marginBottom: '12px', fontWeight: 700 }}>
                 {createError}
               </p>
             )}
@@ -306,12 +298,12 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
       {/* MODAL: EXCLUIR PROJETO */}
       {projectToDelete && (
         <div className="modal-overlay">
-          <div style={{
+          <div role="alertdialog" aria-modal="true" aria-labelledby="delete-project-title" style={{
             backgroundColor: 'var(--white)', padding: '35px',
             borderRadius: '24px', width: '90%', maxWidth: '400px',
             textAlign: 'center', boxShadow: 'var(--shadow-xl)',
           }}>
-            <h2 style={{ color: 'var(--dark)', marginBottom: '10px', fontWeight: 900 }}>
+            <h2 id="delete-project-title" style={{ color: 'var(--dark)', marginBottom: '10px', fontWeight: 900 }}>
               Atenção!
             </h2>
             <p style={{ color: 'var(--text-muted)', marginBottom: '25px', fontSize: '1.1rem', fontWeight: 600 }}>
@@ -320,10 +312,11 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
               {' '}Isso não pode ser desfeito.
             </p>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button className="btn-text" style={{ flex: 1 }} onClick={() => setProjectToDelete(null)} disabled={isDeleting}>
+              {deleteError && <p role="alert" className="form-error">{deleteError}</p>}
+              <button type="button" className="btn-text" style={{ flex: 1 }} onClick={() => { setDeleteError(''); setProjectToDelete(null); }} disabled={isDeleting}>
                 Cancelar
               </button>
-              <button className="btn-danger" style={{ flex: 1 }} onClick={confirmDeleteProject} disabled={isDeleting}>
+              <button type="button" className="btn-danger" style={{ flex: 1 }} onClick={confirmDeleteProject} disabled={isDeleting}>
                 {isDeleting ? 'Apagando...' : 'Sim, Apagar'}
               </button>
             </div>
@@ -347,31 +340,6 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
           }}
           onClose={() => setSelectedProject(null)}
         />
-      )}
-
-      {/* MODAL: AVISO DE SESSÃO ENCERRADA */}
-      {sessionKilled && (
-        <div className="modal-overlay" role="alertdialog" aria-modal="true">
-          <div style={{
-            backgroundColor: 'var(--white)', padding: '35px',
-            borderRadius: '24px', width: '90%', maxWidth: '400px',
-            textAlign: 'center', boxShadow: 'var(--shadow-xl)',
-          }}>
-            <h2 style={{ color: 'var(--danger)', marginBottom: '10px', fontWeight: 900 }}>
-              Sessão Encerrada
-            </h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '25px', fontSize: '1.1rem', fontWeight: 600 }}>
-              Sua conta foi acessada em outro dispositivo. Por segurança, esta sessão foi desconectada.
-            </p>
-            <button
-              className="btn-primary"
-              style={{ width: '100%', padding: '14px', fontSize: '1.1rem' }}
-              onClick={() => { setSessionKilled(false); onLogout(); }}
-            >
-              Ir para o login
-            </button>
-          </div>
-        </div>
       )}
 
     </div>

@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import logoCompleta from '../assets/LogoCompleta.png';
 import TutorialModal from "../components/modals/TutorialModal";
 import GuestInfoModal from "../components/modals/GuestInfoModal";
-import { registerSession } from "../services/sessionService";
+import { clearSession, registerSession } from "../services/sessionService";
 
 interface LoginScreenProps {
   onLogin: (role: 'student' | 'teacher' | 'visitor') => void;
@@ -36,39 +36,45 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       ? email.trim()
       : `${email.trim()}@${domain}`;
 
-    // 2. Autentica no Supabase
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email: resolvedEmail,
-      password,
-    });
+    let authenticatedUserId: string | null = null;
+    try {
+      // 2. Autentica no Supabase
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: resolvedEmail,
+        password,
+      });
 
-    if (authError || !authData.user) {
-      setError('Usuário ou senha incorretos.');
+      if (authError || !authData.user) {
+        setError('Usuário ou senha incorretos.');
+        return;
+      }
+      authenticatedUserId = authData.user.id;
+
+      // 3. Registra a nova sessão — invalida qualquer sessão anterior via upsert.
+      await registerSession(authenticatedUserId);
+
+      // 4. Busca o perfil para determinar o papel
+      const { data: perfil, error: perfilError } = await supabase
+        .from('perfis')
+        .select('role')
+        .eq('id', authenticatedUserId)
+        .single();
+
+      if (perfilError || !perfil) throw new Error('PROFILE_NOT_FOUND');
+
+      if (perfil.role === 'teacher')      onLogin('teacher');
+      else if (perfil.role === 'student') onLogin('student');
+      else                                onLogin('visitor');
+    } catch (loginError) {
+      if (authenticatedUserId) {
+        await Promise.allSettled([clearSession(authenticatedUserId), supabase.auth.signOut()]);
+      }
+      setError(loginError instanceof Error && loginError.message === 'PROFILE_NOT_FOUND'
+        ? 'Erro ao carregar seu perfil. Contate o suporte.'
+        : 'Não foi possível concluir o login. Verifique sua conexão e tente novamente.');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    // 3. Registra a nova sessão — invalida qualquer sessão anterior via upsert,
-    //    o que dispara o watchSession no outro dispositivo e o desconecta.
-    await registerSession(authData.user.id);
-
-    // 4. Busca o perfil para determinar o papel
-    const { data: perfil, error: perfilError } = await supabase
-      .from('perfis')
-      .select('role')
-      .eq('id', authData.user.id)
-      .single();
-
-    setLoading(false);
-
-    if (perfilError || !perfil) {
-      setError('Erro ao carregar seu perfil. Contate o suporte.');
-      return;
-    }
-
-    if (perfil.role === 'teacher')      onLogin('teacher');
-    else if (perfil.role === 'student') onLogin('student');
-    else                                onLogin('visitor');
   };
 
   const handleEnterAsGuest = () => setShowGuestInfo(true);
@@ -84,7 +90,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         />
 
         <form className="login-form" onSubmit={handleLogin}>
+          <label className="sr-only" htmlFor="login-email">Usuário ou email</label>
           <input
+            id="login-email"
             type="text"
             placeholder="Usuário ou email"
             value={email}
@@ -93,7 +101,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           />
 
           <div className="password-wrapper">
+            <label className="sr-only" htmlFor="login-password">Senha</label>
             <input
+              id="login-password"
               type={showPassword ? 'text' : 'password'}
               placeholder="Senha"
               value={password}
@@ -105,6 +115,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               className="btn-toggle-password"
               onClick={() => setShowPassword((v) => !v)}
               title={showPassword ? 'Ocultar senha' : 'Ver senha'}
+              aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
               disabled={loading}
             >
               {showPassword ? '🙈' : '👀'}
@@ -112,7 +123,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </div>
 
           {error && (
-            <p style={{ color: 'var(--danger)', fontWeight: 700, margin: '8px 0', fontSize: '0.9rem', lineHeight: 1.5 }}>
+            <p role="alert" aria-live="assertive" style={{ color: 'var(--danger)', fontWeight: 700, margin: '8px 0', fontSize: '0.9rem', lineHeight: 1.5 }}>
               {error}
             </p>
           )}
@@ -121,6 +132,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             type="submit"
             className="btn-primary"
             disabled={loading}
+            aria-busy={loading}
             style={{ marginTop: '16px' }}
           >
             {loading ? 'Entrando...' : 'Entrar'}

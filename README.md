@@ -4,15 +4,17 @@
 
 # Bloquin IDE
 
+**Versão atual: 1.1.0**
+
 **Ambiente visual de programação para Arduino e ESP32 voltado para o ensino.**
 
 [![CI](https://github.com/FelipeSilva10/Bloquin/actions/workflows/ci.yml/badge.svg)](https://github.com/FelipeSilva10/Bloquin/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/FelipeSilva10/Bloquin?label=última%20versão&color=blue)](https://github.com/FelipeSilva10/Bloquin/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/FelipeSilva10/Bloquin/total?color=green)](https://github.com/FelipeSilva10/Bloquin/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)](https://github.com/FelipeSilva10/Bloquin/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](https://github.com/FelipeSilva10/Bloquin/releases/latest)
 
-[Baixar agora](#-download) · [Documentação](docs/) · [Reportar bug](https://github.com/FelipeSilva10/Bloquin/issues/new?template=bug_report.yml) · [Sugerir funcionalidade](https://github.com/FelipeSilva10/Bloquin/issues/new?template=feature_request.yml)
+[Baixar agora](#-download) · [Arquitetura](#arquitetura) · [Reportar bug](https://github.com/FelipeSilva10/Bloquin/issues/new?template=bug_report.yml) · [Sugerir funcionalidade](https://github.com/FelipeSilva10/Bloquin/issues/new?template=feature_request.yml)
 
 </div>
 
@@ -79,7 +81,7 @@ npm install
 #    Renomeie o binário para arduino-cli (ou arduino-cli.exe no Windows)
 
 # 4. Configure as variáveis de ambiente (Supabase)
-cp .env.example .env
+cp env.example .env
 # Edite .env com suas credenciais do Supabase
 
 # 5. Inicie o servidor de desenvolvimento

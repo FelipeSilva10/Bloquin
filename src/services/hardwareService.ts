@@ -26,6 +26,14 @@ export const HardwareService = {
     return await listen<string>('serial-message', (event) => callback(event.payload));
   },
 
+  async listenSerialError(callback: (payload: string) => void): Promise<UnlistenFn> {
+    return await listen<string>('serial-error', (event) => callback(event.payload));
+  },
+
+  async listenSerialReady(callback: () => void): Promise<UnlistenFn> {
+    return await listen('serial-ready', () => callback());
+  },
+
   async listenUploadResult(callback: (payload: string) => void): Promise<UnlistenFn> {
     return await listen<string>('upload-result', (event) => callback(event.payload));
   }

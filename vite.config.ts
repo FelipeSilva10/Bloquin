@@ -27,4 +27,15 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          "vendor-blockly": ["blockly"],
+          "vendor-data": ["@supabase/supabase-js", "lz-string"],
+        },
+      },
+    },
+  },
 }));

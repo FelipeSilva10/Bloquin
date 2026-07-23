@@ -9,7 +9,8 @@
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview-window",
-    "shell:allow-execute",
-    "shell:allow-open"
+    "dialog:default",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file"
   ]
 }

@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -9,129 +9,36 @@ import {
   useParams,
   useLocation,
 } from 'react-router-dom';
-import { listen }  from '@tauri-apps/api/event';
-import { invoke }  from '@tauri-apps/api/core';
 import { supabase } from './lib/supabase';
 import { useInactivity } from './hooks/useInactivity';
 import { LoginScreen }      from './screens/LoginScreen';
-import { IdeScreen }        from './screens/IdeScreen';
 import { TeacherDashboard } from './screens/TeacherDashboard';
 import { StudentDashboard } from './screens/StudentDashboard';
+import { VisitorDashboard } from './screens/VisitorDashboard';
+import { SetupProvider, useSetup } from './state/setupStore';
+import { MAX_OPEN_TABS, TabsProvider, useTabs } from './state/tabsStore';
+import { clearSession, stopWatchingSession, watchSession } from './services/sessionService';
+import { getFriendlyError } from './components/modals/ErrorModal';
+import { useModalA11y } from './hooks/useModalA11y';
 import './App.css';
+
+const IdeScreen = lazy(() => import('./screens/IdeScreen').then(({ IdeScreen: screen }) => ({ default: screen })));
 
 export type UserRole = 'guest' | 'student' | 'teacher' | 'visitor';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipos do setup
 // ─────────────────────────────────────────────────────────────────────────────
-type SetupStep = 'starting' | 'cli' | 'core' | 'done' | 'error';
-
-interface SetupState {
-  step:    SetupStep;
-  message: string;
-  percent: number;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tela de setup — bloqueia o app até tudo estar pronto
-// ─────────────────────────────────────────────────────────────────────────────
-function SetupGate({ children }: { children: React.ReactNode }) {
-  const [setup, setSetup] = useState<SetupState>({
-    step:    'starting',
-    message: 'Iniciando o Bloquin...',
-    percent: 0,
-  });
-
-  useEffect(() => {
-    const unlistenPromise = listen<SetupState>('setup-progress', (event) => {
-      setSetup(event.payload);
-    });
-
-    invoke('run_setup').catch((err) => {
-      setSetup({ step: 'error', message: `Erro inesperado ao iniciar: ${err}`, percent: 0 });
-    });
-
-    return () => { unlistenPromise.then((fn) => fn()); };
-  }, []);
-
-  if (setup.step === 'done') return <>{children}</>;
-
-  const isError = setup.step === 'error';
-
-  const handleRetry = () => {
-    setSetup({ step: 'starting', message: 'Tentando novamente...', percent: 0 });
-    invoke('run_setup').catch((err) => {
-      setSetup({ step: 'error', message: `Erro: ${err}`, percent: 0 });
-    });
-  };
-
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', height: '100vh', width: '100vw',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      fontFamily: "'Nunito', 'Segoe UI', sans-serif", color: '#ffffff',
-      padding: '32px', boxSizing: 'border-box',
-    }}>
-      <div style={{
-        background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(12px)',
-        borderRadius: '24px', padding: '48px 40px', maxWidth: '420px',
-        width: '100%', textAlign: 'center',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-        border: '1px solid rgba(255,255,255,0.2)',
-      }}>
-        <div style={{ fontSize: '56px', marginBottom: '16px', lineHeight: 1 }}>
-          {isError ? '⚠️' : setup.percent >= 70 ? '⚙️' : '🔧'}
-        </div>
-
-        <h2 style={{ fontSize: '1.6rem', fontWeight: 900, margin: '0 0 8px', letterSpacing: '-0.3px' }}>
-          {isError ? 'Algo deu errado...' : 'Preparando o Bloquin'}
-        </h2>
-
-        {!isError && (
-          <p style={{ fontSize: '0.9rem', opacity: 0.75, margin: '0 0 28px' }}>
-            Isso só acontece na primeira vez. Pode demorar alguns minutos.
-          </p>
-        )}
-
-        {!isError && (
-          <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: '100px', height: '10px', overflow: 'hidden', margin: '0 0 20px' }}>
-            <div style={{
-              height: '100%', borderRadius: '100px',
-              background: 'linear-gradient(90deg, #ffffff, #a8edea)',
-              width: `${setup.percent}%`,
-              transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
-            }} />
-          </div>
-        )}
-
-        <p style={{ fontSize: '0.95rem', fontWeight: isError ? 700 : 600, lineHeight: 1.6, opacity: isError ? 1 : 0.9, margin: '0', whiteSpace: 'pre-line', color: isError ? '#ffd6d6' : '#ffffff' }}>
-          {setup.message}
-        </p>
-
-        {!isError && (
-          <p style={{ fontSize: '0.8rem', opacity: 0.55, margin: '12px 0 0' }}>
-            {setup.percent}% concluído
-          </p>
-        )}
-
-        {isError && (
-          <button
-            onClick={handleRetry}
-            style={{ marginTop: '24px', padding: '12px 28px', background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.5)', borderRadius: '12px', color: '#ffffff', fontSize: '0.95rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            ↺ Tentar novamente
-          </button>
-        )}
-      </div>
-
-      {!isError && (
-        <p style={{ fontSize: '0.75rem', opacity: 0.45, marginTop: '24px' }}>
-          Não feche o aplicativo durante este processo
-        </p>
-      )}
-    </div>
-  );
+function SetupBanner() {
+  const setup = useSetup();
+  if (setup.status === 'ready') return null;
+  const message = setup.status === 'error' ? getFriendlyError(setup.message).message : setup.message;
+  return <div role={setup.status === 'error' ? 'alert' : 'status'} aria-live="polite" style={{ position: 'fixed', bottom: 12, left: 12, right: 12, zIndex: 99999, background: 'var(--dark)', color: 'white', padding: '10px 16px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, fontSize: 13 }}>
+    <span>{setup.status === 'error' ? '⚠️' : '🔧'}</span>
+    <span style={{ flex: 1 }}>{message}</span>
+    {setup.status !== 'error' && <small>{setup.percent}%</small>}
+    {setup.status === 'error' && <button className="btn-primary" onClick={setup.retry}>Tentar novamente</button>}
+  </div>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -212,34 +119,57 @@ function InactivityGuard({
 // Rotas do app
 // ─────────────────────────────────────────────────────────────────────────────
 function AppRoutes() {
+  // A entrada padrão deve passar pela tela de login; visitante é uma escolha explícita.
   const [role, setRole]     = useState<UserRole>('guest');
   const [userId, setUserId] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { openProject, activateTab, resetTabs } = useTabs();
 
   const handleLogin = (loggedRole: 'student' | 'teacher' | 'visitor') => {
+    resetTabs();
     setRole(loggedRole);
     // Captura o userId logo após o login para alimentar o InactivityGuard
     supabase.auth.getUser().then(({ data }) => {
       setUserId(data.user?.id ?? null);
-    });
-    if (loggedRole === 'visitor') navigate('/ide');
-    else navigate('/dashboard');
+    }).catch(() => setUserId(null));
+    navigate('/dashboard');
   };
 
   const handleLogout = () => {
+    const currentUserId = userId;
+    resetTabs();
     setRole('guest');
     setUserId(null);
     navigate('/');
+    void Promise.allSettled([
+      currentUserId ? clearSession(currentUserId) : Promise.resolve(),
+      supabase.auth.signOut(),
+    ]);
   };
 
+  useEffect(() => {
+    if (!userId) return;
+    watchSession(userId, handleLogout);
+    return stopWatchingSession;
+  }, [userId]);
+
   const handleBackToDashboard = () => {
-    if (role === 'visitor') { setRole('guest'); navigate('/'); }
-    else navigate('/dashboard');
+    activateTab('dashboard');
+    navigate('/dashboard');
   };
 
   const openIde = (projectId: string | undefined, viewOnly: boolean) => {
-    const path = projectId ? `/ide/${projectId}` : '/ide';
-    navigate(path, { state: { readOnly: viewOnly } });
+    const id = openProject({
+      projectId,
+      source: projectId ? 'remote' : 'memory',
+      title: projectId ? 'Projeto' : 'Novo projeto',
+      readOnly: viewOnly,
+    });
+    if (!id) {
+      window.alert(`Você atingiu o limite de ${MAX_OPEN_TABS} abas abertas. Feche uma aba para continuar.`);
+      return;
+    }
+    navigate('/ide', { state: { readOnly: viewOnly } });
   };
 
   return (
@@ -248,13 +178,14 @@ function AppRoutes() {
       userId={role !== 'guest' ? userId : null}
       onLogout={handleLogout}
     >
+      <WorkspaceTabs role={role} />
       <Routes>
         <Route
           path="/"
           element={
             role === 'guest'
               ? <LoginScreen onLogin={handleLogin} />
-              : <Navigate to={role === 'visitor' ? '/ide' : '/dashboard'} replace />
+              : <Navigate to="/dashboard" replace />
           }
         />
 
@@ -272,6 +203,11 @@ function AppRoutes() {
                 onLogout={handleLogout}
                 onOpenIde={(id) => openIde(id, false)}
               />
+            ) : role === 'visitor' ? (
+              <VisitorDashboard
+                onExitVisitor={handleLogout}
+                onOpenProject={() => navigate('/ide')}
+              />
             ) : (
               <Navigate to="/" replace />
             )
@@ -281,7 +217,7 @@ function AppRoutes() {
         <Route
           path="/ide/:projectId?"
           element={
-            role !== 'guest'
+              role !== 'guest'
               ? <IdeScreenWrapper role={role} onBack={handleBackToDashboard} />
               : <Navigate to="/" replace />
           }
@@ -300,14 +236,91 @@ function IdeScreenWrapper({
 }) {
   const { projectId } = useParams();
   const location = useLocation();
-  const readOnly = location.state?.readOnly || false;
+  const { activeTab } = useTabs();
+  const readOnly = activeTab.readOnly ?? location.state?.readOnly ?? false;
+  const currentProjectId = activeTab.projectId ?? projectId;
+  if (activeTab.type === 'dashboard') return <Navigate to="/dashboard" replace />;
   return (
-    <IdeScreen
-      role={role}
-      readOnly={readOnly}
-      onBack={onBack}
-      projectId={projectId}
-    />
+    <Suspense fallback={<div className="screen-loading" role="status" aria-live="polite">Carregando editor…</div>}>
+      <IdeScreen
+        key={activeTab.id}
+        role={role}
+        readOnly={readOnly}
+        onBack={onBack}
+        projectId={currentProjectId}
+        initialWorkspaceData={activeTab.workspaceData}
+        initialBoard={activeTab.board ?? null}
+      />
+    </Suspense>
+  );
+}
+
+function WorkspaceTabs({ role }: { role: UserRole }) {
+  const navigate = useNavigate();
+  const { tabs, activeTabId, activateTab, closeTab } = useTabs();
+  const [pendingClose, setPendingClose] = useState<{ id: string; title: string } | null>(null);
+
+  if (role === 'guest') return null;
+
+  const handleActivate = (id: string) => {
+    activateTab(id);
+    navigate(id === 'dashboard' ? '/dashboard' : '/ide');
+  };
+
+  const handleClose = (id: string, dirty: boolean) => {
+    if (dirty) {
+      const tab = tabs.find((item) => item.id === id);
+      setPendingClose(tab ? { id, title: tab.title } : null);
+      return;
+    }
+    closeTabAndNavigate(id);
+  };
+
+  const closeTabAndNavigate = (id: string) => {
+    const wasActive = id === activeTabId;
+    const index = tabs.findIndex((tab) => tab.id === id);
+    const fallbackId = tabs[Math.max(0, index - 1)]?.id ?? 'dashboard';
+    closeTab(id);
+    if (wasActive) navigate(fallbackId === 'dashboard' ? '/dashboard' : '/ide');
+  };
+
+  return (
+    <nav className="tab-bar" aria-label="Projetos abertos">
+      {tabs.map((tab) => (
+        <div className={`tab-item ${tab.id === activeTabId ? 'active' : ''}`} key={tab.id}>
+          <button type="button" className="tab-select" onClick={() => handleActivate(tab.id)}>
+            {tab.id === 'dashboard' ? '⌂ ' : tab.source === 'memory' ? '👤 ' : ''}
+            {tab.dirty ? '● ' : ''}{tab.title}
+          </button>
+          {tab.id !== 'dashboard' && (
+            <button type="button" className="tab-close" aria-label={`Fechar ${tab.title}`} onClick={() => handleClose(tab.id, tab.dirty)}>×</button>
+          )}
+        </div>
+      ))}
+      {pendingClose && (
+        <UnsavedTabDialog
+          title={pendingClose.title}
+          onCancel={() => setPendingClose(null)}
+          onConfirm={() => { const id = pendingClose.id; setPendingClose(null); closeTabAndNavigate(id); }}
+        />
+      )}
+    </nav>
+  );
+}
+
+function UnsavedTabDialog({ title, onCancel, onConfirm }: { title: string; onCancel: () => void; onConfirm: () => void }) {
+  const modalRef = useModalA11y<HTMLDivElement>(onCancel);
+  return (
+    <div className="modal-overlay" role="presentation">
+      <div ref={modalRef} className="modal-box unsaved-tab-dialog" role="alertdialog" aria-modal="true" aria-labelledby="unsaved-tab-title">
+        <h2 id="unsaved-tab-title">Alterações não salvas</h2>
+        <p>“{title}” possui alterações que serão perdidas se a aba for fechada.</p>
+        <div className="modal-actions">
+          <button type="button" className="btn-ghost" onClick={onCancel}>Continuar editando</button>
+          <button type="button" className="btn-danger" onClick={onConfirm}>Fechar sem salvar</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -316,10 +329,10 @@ function IdeScreenWrapper({
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
-    <SetupGate>
-      <Router>
-        <AppRoutes />
-      </Router>
-    </SetupGate>
+    <SetupProvider>
+      <TabsProvider>
+        <Router><SetupBanner /><AppRoutes /></Router>
+      </TabsProvider>
+    </SetupProvider>
   );
 }

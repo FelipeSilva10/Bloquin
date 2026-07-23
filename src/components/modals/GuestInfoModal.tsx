@@ -1,15 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface Props {
   onClose: () => void;
 }
 
 export default function GuestInfoModal({ onClose }: Props) {
-  const btnRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    btnRef.current?.focus();
-  }, []);
+  const modalRef = useModalA11y<HTMLDivElement>(onClose);
 
   return (
     <div
@@ -19,7 +15,7 @@ export default function GuestInfoModal({ onClose }: Props) {
       aria-labelledby="guest-title"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="modal-box guest-modal">
+      <div ref={modalRef} className="modal-box guest-modal">
         {/* Ícone */}
         <div className="guest-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -66,7 +62,7 @@ export default function GuestInfoModal({ onClose }: Props) {
           .
         </p>
 
-        <button ref={btnRef} className="btn-primary" onClick={onClose}>
+        <button type="button" data-autofocus className="btn-primary" onClick={onClose}>
           Entendido, continuar como visitante
         </button>
       </div>

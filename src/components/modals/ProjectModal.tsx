@@ -3,6 +3,7 @@
 // Usado no StudentDashboard e TeacherDashboard.
 
 import { useState, useEffect } from "react";
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 export interface Project {
   id: string;
@@ -36,6 +37,7 @@ export default function ProjectModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const modalRef = useModalA11y<HTMLDivElement>(onClose);
 
   // Reset ao trocar de projeto
   useEffect(() => {
@@ -82,8 +84,8 @@ export default function ProjectModal({
       aria-labelledby="proj-modal-title"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="modal-box project-modal">
-        <button className="modal-close-btn" aria-label="Fechar" onClick={onClose}>
+      <div ref={modalRef} className="modal-box project-modal">
+        <button type="button" className="modal-close-btn" aria-label="Fechar" onClick={onClose}>
           ✕
         </button>
 
@@ -159,6 +161,7 @@ export default function ProjectModal({
                   <span className="delete-confirm-text">Confirmar exclusão?</span>
                   <button
                     className="btn-danger"
+                    type="button"
                     onClick={() => {
                       onDelete(project);
                       onClose();
@@ -166,12 +169,13 @@ export default function ProjectModal({
                   >
                     Sim, excluir
                   </button>
-                  <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>
+                  <button type="button" className="btn-ghost" onClick={() => setConfirmDelete(false)}>
                     Cancelar
                   </button>
                 </>
               ) : (
                 <button
+                  type="button"
                   className="btn-ghost danger-ghost"
                   onClick={() => setConfirmDelete(true)}
                 >
@@ -182,11 +186,12 @@ export default function ProjectModal({
           )}
 
           <div className="main-actions">
-            <button className="btn-ghost" onClick={onClose}>
+            <button type="button" className="btn-ghost" onClick={onClose}>
               {readOnly ? "Fechar" : "Cancelar"}
             </button>
             {!readOnly && (
               <button
+                type="button"
                 className="btn-secondary"
                 onClick={handleSave}
                 disabled={saving || !isDirty}
@@ -194,7 +199,7 @@ export default function ProjectModal({
                 {saving ? "Salvando…" : "Salvar"}
               </button>
             )}
-            <button className="btn-primary" onClick={() => onOpen(project)}>
+            <button type="button" className="btn-primary" onClick={() => onOpen(project)}>
               Abrir na IDE →
             </button>
           </div>

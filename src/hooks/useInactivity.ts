@@ -1,7 +1,6 @@
 // src/hooks/useInactivity.ts
 import { useEffect, useRef, useState, useCallback } from "react";
-import { supabase } from "../lib/supabase";
-import { clearSession, heartbeat } from "../services/sessionService";
+import { heartbeat } from "../services/sessionService";
 
 const INACTIVITY_MS  = 10 * 60 * 1000; // 10 min → logout automático
 const WARNING_MS     =  8 * 60 * 1000; //  8 min → exibe aviso
@@ -44,14 +43,9 @@ export function useInactivity({ userId, onLogout }: UseInactivityOptions) {
     countdownTimer.current   = null;
   }, []);
 
-  const forceLogout = useCallback(async () => {
+  const forceLogout = useCallback(() => {
     clearTimers();
     setShowWarning(false);
-    const uid = userIdRef.current;
-    if (uid) {
-      await clearSession(uid);
-      await supabase.auth.signOut();
-    }
     onLogoutRef.current();
   }, [clearTimers]);
 

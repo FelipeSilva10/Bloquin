@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import logoSimples from '../assets/LogoSimples.png';
-import { BOARD_UNSET } from '../blockly/blocks';
+import logoSimples from '../icons/LogoSimples.png';
+import { BOARD_UNSET } from '../blockly/boards';
 import { invoke } from '@tauri-apps/api/core';
 import { ProjectService } from '../services/projectService';
 import { lockStudentScreen, unlockStudentScreen } from '../services/sessionService';
@@ -39,6 +39,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
 
   const [projectToDelete, setProjectToDelete] = useState<{ projeto: Projeto; origin: 'own' | 'student' } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // Estados do Admin
   const [adminLoading, setAdminLoading] = useState(false);
@@ -54,23 +55,36 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
   const [shareTargets, setShareTargets] = useState<string[]>([]);
   const [sharing, setSharing] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
+  const [pageError, setPageError] = useState('');
 
   useEffect(() => { fetchTurmas(); fetchOwnProjects(); }, []);
 
   const fetchTurmas = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase.from('turmas').select('id, nome, ano_letivo').eq('professor_id', user.id).order('created_at', { ascending: false });
-    setLoadingTurmas(false);
-    if (data) setTurmas(data);
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw userError ?? new Error('Sessão não encontrada.');
+      const { data, error } = await supabase.from('turmas').select('id, nome, ano_letivo').eq('professor_id', user.id).order('created_at', { ascending: false });
+      if (error) throw error;
+      setTurmas(data ?? []);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Não consegui carregar suas turmas.');
+    } finally {
+      setLoadingTurmas(false);
+    }
   };
 
   const fetchOwnProjects = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase.from('projetos').select('id, nome, descricao, target_board, updated_at').eq('dono_id', user.id).order('updated_at', { ascending: false });
-    setLoadingProjects(false);
-    if (data) setOwnProjects(data);
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw userError ?? new Error('Sessão não encontrada.');
+      const { data, error } = await supabase.from('projetos').select('id, nome, descricao, target_board, updated_at').eq('dono_id', user.id).order('updated_at', { ascending: false });
+      if (error) throw error;
+      setOwnProjects(data ?? []);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Não consegui carregar seus projetos.');
+    } finally {
+      setLoadingProjects(false);
+    }
   };
 
   const handleOpenAdminPanel = async () => {
@@ -81,7 +95,8 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
       if (error || !session) { setAdminError('Sessão não encontrada. Faça login novamente.'); return; }
       await invoke('open_admin_panel', { accessToken: session.access_token, refreshToken: session.refresh_token });
     } catch (err) {
-      setAdminError(`Erro ao abrir o painel: ${err}`);
+      console.error('Erro ao abrir o painel administrativo:', err);
+      setAdminError('Não consegui abrir o painel administrativo. Tente novamente.');
     } finally {
       setAdminLoading(false);
     }
@@ -91,24 +106,38 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
     setManagingTurma(turma);
     setAlunos([]);
     setViewingAlunoProjects(null);
-    const { data } = await supabase.from('perfis').select('id, nome').eq('turma_id', turma.id).eq('role', 'student').order('nome');
-    if (data) setAlunos(data);
+    try {
+      const { data, error } = await supabase.from('perfis').select('id, nome').eq('turma_id', turma.id).eq('role', 'student').order('nome');
+      if (error) throw error;
+      setAlunos(data ?? []);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Não consegui carregar os alunos desta turma.');
+    }
   };
 
   const viewAlunoProjects = async (aluno: Aluno) => {
-    const { data } = await supabase.from('projetos').select('id, nome, descricao, target_board, updated_at').eq('dono_id', aluno.id).order('updated_at', { ascending: false });
-    setViewingAlunoProjects({ aluno, projetos: data || [] });
+    try {
+      const { data, error } = await supabase.from('projetos').select('id, nome, descricao, target_board, updated_at').eq('dono_id', aluno.id).order('updated_at', { ascending: false });
+      if (error) throw error;
+      setViewingAlunoProjects({ aluno, projetos: data || [] });
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Não consegui carregar os projetos deste aluno.');
+    }
   };
 
   // ─── Funções de Intervenção e Compartilhamento (Patch) ───────────────────
   const handleIntervention = async (studentId: string) => {
-    const isLocked = lockedStudents.has(studentId);
-    if (isLocked) {
-      await unlockStudentScreen(studentId);
-      setLockedStudents((prev) => { const next = new Set(prev); next.delete(studentId); return next; });
-    } else {
-      await lockStudentScreen(studentId, "Seu Professor");
-      setLockedStudents((prev) => new Set([...prev, studentId]));
+    try {
+      const isLocked = lockedStudents.has(studentId);
+      if (isLocked) {
+        await unlockStudentScreen(studentId);
+        setLockedStudents((prev) => { const next = new Set(prev); next.delete(studentId); return next; });
+      } else {
+        await lockStudentScreen(studentId, "Seu Professor");
+        setLockedStudents((prev) => new Set([...prev, studentId]));
+      }
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Não consegui atualizar o estado da tela do aluno.');
     }
   };
 
@@ -128,7 +157,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
         setShareTargets([]);
       }, 1500);
     } catch (err) {
-      console.error("Erro ao compartilhar:", err);
+      setPageError(err instanceof Error ? err.message : 'Não consegui compartilhar o projeto.');
     } finally {
       setSharing(false);
     }
@@ -185,19 +214,23 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
   const confirmDeleteProject = async () => {
     if (!projectToDelete || isDeleting) return;
     setIsDeleting(true);
-    await ProjectService.deleteProject(projectToDelete.projeto.id);
-    
-    if (projectToDelete.origin === 'own') {
-      setOwnProjects(prev => prev.filter(p => p.id !== projectToDelete.projeto.id));
-    } else if (viewingAlunoProjects) {
-      setViewingAlunoProjects({
-        ...viewingAlunoProjects,
-        projetos: viewingAlunoProjects.projetos.filter(p => p.id !== projectToDelete.projeto.id)
-      });
+    setDeleteError('');
+    try {
+      await ProjectService.deleteProject(projectToDelete.projeto.id);
+      if (projectToDelete.origin === 'own') {
+        setOwnProjects(prev => prev.filter(p => p.id !== projectToDelete.projeto.id));
+      } else if (viewingAlunoProjects) {
+        setViewingAlunoProjects({
+          ...viewingAlunoProjects,
+          projetos: viewingAlunoProjects.projetos.filter(p => p.id !== projectToDelete.projeto.id)
+        });
+      }
+      setProjectToDelete(null);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Não consegui excluir o projeto.');
+    } finally {
+      setIsDeleting(false);
     }
-    
-    setProjectToDelete(null);
-    setIsDeleting(false);
   };
 
   const closeCreateModal = () => {
@@ -217,6 +250,13 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--background)', padding: '20px' }}>
+
+      {pageError && (
+        <div className="dashboard-feedback dashboard-feedback-error" role="alert">
+          <span>{pageError}</span>
+          <button type="button" aria-label="Fechar mensagem" onClick={() => setPageError('')}>×</button>
+        </div>
+      )}
 
       {/* TOPBAR */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', backgroundColor: 'var(--white)', padding: '15px 25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)' }}>
@@ -265,7 +305,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
                   {turmas.map(turma => (
-                    <div key={turma.id} onClick={() => openTurmaManager(turma)} style={{ backgroundColor: 'var(--white)', padding: '25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)', borderTop: '5px solid var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '8px', transition: 'transform 0.1s' }}>
+                    <div key={turma.id} role="button" tabIndex={0} onClick={() => openTurmaManager(turma)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openTurmaManager(turma); } }} style={{ backgroundColor: 'var(--white)', padding: '25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)', borderTop: '5px solid var(--primary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '8px', transition: 'transform 0.1s' }}>
                       <h3 style={{ color: 'var(--dark)', fontSize: '1.3rem', fontWeight: 800 }}>{turma.nome}</h3>
                       <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 600 }}>Ano letivo: {turma.ano_letivo}</p>
                       <p style={{ color: 'var(--primary)', fontSize: '0.95rem', fontWeight: 800, marginTop: 'auto' }}>Ver alunos e gerenciar →</p>
@@ -338,7 +378,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
                     <div key={proj.id} style={{ backgroundColor: 'var(--white)', padding: '25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)', borderTop: '5px solid var(--secondary)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <h3 style={{ color: 'var(--dark)', fontSize: '1.3rem', fontWeight: 800 }}>{proj.nome}</h3>
-                        <button className="btn-icon" onClick={() => setSelectedProject(proj)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>✏️</button>
+                        <button type="button" className="btn-icon" aria-label={`Editar informações de ${proj.nome}`} onClick={() => setSelectedProject(proj)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>✏️</button>
                       </div>
                       
                       {proj.descricao && <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>{proj.descricao}</p>}
@@ -373,7 +413,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
                 <div key={proj.id} style={{ backgroundColor: 'var(--white)', padding: '25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)', borderTop: '5px solid var(--primary)', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <h3 style={{ color: 'var(--dark)', marginBottom: '5px', fontSize: '1.4rem', fontWeight: 800 }}>{proj.nome}</h3>
-                    <button className="btn-icon" onClick={() => setSelectedProject(proj)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>✏️</button>
+                    <button type="button" className="btn-icon" aria-label={`Editar informações de ${proj.nome}`} onClick={() => setSelectedProject(proj)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>✏️</button>
                   </div>
                   
                   {proj.descricao && <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '10px', fontStyle: 'italic' }}>{proj.descricao}</p>}
@@ -393,8 +433,8 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
       {/* MODAL: COMPARTILHAR PROJETO (PATCH) */}
       {shareModalOpen && (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShareModalOpen(false)}>
-          <div style={{ backgroundColor: 'var(--white)', padding: '30px', borderRadius: '24px', width: '90%', maxWidth: '450px', boxShadow: 'var(--shadow-xl)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h2 style={{ color: 'var(--dark)', fontWeight: 900, margin: 0 }}>Compartilhar Projeto</h2>
+          <div role="dialog" aria-modal="true" aria-labelledby="share-project-title" style={{ backgroundColor: 'var(--white)', padding: '30px', borderRadius: '24px', width: '90%', maxWidth: '450px', boxShadow: 'var(--shadow-xl)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h2 id="share-project-title" style={{ color: 'var(--dark)', fontWeight: 900, margin: 0 }}>Compartilhar Projeto</h2>
             <p style={{ color: 'var(--text-muted)', fontWeight: 600, margin: 0, fontSize: '0.95rem' }}>
               Cada aluno receberá uma cópia independente no seu painel.
             </p>
@@ -414,7 +454,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
             </div>
 
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-              <button className="btn-text" style={{ flex: 1 }} onClick={() => setShareModalOpen(false)}>Cancelar</button>
+              <button type="button" className="btn-text" style={{ flex: 1 }} onClick={() => setShareModalOpen(false)}>Cancelar</button>
               <button
                 className="btn-primary"
                 style={{ flex: 1 }}
@@ -454,11 +494,11 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
       {/* MODAL: NOVO PROJETO */}
       {showNewProjectModal && (
         <div className="modal-overlay">
-          <form onSubmit={handleCreateProject} style={{ backgroundColor: 'var(--white)', padding: '30px', borderRadius: '24px', width: '90%', maxWidth: '400px', textAlign: 'center', boxShadow: 'var(--shadow-xl)' }}>
-            <h2 style={{ color: 'var(--dark)', marginBottom: '10px', fontWeight: 900 }}>Novo Projeto</h2>
+          <form role="dialog" aria-modal="true" aria-labelledby="teacher-new-project-title" onSubmit={handleCreateProject} style={{ backgroundColor: 'var(--white)', padding: '30px', borderRadius: '24px', width: '90%', maxWidth: '400px', textAlign: 'center', boxShadow: 'var(--shadow-xl)' }}>
+            <h2 id="teacher-new-project-title" style={{ color: 'var(--dark)', marginBottom: '10px', fontWeight: 900 }}>Novo Projeto</h2>
             <p style={{ color: 'var(--text-muted)', marginBottom: '20px', fontWeight: 600 }}>Dê um nome para o seu projeto:</p>
             <input type="text" placeholder="Ex: Demo Sensor Ultrassônico" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} disabled={isCreating} style={{ width: '100%', padding: '15px', borderRadius: '12px', border: '2px solid var(--border)', fontSize: '1.1rem', marginBottom: '12px', fontWeight: 700 }} autoFocus />
-            {createError && <p style={{ color: 'var(--danger)', fontSize: '0.95rem', marginBottom: '12px', textAlign: 'left', fontWeight: 700 }}>Erro: {createError}</p>}
+            {createError && <p role="alert" style={{ color: 'var(--danger)', fontSize: '0.95rem', marginBottom: '12px', textAlign: 'left', fontWeight: 700 }}>Erro: {createError}</p>}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button type="button" className="btn-text" style={{ flex: 1 }} onClick={closeCreateModal} disabled={isCreating}>Cancelar</button>
               <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={isCreating || !newProjectName.trim()}>{isCreating ? 'Criando...' : 'Criar e Abrir'}</button>
@@ -470,12 +510,13 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
       {/* MODAL: EXCLUIR PROJETO */}
       {projectToDelete && (
         <div className="modal-overlay">
-          <div style={{ backgroundColor: 'var(--white)', padding: '35px', borderRadius: '24px', width: '90%', maxWidth: '400px', textAlign: 'center', boxShadow: 'var(--shadow-xl)' }}>
-            <h2 style={{ color: 'var(--dark)', marginBottom: '10px', fontWeight: 900 }}>Atenção!</h2>
+          <div role="alertdialog" aria-modal="true" aria-labelledby="teacher-delete-title" style={{ backgroundColor: 'var(--white)', padding: '35px', borderRadius: '24px', width: '90%', maxWidth: '400px', textAlign: 'center', boxShadow: 'var(--shadow-xl)' }}>
+            <h2 id="teacher-delete-title" style={{ color: 'var(--dark)', marginBottom: '10px', fontWeight: 900 }}>Atenção!</h2>
             <p style={{ color: 'var(--text-muted)', marginBottom: '25px', fontSize: '1.1rem', fontWeight: 600 }}>Tem certeza que deseja apagar o projeto <b style={{ color: 'var(--dark)' }}>{projectToDelete.projeto.nome}</b>? Isso não pode ser desfeito.</p>
+            {deleteError && <p role="alert" className="form-error">{deleteError}</p>}
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button className="btn-text" style={{ flex: 1 }} onClick={() => setProjectToDelete(null)} disabled={isDeleting}>Cancelar</button>
-              <button className="btn-danger" style={{ flex: 1 }} onClick={confirmDeleteProject} disabled={isDeleting}>{isDeleting ? 'Apagando...' : 'Sim, Apagar'}</button>
+              <button type="button" className="btn-text" style={{ flex: 1 }} onClick={() => { setDeleteError(''); setProjectToDelete(null); }} disabled={isDeleting}>Cancelar</button>
+              <button type="button" className="btn-danger" style={{ flex: 1 }} onClick={confirmDeleteProject} disabled={isDeleting}>{isDeleting ? 'Apagando...' : 'Sim, Apagar'}</button>
             </div>
           </div>
         </div>

@@ -1,10 +1,10 @@
+use std::env;
 use std::fs;
 use std::process::Command;
-use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::Emitter;
 use std::time::Duration;
+use tauri::Emitter;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -26,20 +26,34 @@ impl HideWindow for Command {
 // ─── Evento de progresso emitido para o frontend ──────────────────────────
 #[derive(serde::Serialize, Clone)]
 struct SetupProgress {
-    step: String,       // "starting" | "cli" | "core" | "done" | "error"
-    message: String,    // Mensagem amigável para o aluno
-    percent: u8,        // 0–100
+    step: String,    // "starting" | "cli" | "core" | "done" | "error"
+    message: String, // Mensagem amigável para o aluno
+    percent: u8,     // 0–100
 }
 
 struct AppState {
     is_reading_serial: Arc<AtomicBool>,
+    is_uploading: Arc<AtomicBool>,
     setup_done: Arc<AtomicBool>,
+    setup_running: Arc<AtomicBool>,
     cli_path: Arc<Mutex<String>>,
+}
+
+struct SetupRunGuard(Arc<AtomicBool>);
+
+impl Drop for SetupRunGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Relaxed);
+    }
 }
 
 // ─── Localiza ou baixa o arduino-cli ─────────────────────────────────────
 fn find_or_download_cli() -> Result<String, String> {
-    let exe_name = if cfg!(target_os = "windows") { "arduino-cli.exe" } else { "arduino-cli" };
+    let exe_name = if cfg!(target_os = "windows") {
+        "arduino-cli.exe"
+    } else {
+        "arduino-cli"
+    };
 
     // 1. Binário empacotado junto com o instalador do Bloquin (caminho ideal)
     if let Ok(exe_path) = std::env::current_exe() {
@@ -63,13 +77,18 @@ fn find_or_download_cli() -> Result<String, String> {
     }
 
     // 3. No PATH do sistema
-    if Command::new("arduino-cli").hide_window().arg("version").output().is_ok() {
+    if Command::new("arduino-cli")
+        .hide_window()
+        .arg("version")
+        .output()
+        .is_ok()
+    {
         println!(">>> [CLI] arduino-cli encontrado no PATH do sistema.");
         return Ok("arduino-cli".to_string());
     }
 
     // 4. Cache de download anterior
-    let temp_dir  = env::temp_dir().join("bloquin_cli");
+    let temp_dir = env::temp_dir().join("bloquin_cli");
     let local_cli = temp_dir.join(exe_name);
     if local_cli.exists() {
         println!(">>> [CLI] arduino-cli em cache: {:?}", local_cli);
@@ -88,12 +107,25 @@ fn find_or_download_cli() -> Result<String, String> {
         "https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz"
     };
 
-    let archive_name = if cfg!(target_os = "windows") { "cli.zip" } else { "cli.tar.gz" };
+    let archive_name = if cfg!(target_os = "windows") {
+        "cli.zip"
+    } else {
+        "cli.tar.gz"
+    };
     let archive_path = temp_dir.join(archive_name);
 
     let curl_status = Command::new("curl")
         .hide_window()
-        .args(["-L", url, "-o", archive_path.to_str().unwrap()])
+        .args([
+            "--fail",
+            "--location",
+            "--proto",
+            "=https",
+            "--tlsv1.2",
+            url,
+            "--output",
+            archive_path.to_str().unwrap(),
+        ])
         .status()
         .map_err(|e| format!("Erro ao executar curl: {}", e))?;
     if !curl_status.success() {
@@ -102,7 +134,12 @@ fn find_or_download_cli() -> Result<String, String> {
 
     let tar_status = Command::new("tar")
         .hide_window()
-        .args(["-xf", archive_path.to_str().unwrap(), "-C", temp_dir.to_str().unwrap()])
+        .args([
+            "-xf",
+            archive_path.to_str().unwrap(),
+            "-C",
+            temp_dir.to_str().unwrap(),
+        ])
         .status()
         .map_err(|e| format!("Erro ao descompactar: {}", e))?;
     if !tar_status.success() {
@@ -130,10 +167,10 @@ fn find_or_download_cli() -> Result<String, String> {
 // ─── Garante que o core da placa está instalado na versão fixada ──────────
 fn ensure_core_installed(cli_path: &str, placa: &str) -> Result<String, String> {
     let (core, fqbn, version) = match placa {
-        "uno"   => ("arduino:avr", "arduino:avr:uno",   "1.8.7"),
-        "nano"  => ("arduino:avr", "arduino:avr:nano",  "1.8.7"),
+        "uno" => ("arduino:avr", "arduino:avr:uno", "1.8.7"),
+        "nano" => ("arduino:avr", "arduino:avr:nano", "1.8.7"),
         "esp32" => ("esp32:esp32", "esp32:esp32:esp32", "3.3.7"),
-        _       => ("arduino:avr", "arduino:avr:uno",   "1.8.7"),
+        _ => ("arduino:avr", "arduino:avr:uno", "1.8.7"),
     };
     let core_versioned = format!("{}@{}", core, version);
 
@@ -146,13 +183,18 @@ fn ensure_core_installed(cli_path: &str, placa: &str) -> Result<String, String> 
         .map_err(|e| format!("Erro ao listar cores: {}", e))?;
 
     let list_str = String::from_utf8_lossy(&list_output.stdout);
-    let versao_ok = list_str.lines().any(|l| l.starts_with(core) && l.contains(version));
+    let versao_ok = list_str
+        .lines()
+        .any(|l| l.starts_with(core) && l.contains(version));
 
     if !versao_ok {
         println!(">>> [CORE] Instalando {}...", core_versioned);
 
         if core == "esp32:esp32" {
-            let _ = Command::new(cli_path).hide_window().args(["config", "init"]).output();
+            let _ = Command::new(cli_path)
+                .hide_window()
+                .args(["config", "init"])
+                .output();
             let esp_url = "https://espressif.github.io/arduino-esp32/package_esp32_index.json";
             let add = Command::new(cli_path)
                 .hide_window()
@@ -160,7 +202,10 @@ fn ensure_core_installed(cli_path: &str, placa: &str) -> Result<String, String> 
                 .output()
                 .map_err(|e| format!("Erro ao configurar URL ESP32: {}", e))?;
             if !add.status.success() {
-                return Err(format!("Erro ao configurar URL ESP32: {}", String::from_utf8_lossy(&add.stderr)));
+                return Err(format!(
+                    "Erro ao configurar URL ESP32: {}",
+                    String::from_utf8_lossy(&add.stderr)
+                ));
             }
         }
 
@@ -179,12 +224,19 @@ fn ensure_core_installed(cli_path: &str, placa: &str) -> Result<String, String> 
             .output()
             .map_err(|e| format!("Erro ao instalar core: {}", e))?;
         if !install.status.success() {
-            return Err(format!("Falha ao instalar {}: {}", core_versioned, String::from_utf8_lossy(&install.stderr)));
+            return Err(format!(
+                "Falha ao instalar {}: {}",
+                core_versioned,
+                String::from_utf8_lossy(&install.stderr)
+            ));
         }
 
         println!(">>> [CORE] '{}' instalado!", core_versioned);
     } else {
-        println!(">>> [CORE] Versão correta '{}' já instalada.", core_versioned);
+        println!(
+            ">>> [CORE] Versão correta '{}' já instalada.",
+            core_versioned
+        );
     }
 
     Ok(fqbn.to_string())
@@ -200,24 +252,36 @@ fn ensure_core_installed(cli_path: &str, placa: &str) -> Result<String, String> 
 fn run_setup(window: tauri::Window, state: tauri::State<AppState>) {
     // Se já foi feito nesta sessão, confirma imediatamente
     if state.setup_done.load(Ordering::Relaxed) {
-        let _ = window.emit("setup-progress", SetupProgress {
-            step: "done".into(),
-            message: "Bloquin pronto!".into(),
-            percent: 100,
-        });
+        let _ = window.emit(
+            "setup-progress",
+            SetupProgress {
+                step: "done".into(),
+                message: "Bloquin pronto!".into(),
+                percent: 100,
+            },
+        );
         return;
     }
 
-    let setup_done  = Arc::clone(&state.setup_done);
+    if state.setup_running.swap(true, Ordering::AcqRel) {
+        return;
+    }
+
+    let setup_done = Arc::clone(&state.setup_done);
+    let setup_running = Arc::clone(&state.setup_running);
     let cli_path_mu = Arc::clone(&state.cli_path);
 
     std::thread::spawn(move || {
+        let _setup_guard = SetupRunGuard(setup_running);
         // ── Passo 1: Localizar/baixar o arduino-cli ───────────────────────
-        let _ = window.emit("setup-progress", SetupProgress {
-            step: "cli".into(),
-            message: "Procurando ferramentas de compilação...".into(),
-            percent: 5,
-        });
+        let _ = window.emit(
+            "setup-progress",
+            SetupProgress {
+                step: "cli".into(),
+                message: "Procurando ferramentas de compilação...".into(),
+                percent: 5,
+            },
+        );
 
         let cli = match find_or_download_cli() {
             Ok(c) => c,
@@ -256,11 +320,14 @@ fn run_setup(window: tauri::Window, state: tauri::State<AppState>) {
         }
 
         // ── Passo 3: Core Arduino AVR (Uno/Nano) ──────────────────────────
-        let _ = window.emit("setup-progress", SetupProgress {
-            step: "core".into(),
-            message: "Quase lá! Verificando suporte ao Arduino Uno/Nano...".into(),
-            percent: 70,
-        });
+        let _ = window.emit(
+            "setup-progress",
+            SetupProgress {
+                step: "core".into(),
+                message: "Quase lá! Verificando suporte ao Arduino Uno/Nano...".into(),
+                percent: 70,
+            },
+        );
 
         if let Err(e) = ensure_core_installed(&cli, "uno") {
             let _ = window.emit("setup-progress", SetupProgress {
@@ -277,11 +344,14 @@ fn run_setup(window: tauri::Window, state: tauri::State<AppState>) {
         // ── Concluído ─────────────────────────────────────────────────────
         setup_done.store(true, Ordering::Relaxed);
 
-        let _ = window.emit("setup-progress", SetupProgress {
-            step: "done".into(),
-            message: "Tudo pronto! Bora programar! 🚀".into(),
-            percent: 100,
-        });
+        let _ = window.emit(
+            "setup-progress",
+            SetupProgress {
+                step: "done".into(),
+                message: "Tudo pronto! Bora programar! 🚀".into(),
+                percent: 100,
+            },
+        );
 
         println!(">>> [SETUP] Concluído. cli={}", cli);
     });
@@ -294,8 +364,8 @@ fn run_upload_pipeline(codigo: &str, placa: &str, porta: &str, cli: &str) -> Res
     // ensure_core_installed é rápido aqui — versão já instalada pelo setup
     let fqbn = ensure_core_installed(cli, placa)?;
 
-    let temp_dir    = env::temp_dir();
-    let sketch_dir  = temp_dir.join("bloquin_sketch");
+    let temp_dir = env::temp_dir();
+    let sketch_dir = temp_dir.join(format!("bloquin_sketch_{}", std::process::id()));
     let sketch_path = sketch_dir.join("bloquin_sketch.ino");
 
     let _ = fs::create_dir_all(&sketch_dir);
@@ -318,7 +388,14 @@ fn run_upload_pipeline(codigo: &str, placa: &str, porta: &str, cli: &str) -> Res
     println!(">>> [UPLOAD] Enviando para {}...", porta);
     let upload = Command::new(cli)
         .hide_window()
-        .args(["upload", "-b", &fqbn, "-p", porta, sketch_dir.to_str().unwrap()])
+        .args([
+            "upload",
+            "-b",
+            &fqbn,
+            "-p",
+            porta,
+            sketch_dir.to_str().unwrap(),
+        ])
         .output()
         .map_err(|e| format!("Erro no upload: {}", e))?;
 
@@ -342,6 +419,10 @@ fn upload_code(
     window: tauri::Window,
     state: tauri::State<AppState>,
 ) -> Result<String, String> {
+    if porta.trim().is_empty() {
+        return Err("Selecione uma porta USB antes de enviar o código.".to_string());
+    }
+
     // Barreira de segurança — impede compilação antes do setup terminar
     if !state.setup_done.load(Ordering::Relaxed) {
         let _ = window.emit(
@@ -352,15 +433,28 @@ fn upload_code(
     }
 
     let cli = state.cli_path.lock().unwrap().clone();
+    let is_uploading = Arc::clone(&state.is_uploading);
+    if is_uploading
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+        .is_err()
+    {
+        return Err("Já existe um envio em andamento. Aguarde a conclusão.".to_string());
+    }
     state.is_reading_serial.store(false, Ordering::Relaxed);
 
     let window_clone = window.clone();
 
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(600));
-        match run_upload_pipeline(&codigo, &placa, &porta, &cli) {
-            Ok(_)  => { let _ = window_clone.emit("upload-result", "ok"); }
-            Err(e) => { let _ = window_clone.emit("upload-result", format!("err:{}", e)); }
+        let result = run_upload_pipeline(&codigo, &placa, &porta, &cli);
+        is_uploading.store(false, Ordering::Release);
+        match result {
+            Ok(_) => {
+                let _ = window_clone.emit("upload-result", "ok");
+            }
+            Err(e) => {
+                let _ = window_clone.emit("upload-result", format!("err:{}", e));
+            }
         }
     });
 
@@ -374,6 +468,9 @@ fn start_serial(
     state: tauri::State<AppState>,
 ) -> Result<String, String> {
     state.is_reading_serial.store(false, Ordering::Relaxed);
+    if porta.trim().is_empty() {
+        return Err("Selecione uma porta USB antes de abrir o monitor serial.".to_string());
+    }
     std::thread::sleep(Duration::from_millis(200));
 
     let is_reading = Arc::clone(&state.is_reading_serial);
@@ -384,12 +481,18 @@ fn start_serial(
             .timeout(Duration::from_millis(100))
             .open()
         {
-            Ok(p)  => p,
+            Ok(p) => p,
             Err(_) => {
-                let _ = window.emit("serial-error", format!("Não foi possível abrir a porta {}", porta));
+                is_reading.store(false, Ordering::Release);
+                let _ = window.emit(
+                    "serial-error",
+                    format!("Não foi possível abrir a porta {}", porta),
+                );
                 return;
             }
         };
+
+        let _ = window.emit("serial-ready", ());
 
         let mut serial_buf: Vec<u8> = vec![0; 1000];
         let mut string_acumulada = String::new();
@@ -399,15 +502,15 @@ fn start_serial(
                 Ok(t) if t > 0 => {
                     let pedaco: String = serial_buf[..t]
                         .iter()
-                        .filter(|&&b| b == b'\n' || b == b'\r' || (b >= 0x20 && b < 0x7F))
+                        .filter(|&&b| b == b'\n' || b == b'\r' || (0x20..0x7F).contains(&b))
                         .map(|&b| b as char)
                         .collect();
 
                     string_acumulada.push_str(&pedaco);
 
-                    if string_acumulada.len() > 300 && !string_acumulada.contains('\n') {
-                        string_acumulada.clear();
-                    } else if string_acumulada.len() > 4000 {
+                    if string_acumulada.len() > 4000
+                        || (string_acumulada.len() > 300 && !string_acumulada.contains('\n'))
+                    {
                         string_acumulada.clear();
                     }
 
@@ -420,7 +523,9 @@ fn start_serial(
                         }
                     }
                 }
-                _ => { std::thread::sleep(Duration::from_millis(10)); }
+                _ => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
             }
         }
     });
@@ -459,7 +564,9 @@ async fn open_admin_panel(
     use tauri::Manager;
 
     if let Some(window) = app.get_webview_window("admin-panel") {
-        window.set_focus().map_err(|e| format!("Erro ao focar a janela: {}", e))?;
+        window
+            .set_focus()
+            .map_err(|e| format!("Erro ao focar a janela: {}", e))?;
         return Ok("ok".to_string());
     }
 
@@ -496,12 +603,15 @@ async fn open_admin_panel(
 pub fn run() {
     let app_state = AppState {
         is_reading_serial: Arc::new(AtomicBool::new(false)),
-        setup_done:        Arc::new(AtomicBool::new(false)),
-        cli_path:          Arc::new(Mutex::new(String::new())),
+        is_uploading: Arc::new(AtomicBool::new(false)),
+        setup_done: Arc::new(AtomicBool::new(false)),
+        setup_running: Arc::new(AtomicBool::new(false)),
+        cli_path: Arc::new(Mutex::new(String::new())),
     };
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             run_setup,

@@ -206,14 +206,18 @@ O projeto segue o [Versionamento Semântico](https://semver.org/lang/pt-BR/):
 - `MINOR`: novas funcionalidades compatíveis
 - `PATCH`: correções de bugs
 
-Releases são criadas pelos maintainers via tag:
+Depois de validar a versão localmente, os maintainers criam a release via tag:
 
 ```bash
-git tag v1.2.0
-git push origin v1.2.0
+git add -A
+git commit -m "chore(release): prepara v1.1.0"
+git tag -a v1.1.0 -m "Bloquin IDE v1.1.0"
+git push origin main
+git push origin v1.1.0
 ```
 
-O GitHub Actions cuida do build, asssinatura e publicação automaticamente.
-O CHANGELOG é gerado automaticamente via `git-cliff`.
+O GitHub Actions dispara com a tag, executa o build Windows, gera as notas via
+`git-cliff`, calcula os checksums e publica a release automaticamente. Substitua
+`v1.1.0` pelo próximo número quando preparar uma versão futura.
 
 Colaboradores externos **não precisam** criar tags — apenas abra PRs.

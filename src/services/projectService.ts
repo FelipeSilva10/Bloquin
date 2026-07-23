@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { BoardKey } from '../blockly/blocks';
+import type { BoardKey } from '../blockly/boards';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 

@@ -25,13 +25,13 @@ export function SerialMonitor({ isOpen, messages, onClose, onClear, isCodeOpen }
   if (!isOpen) return null;
 
   return (
-    <div className={`serial-monitor ${isCodeOpen ? 'shifted' : ''}`}>
+    <section className={`serial-monitor ${isCodeOpen ? 'shifted' : ''}`} aria-label="Monitor serial">
       <div className="serial-monitor-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div className="serial-status-dot" />
           <span>Robô conectado</span>
         </div>
-        <button className="serial-close-btn" onClick={onClose}>✕</button>
+        <button type="button" className="serial-close-btn" aria-label="Fechar monitor serial" onClick={onClose}>✕</button>
       </div>
       <div className="serial-monitor-body">
         {messages.length === 0 ? (
@@ -53,9 +53,9 @@ export function SerialMonitor({ isOpen, messages, onClose, onClear, isCodeOpen }
         <div ref={messagesEndRef} />
       </div>
       <div className="serial-monitor-footer">
-        <button className="serial-clear-btn" onClick={onClear}>Limpar</button>
+        <button type="button" className="serial-clear-btn" onClick={onClear}>Limpar</button>
         <span>{messages.length} mensagens</span>
       </div>
-    </div>
+    </section>
   );
 }

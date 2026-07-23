@@ -7,15 +7,16 @@ interface Props {
 }
 
 export default function InterventionModal({ teacherName }: Props) {
+  const modalRef = useModalA11y<HTMLDivElement>(() => undefined);
   return (
     <div
       className="modal-overlay intervention-overlay"
       role="alertdialog"
       aria-modal="true"
-      aria-label="Intervenção do professor"
+      aria-labelledby="intervention-title"
       // Sem onClick para fechar — só o professor pode desbloquear
     >
-      <div className="modal-box intervention-modal">
+      <div ref={modalRef} className="modal-box intervention-modal">
         <div className="intervention-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path
@@ -26,7 +27,7 @@ export default function InterventionModal({ teacherName }: Props) {
           </svg>
         </div>
 
-        <h2>Aguarde</h2>
+        <h2 id="intervention-title">Aguarde</h2>
 
         <p>
           {teacherName ? (
@@ -50,3 +51,4 @@ export default function InterventionModal({ teacherName }: Props) {
     </div>
   );
 }
+import { useModalA11y } from '../../hooks/useModalA11y';
