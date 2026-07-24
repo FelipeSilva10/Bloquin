@@ -34,6 +34,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
   // Estados de Criação e Exclusão
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectTurmaId, setNewProjectTurmaId] = useState('');
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
@@ -116,8 +117,14 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
   };
 
   const viewAlunoProjects = async (aluno: Aluno) => {
+    if (!managingTurma) return;
     try {
-      const { data, error } = await supabase.from('projetos').select('id, nome, descricao, target_board, updated_at').eq('dono_id', aluno.id).order('updated_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('projetos')
+        .select('id, nome, descricao, target_board, updated_at')
+        .eq('dono_id', aluno.id)
+        .eq('turma_id', managingTurma.id)
+        .order('updated_at', { ascending: false });
       if (error) throw error;
       setViewingAlunoProjects({ aluno, projetos: data || [] });
     } catch (error) {
@@ -142,13 +149,18 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
   };
 
   const handleShareProject = async () => {
-    if (!projectToShare || shareTargets.length === 0) return;
+    if (!projectToShare || !managingTurma || shareTargets.length === 0) return;
     setSharing(true);
 
     const targetIds = shareTargets.includes("all") ? alunos.map((s) => s.id) : shareTargets;
+    if (targetIds.length === 0) {
+      setPageError('Esta turma ainda não tem alunos para receber o projeto.');
+      setSharing(false);
+      return;
+    }
 
     try {
-      await ProjectService.shareProject(projectToShare.id, targetIds);
+      await ProjectService.shareProject(projectToShare.id, targetIds, managingTurma.id);
       setShareSuccess(true);
       setTimeout(() => {
         setShareSuccess(false);
@@ -178,36 +190,40 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
 
   const handleCreateProject = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!newProjectName.trim() || isCreating) return;
+    if (!newProjectName.trim() || !newProjectTurmaId || isCreating) return;
+    const selectedTurma = turmas.find((turma) => turma.id === newProjectTurmaId);
+    if (!selectedTurma) {
+      setCreateError('Selecione uma das suas turmas para criar o projeto.');
+      return;
+    }
     setIsCreating(true);
     setCreateError('');
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setIsCreating(false); return; }
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw userError ?? new Error('Sessão não encontrada.');
 
-    type InsertPayload = { dono_id: string; nome: string; target_board: string; turma_id?: string };
-    let payload: InsertPayload = { dono_id: user.id, nome: newProjectName.trim(), target_board: BOARD_UNSET };
+      const { data, error } = await supabase
+        .from('projetos')
+        .insert([{
+          dono_id: user.id,
+          turma_id: selectedTurma.id,
+          nome: newProjectName.trim(),
+          target_board: BOARD_UNSET,
+          tipo: 'template_professor',
+        }])
+        .select('id, nome, descricao, target_board, updated_at')
+        .single();
 
-    let { data, error } = await supabase.from('projetos').insert([payload]).select('id, nome, descricao, target_board, updated_at').single();
-
-    if (error && (error.message?.includes('turma_id') || error.code === '23502')) {
-      const { data: turmaProf } = await supabase.from('turmas').select('id').eq('professor_id', user.id).limit(1).single();
-      if (turmaProf?.id) {
-        payload = { ...payload, turma_id: turmaProf.id };
-        const retry = await supabase.from('projetos').insert([payload]).select('id, nome, descricao, target_board, updated_at').single();
-        data = retry.data;
-        error = retry.error;
-      }
-    }
-
-    setIsCreating(false);
-
-    if (!error && data) {
+      if (error) throw error;
+      if (!data) throw new Error('O projeto não foi criado.');
       setOwnProjects(prev => [data, ...prev]);
       closeCreateModal();
       onOpenOwnProject(data.id);
-    } else if (error) {
-      setCreateError(error.message);
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : 'Não consegui criar o projeto.');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -236,7 +252,17 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
   const closeCreateModal = () => {
     setShowNewProjectModal(false);
     setNewProjectName('');
+    setNewProjectTurmaId('');
     setCreateError('');
+  };
+
+  const openCreateModal = () => {
+    if (turmas.length === 0) {
+      setPageError('Você precisa estar vinculado a uma turma antes de criar um projeto.');
+      return;
+    }
+    setNewProjectTurmaId(turmas.length === 1 ? turmas[0].id : '');
+    setShowNewProjectModal(true);
   };
 
   const tabStyle = (tab: Tab): React.CSSProperties => ({
@@ -401,7 +427,9 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
       {activeTab === 'projetos' && (
         <main>
           <div style={{ marginBottom: '20px' }}>
-            <button className="btn-primary" style={{ padding: '12px 25px', fontSize: '1.1rem' }} onClick={() => setShowNewProjectModal(true)}>+ Novo Projeto</button>
+            <button className="btn-primary" style={{ padding: '12px 25px', fontSize: '1.1rem' }} onClick={openCreateModal} disabled={loadingTurmas}>
+              {loadingTurmas ? 'Carregando turmas…' : '+ Novo Projeto'}
+            </button>
           </div>
           {loadingProjects ? <p style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Carregando projetos...</p> : ownProjects.length === 0 ? (
             <div style={{ backgroundColor: 'var(--white)', padding: '40px', borderRadius: '16px', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}>
@@ -498,10 +526,26 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
             <h2 id="teacher-new-project-title" style={{ color: 'var(--dark)', marginBottom: '10px', fontWeight: 900 }}>Novo Projeto</h2>
             <p style={{ color: 'var(--text-muted)', marginBottom: '20px', fontWeight: 600 }}>Dê um nome para o seu projeto:</p>
             <input type="text" placeholder="Ex: Demo Sensor Ultrassônico" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} disabled={isCreating} style={{ width: '100%', padding: '15px', borderRadius: '12px', border: '2px solid var(--border)', fontSize: '1.1rem', marginBottom: '12px', fontWeight: 700 }} autoFocus />
+            <label htmlFor="teacher-project-class" style={{ display: 'block', textAlign: 'left', color: 'var(--dark)', fontWeight: 800, marginBottom: '6px' }}>
+              Turma do projeto
+            </label>
+            <select
+              id="teacher-project-class"
+              value={newProjectTurmaId}
+              onChange={(event) => setNewProjectTurmaId(event.target.value)}
+              disabled={isCreating}
+              required
+              style={{ width: '100%', padding: '13px', borderRadius: '12px', border: '2px solid var(--border)', fontSize: '1rem', marginBottom: '12px', fontWeight: 700, background: 'var(--white)' }}
+            >
+              <option value="">Selecione a turma…</option>
+              {turmas.map((turma) => (
+                <option key={turma.id} value={turma.id}>{turma.nome} — {turma.ano_letivo}</option>
+              ))}
+            </select>
             {createError && <p role="alert" style={{ color: 'var(--danger)', fontSize: '0.95rem', marginBottom: '12px', textAlign: 'left', fontWeight: 700 }}>Erro: {createError}</p>}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button type="button" className="btn-text" style={{ flex: 1 }} onClick={closeCreateModal} disabled={isCreating}>Cancelar</button>
-              <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={isCreating || !newProjectName.trim()}>{isCreating ? 'Criando...' : 'Criar e Abrir'}</button>
+              <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={isCreating || !newProjectName.trim() || !newProjectTurmaId}>{isCreating ? 'Criando...' : 'Criar e Abrir'}</button>
             </div>
           </form>
         </div>

@@ -1,5 +1,5 @@
 // src/App.tsx
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -17,7 +17,12 @@ import { StudentDashboard } from './screens/StudentDashboard';
 import { VisitorDashboard } from './screens/VisitorDashboard';
 import { SetupProvider, useSetup } from './state/setupStore';
 import { MAX_OPEN_TABS, TabsProvider, useTabs } from './state/tabsStore';
-import { clearSession, stopWatchingSession, watchSession } from './services/sessionService';
+import {
+  clearSession,
+  signOutLocalSafely,
+  stopWatchingSession,
+  watchSession,
+} from './services/sessionService';
 import { getFriendlyError } from './components/modals/ErrorModal';
 import { useModalA11y } from './hooks/useModalA11y';
 import './App.css';
@@ -122,12 +127,25 @@ function AppRoutes() {
   // A entrada padrão deve passar pela tela de login; visitante é uma escolha explícita.
   const [role, setRole]     = useState<UserRole>('guest');
   const [userId, setUserId] = useState<string | null>(null);
+  const logoutInProgressRef = useRef(false);
+  const logoutCleanupRef = useRef<Promise<void>>(Promise.resolve());
   const navigate = useNavigate();
   const { openProject, activateTab, resetTabs } = useTabs();
 
   const handleLogin = (loggedRole: 'student' | 'teacher' | 'visitor') => {
+    logoutInProgressRef.current = false;
     resetTabs();
     setRole(loggedRole);
+    if (loggedRole === 'visitor') {
+      // O modo visitante é uma sessão local/offline e nunca deve herdar uma
+      // autenticação persistida nem os limites aplicados a contas online.
+      setUserId(null);
+      // A função limpa o storage de forma síncrona antes de qualquer await,
+      // portanto a entrada também funciona sem acesso ao Supabase.
+      void signOutLocalSafely();
+      navigate('/dashboard');
+      return;
+    }
     // Captura o userId logo após o login para alimentar o InactivityGuard
     supabase.auth.getUser().then(({ data }) => {
       setUserId(data.user?.id ?? null);
@@ -136,22 +154,30 @@ function AppRoutes() {
   };
 
   const handleLogout = () => {
+    if (logoutInProgressRef.current) return;
+    logoutInProgressRef.current = true;
     const currentUserId = userId;
     resetTabs();
     setRole('guest');
     setUserId(null);
     navigate('/');
-    void Promise.allSettled([
-      currentUserId ? clearSession(currentUserId) : Promise.resolve(),
-      supabase.auth.signOut(),
-    ]);
+    logoutCleanupRef.current = (async () => {
+      try {
+        if (currentUserId) await clearSession(currentUserId);
+      } catch {
+        // O logout local deve concluir mesmo se o registro remoto estiver
+        // temporariamente inacessível.
+      } finally {
+        await signOutLocalSafely();
+      }
+    })();
   };
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || (role !== 'student' && role !== 'teacher')) return;
     watchSession(userId, handleLogout);
     return stopWatchingSession;
-  }, [userId]);
+  }, [role, userId]);
 
   const handleBackToDashboard = () => {
     activateTab('dashboard');
@@ -175,7 +201,7 @@ function AppRoutes() {
   return (
     // O guard só está ativo quando há um userId (usuário logado)
     <InactivityGuard
-      userId={role !== 'guest' ? userId : null}
+      userId={role === 'student' || role === 'teacher' ? userId : null}
       onLogout={handleLogout}
     >
       <WorkspaceTabs role={role} />
@@ -184,7 +210,12 @@ function AppRoutes() {
           path="/"
           element={
             role === 'guest'
-              ? <LoginScreen onLogin={handleLogin} />
+              ? (
+                <LoginScreen
+                  onLogin={handleLogin}
+                  beforeLogin={() => logoutCleanupRef.current}
+                />
+              )
               : <Navigate to="/dashboard" replace />
           }
         />

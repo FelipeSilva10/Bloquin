@@ -1,11 +1,12 @@
 {
   "name": "bloquin",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "audit:blocks": "node scripts/run-blockly-audit.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

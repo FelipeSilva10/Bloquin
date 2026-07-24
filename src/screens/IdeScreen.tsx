@@ -14,14 +14,21 @@ import { ErrorModal, FriendlyError, getFriendlyError } from '../components/modal
 import InterventionModal from "../components/modals/InterventionModal"; // Modal de bloqueio de tela
 import { ResponsiveToolbarButton } from '../components/ResponsiveToolbarButton';
 import logoSimples from '../icons/LogoSimples.png';
+import iconChat from '../icons/icon_chat.png';
+import iconEnviar from '../icons/icon_enviar.png';
+import iconSair from '../icons/icon_sair.png';
+import iconSalvar from '../icons/icon_salvar.png';
+import iconSalvarComo from '../icons/icon_salvar_como.png';
+import iconVerCodigo from '../icons/icon_ver_codigo.png';
 import LZString from 'lz-string';
 import { useTabs } from '../state/tabsStore';
 import { useSetup } from '../state/setupStore';
 import { createProjectFile } from '../types/project';
-import { downloadTextFile, saveLocalProjectFile } from '../services/localProjectService';
+import { exportLocalProjectFile, saveLocalProjectFile } from '../services/localProjectService';
 
 import { type BoardKey, BOARD_UNSET, BOARDS } from '../blockly/boards';
-import { BLOCK_NAMES, toolboxConfig } from '../blockly/toolbox';
+import { auditSerializedWorkspace, auditWorkspace } from '../blockly/audit';
+import { BLOCK_NAMES, getToolboxConfig } from '../blockly/toolbox';
 
 Blockly.setLocale(PtBr as any);
 
@@ -51,6 +58,8 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
   const workspace  = useRef<Blockly.WorkspaceSvg | null>(null);
   const codeGeneratorRef = useRef<any>(null);
   const { activeTab, updateTab } = useTabs();
+  const dirtyRef = useRef(activeTab.dirty);
+  const workspaceLoadFailedRef = useRef(false);
   const setup = useSetup();
 
   const [board, setBoard]                   = useState<BoardKey | null>(initialBoard);
@@ -62,11 +71,12 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
   const [generatedCode, setGeneratedCode]       = useState('// O código C++ aparecerá aqui...');
   const [isSaving, setIsSaving]                 = useState(false);
   const [projectName, setProjectName]           = useState(activeTab.title || 'Projeto');
-  const [saveStatus, setSaveStatus]             = useState<'success' | null>(null);
+  const [saveStatus, setSaveStatus]             = useState<'saved' | 'exported' | null>(null);
+  const [isExporting, setIsExporting]           = useState(false);
   const [isSerialOpen, setIsSerialOpen]         = useState(false);
   const [isSerialStarting, setIsSerialStarting] = useState(false);
   const [serialMessages, setSerialMessages]     = useState<SerialMessage[]>([]);
-  const [isDirty, setIsDirty]                   = useState(false);
+  const [isDirty, setIsDirty]                   = useState(activeTab.dirty);
   const [showExitConfirm, setShowExitConfirm]   = useState(false);
   const trackChanges                            = useRef(false); 
   const [isCodeVisible, setIsCodeVisible]       = useState(false);
@@ -87,12 +97,17 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
 
   useEffect(() => {
     if (!isMoreOpen) return;
-    moreMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (!moreMenuRef.current?.contains(event.target as Node)) setIsMoreOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsMoreOpen(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setIsMoreOpen(false);
+        window.requestAnimationFrame(() => {
+          moreMenuRef.current?.querySelector<HTMLButtonElement>('.ide-more-toggle')?.focus();
+        });
+      }
     };
     document.addEventListener('mousedown', closeOnOutsideClick);
     document.addEventListener('keydown', closeOnEscape);
@@ -101,6 +116,15 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [isMoreOpen]);
+
+  const closeMoreMenu = (restoreFocus = false) => {
+    setIsMoreOpen(false);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => {
+        moreMenuRef.current?.querySelector<HTMLButtonElement>('.ide-more-toggle')?.focus();
+      });
+    }
+  };
 
   useEffect(() => () => {
     if (copyTimeout.current) clearTimeout(copyTimeout.current);
@@ -179,13 +203,24 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
       const { data, error } = await ProjectService.getProjectData(projectId);      
       if (cancelled) return;
       if (error || !data) {
+        if (initialWorkspaceData && initialBoard && initialBoard in BOARDS) {
+          const { syncBoardPins } = await import('../blockly/blocks');
+          syncBoardPins(initialBoard);
+          pendingWorkspaceData.current = initialWorkspaceData;
+          setBoard(initialBoard);
+          await initializeBlocklyModules();
+          setBoardLoadState('ready');
+          return;
+        }
         setBoardLoadState('selecting');
         setFriendlyError({ emoji: '📂', title: 'Não consegui abrir o projeto', message: 'O projeto não pôde ser carregado agora.', tip: 'Você pode escolher uma placa para continuar ou voltar ao painel.', rawError: error?.message ?? 'Projeto não encontrado.' });
         return;
       }
 
       setProjectName(data.nome);
-      pendingWorkspaceData.current = data.workspace_data ?? null;
+      // A cópia em memória da aba é mais recente que o banco quando existem
+      // edições ainda não salvas.
+      pendingWorkspaceData.current = initialWorkspaceData ?? data.workspace_data ?? null;
 
       const raw = data.target_board as string | null | undefined;
       if (!raw || raw === BOARD_UNSET) { setBoardLoadState('selecting'); return; }
@@ -209,6 +244,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
   }, [projectId, initialBoard, initialWorkspaceData]);
 
   useEffect(() => {
+    dirtyRef.current = isDirty;
     updateTab(activeTab.id, { dirty: isDirty, title: projectName || activeTab.title, board });
   }, [activeTab.id, activeTab.title, isDirty, projectName, board, updateTab]);
 
@@ -250,10 +286,10 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
   }, []);
 
   useEffect(() => {
-    if (boardLoadState !== 'ready' || !blocklyDiv.current || workspace.current) return;
+    if (boardLoadState !== 'ready' || !board || !blocklyDiv.current || workspace.current) return;
 
     workspace.current = Blockly.inject(blocklyDiv.current, {
-      toolbox: toolboxConfig,
+      toolbox: getToolboxConfig(board),
       grid: { spacing: 24, length: 4, colour: '#d8e0ec', snap: true },
       readOnly,
       move: { scrollbars: true, drag: true, wheel: true },
@@ -265,12 +301,18 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
 
     workspace.current.addChangeListener((event) => {
       if (event.isUiEvent) return;
-      if (trackChanges.current) { setIsDirty(true); }
+      if (trackChanges.current) {
+        dirtyRef.current = true;
+        setIsDirty(true);
+      }
       try { 
         if(codeGeneratorRef.current) {
-          setGeneratedCode(codeGeneratorRef.current(workspace.current!) || '// Arraste blocos para dentro de PREPARAR e AGIR!'); 
+          setGeneratedCode(codeGeneratorRef.current(workspace.current!, board) || '// Arraste blocos para dentro de PREPARAR e AGIR!');
         }
-      } catch (e) { console.error('Erro ao gerar código:', e); }
+      } catch (e) {
+        console.error('Erro ao gerar código:', e);
+        setGeneratedCode('// Não foi possível gerar o código. Revise o último bloco alterado.');
+      }
     });
 
     const ensureRootBlocks = () => {
@@ -286,20 +328,56 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
     const savedData = pendingWorkspaceData.current;
     if (savedData) {
       try {
-        const raw = typeof savedData === 'string' ? JSON.parse(LZString.decompressFromBase64(savedData) || '{}') : savedData;
-        if (raw && Object.keys(raw).length > 0) Blockly.serialization.workspaces.load(raw, workspace.current);
-      } catch (_) { /* workspace corrompido — começa vazio */ }
+        const raw = typeof savedData === 'string'
+          ? (() => {
+              const decompressed = LZString.decompressFromBase64(savedData);
+              if (!decompressed) throw new Error('Os dados compactados do projeto são inválidos.');
+              return JSON.parse(decompressed);
+            })()
+          : savedData;
+        if (raw && Object.keys(raw).length > 0) {
+          const serializedIssues = auditSerializedWorkspace(raw, board);
+          if (serializedIssues.length > 0) throw new Error(serializedIssues.join('\n'));
+          Blockly.serialization.workspaces.load(raw, workspace.current);
+        }
+      } catch (error) {
+        workspaceLoadFailedRef.current = true;
+        setFriendlyError({
+          emoji: '🛟',
+          title: 'O projeto precisa de recuperação',
+          message: 'Os blocos salvos não puderam ser carregados. O salvamento foi bloqueado para proteger o conteúdo original.',
+          tip: 'Volte ao painel e peça ajuda antes de substituir este projeto.',
+          rawError: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     ensureRootBlocks();
+    if (!workspaceLoadFailedRef.current && codeGeneratorRef.current) {
+      setGeneratedCode(
+        codeGeneratorRef.current(workspace.current, board)
+        || '// Arraste blocos para dentro de PREPARAR e AGIR!',
+      );
+    }
     const trackTimer = setTimeout(() => { trackChanges.current = true; }, 300);
     
     return () => {
       clearTimeout(trackTimer);
       trackChanges.current = false;
-      if (workspace.current) { workspace.current.dispose(); workspace.current = null; }
+      if (workspace.current) {
+        if (!workspaceLoadFailedRef.current) {
+          const workspaceData = Blockly.serialization.workspaces.save(workspace.current) as Record<string, unknown>;
+          updateTab(activeTab.id, {
+            workspaceData,
+            board,
+            dirty: dirtyRef.current,
+          });
+        }
+        workspace.current.dispose();
+        workspace.current = null;
+      }
     };
-  }, [boardLoadState, readOnly]); 
+  }, [activeTab.id, board, boardLoadState, readOnly, updateTab]);
 
   useEffect(() => { if (workspace.current) Blockly.svgResize(workspace.current); }, [role, isCodeVisible, isFullscreenCode, boardLoadState]);
 
@@ -366,14 +444,24 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
     }
   };
 
-  const showSaveFeedback = () => {
-    setSaveStatus('success');
+  const showSaveFeedback = (status: 'saved' | 'exported' = 'saved') => {
+    setSaveStatus(status);
     if (saveFeedbackTimeout.current) clearTimeout(saveFeedbackTimeout.current);
     saveFeedbackTimeout.current = setTimeout(() => setSaveStatus(null), 2600);
   };
 
   const handleSaveProject = async (saveAs = false): Promise<boolean> => {
     if (!workspace.current) return false;
+    if (workspaceLoadFailedRef.current) {
+      setFriendlyError({
+        emoji: '🛟',
+        title: 'Salvamento bloqueado para proteger o projeto',
+        message: 'Os blocos originais não foram carregados corretamente.',
+        tip: 'Volte ao painel e peça ajuda para recuperar o projeto antes de salvar.',
+        rawError: 'workspace_load_failed',
+      });
+      return false;
+    }
     const workspaceData = Blockly.serialization.workspaces.save(workspace.current) as Record<string, unknown>;
     if (!projectId) {
       const file = createProjectFile({
@@ -397,6 +485,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
           dirty: false,
         });
         showSaveFeedback();
+        dirtyRef.current = false;
         setIsDirty(false);
         return true;
       } catch (error) {
@@ -411,7 +500,6 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
       } finally {
         setIsSaving(false);
       }
-      return false;
     }
     if (!board) {
       setFriendlyError({
@@ -419,7 +507,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
         title: 'Escolha uma placa antes de salvar',
         message: 'Projetos sincronizados precisam de uma placa de destino.',
         tip: 'Selecione Arduino Uno, Nano ou ESP32 no editor.',
-      rawError: 'target_board is empty',
+        rawError: 'target_board is empty',
       });
       return false;
     }
@@ -433,6 +521,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
       if (error) throw error;
       updateTab(activeTab.id, { workspaceData, board });
       showSaveFeedback();
+      dirtyRef.current = false;
       setIsDirty(false);
       return true;
     } catch (error) {
@@ -444,28 +533,95 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
     }
   };
 
-  const handleDownloadProject = () => {
+  const handleDownloadProject = async () => {
     if (!workspace.current) return;
+    if (workspaceLoadFailedRef.current) {
+      setFriendlyError({
+        emoji: '🛟',
+        title: 'Exportação bloqueada para proteger o projeto',
+        message: 'Os blocos originais não foram carregados corretamente.',
+        tip: 'Volte ao painel e peça ajuda para recuperar o arquivo original.',
+        rawError: 'workspace_load_failed',
+      });
+      return;
+    }
     const file = createProjectFile({
       name: projectName || 'Projeto',
       targetBoard: board,
       workspace: Blockly.serialization.workspaces.save(workspace.current) as Record<string, unknown>,
     });
-    downloadTextFile(
-      `${(projectName || 'projeto').replace(/[^\p{L}\p{N}_-]+/gu, '-').toLowerCase()}.json`,
-      JSON.stringify(file, null, 2),
-    );
+    const safeName = `${(projectName || 'projeto').replace(/[^\p{L}\p{N}_-]+/gu, '-').toLowerCase()}.json`;
+
+    setIsExporting(true);
+    try {
+      const exportedPath = await exportLocalProjectFile(
+        JSON.stringify(file, null, 2),
+        safeName,
+      );
+      if (exportedPath) showSaveFeedback('exported');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setFriendlyError({
+        emoji: '📤',
+        title: 'Não consegui exportar o projeto',
+        message,
+        tip: 'Escolha outra pasta e verifique se você tem permissão para gravar nela.',
+        rawError: message,
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleUploadCode = async (ignoreOrphans = false) => {
-    if (isUploadingRef.current || !board || setup.status !== 'ready') return;
+    const currentWorkspace = workspace.current;
+    if (!currentWorkspace || isUploadingRef.current || !board || setup.status !== 'ready') return;
     if (!port) {
       setFriendlyError(getFriendlyError('Nenhuma porta USB foi selecionada.'));
       return;
     }
     if (!ignoreOrphans) { const orphans = getOrphanedBlocks(); if (orphans.length > 0) { setOrphanWarning(orphans); return; } }
-    if (!generatedCode.includes('void setup()') || !generatedCode.includes('void loop()')) {
-    setFriendlyError({ emoji: '🧩', title: 'Faltam peças importantes!', message: 'Os blocos PREPARAR e AGIR são obrigatórios para o robô funcionar.', tip: 'Dica: Mexa em uma peça e tente de novo para atualizar o código!', rawError: 'Missing setup() or loop().' }); return;    }
+
+    const auditIssues = auditWorkspace(currentWorkspace, board);
+    if (auditIssues.length > 0) {
+      const details = auditIssues.map((issue) => `• ${issue.message}`).join('\n');
+      setFriendlyError({
+        emoji: '🔎',
+        title: 'Revise alguns blocos antes de enviar',
+        message: auditIssues[0].message,
+        tip: auditIssues.length > 1
+          ? `Há mais ${auditIssues.length - 1} item(ns). Veja os detalhes técnicos.`
+          : 'O bloco com aviso amarelo mostra onde corrigir.',
+        rawError: details,
+      });
+      return;
+    }
+
+    let codeToUpload: string;
+    try {
+      codeToUpload = codeGeneratorRef.current?.(currentWorkspace, board) ?? '';
+      setGeneratedCode(codeToUpload);
+    } catch (error) {
+      setFriendlyError({
+        emoji: '🧩',
+        title: 'Não consegui gerar o código',
+        message: 'Um dos blocos contém dados que não puderam ser convertidos para C++.',
+        tip: 'Revise o último bloco alterado e tente novamente.',
+        rawError: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    if (!codeToUpload.includes('void setup()') || !codeToUpload.includes('void loop()')) {
+      setFriendlyError({
+        emoji: '🧩',
+        title: 'Faltam peças importantes!',
+        message: 'Os blocos PREPARAR e AGIR são obrigatórios para o robô funcionar.',
+        tip: 'Dica: mexa em uma peça e tente novamente para atualizar o código.',
+        rawError: 'Missing setup() or loop().',
+      });
+      return;
+    }
     if (isSerialOpen || isSerialStarting) {
       await HardwareService.stopSerial();
       setIsSerialOpen(false);
@@ -478,7 +634,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
       await delay(700);
       if (!isUploadingRef.current) return;
       setUploadStage('compiling');
-      await HardwareService.uploadCode(generatedCode, board, port);
+      await HardwareService.uploadCode(codeToUpload, board, port);
       await delay(2500);
       if (!isUploadingRef.current) return;
       setUploadStage('sending');
@@ -578,7 +734,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
               {boardLoadState === 'ready' && board && <BoardBadge boardKey={board} />}
               <div className="control-group">
                 <select aria-label="Porta USB da placa" value={port} onChange={(e) => setPort(e.target.value)}>
-                  {availablePorts.length === 0 ? <option value="">Selecione uma placa</option> : availablePorts.map(p => <option key={p} value={p}>{p}</option>)}
+                  {availablePorts.length === 0 ? <option value="">Nenhuma porta encontrada</option> : availablePorts.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
                 <ResponsiveToolbarButton
                   icon="🔄"
@@ -594,7 +750,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
               </div>
               {!readOnly && (
                 <ResponsiveToolbarButton
-                  icon="↥"
+                  icon={<img className="ide-toolbar-icon-image" src={iconEnviar} alt="" />}
                   label="Enviar"
                   tooltip="Enviar"
                   variant="primary"
@@ -607,7 +763,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
             </div>
 
             <ResponsiveToolbarButton
-              icon="</>"
+              icon={<img className="ide-toolbar-icon-image" src={iconVerCodigo} alt="" />}
               label={isCodeVisible ? 'Ocultar Código' : 'Ver Código'}
               tooltip={isCodeVisible ? 'Ocultar Código' : 'Ver Código'}
               variant="neutral"
@@ -616,7 +772,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
             />
             {!readOnly && (
               <ResponsiveToolbarButton
-                icon="💾"
+                icon={<img className="ide-toolbar-icon-image" src={iconSalvar} alt="" />}
                 label={isSaving ? 'Salvando…' : 'Salvar'}
                 tooltip="Salvar"
                 variant="primary"
@@ -629,7 +785,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
             <div className="ide-toolbar-secondary-actions">
               {!readOnly && !projectId && (
                 <ResponsiveToolbarButton
-                  icon="💾"
+                  icon={<img className="ide-toolbar-icon-image" src={iconSalvarComo} alt="" />}
                   label="Salvar como"
                   tooltip="Salvar como"
                   variant="secondary"
@@ -640,16 +796,20 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
               )}
               {!readOnly && (
                 <ResponsiveToolbarButton
-                  icon="⤓"
-                  label="Exportar JSON"
-                  tooltip="Exportar JSON"
+                  icon={<span className="ide-toolbar-json-icon">JSON</span>}
+                  label={isExporting ? 'Exportando…' : 'Exportar JSON'}
+                  tooltip="Exportar JSON para outro local"
                   variant="secondary"
-                  onClick={handleDownloadProject}
+                  onClick={() => { void handleDownloadProject(); }}
+                  disabled={isExporting}
                   className="ide-toolbar-json-action"
                 />
               )}
+            </div>
+
+            <div className="ide-toolbar-essential-actions">
               <ResponsiveToolbarButton
-                icon="💬"
+                icon={<img className="ide-toolbar-icon-image" src={iconChat} alt="" />}
                 label={isSerialOpen ? (readOnly ? 'Parar monitor' : 'Parar chat') : isSerialStarting ? 'Conectando…' : readOnly ? 'Monitorar' : 'Chat'}
                 tooltip={isSerialOpen ? (readOnly ? 'Parar monitor' : 'Parar chat') : isSerialStarting ? 'Conectando ao robô' : readOnly ? 'Monitorar' : 'Chat'}
                 variant="secondary"
@@ -657,7 +817,7 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
                 className="ide-toolbar-chat-action"
               />
               <ResponsiveToolbarButton
-                icon="↪"
+                icon={<img className="ide-toolbar-icon-image" src={iconSair} alt="" />}
                 label="Sair"
                 tooltip="Sair"
                 variant={isDirty && !readOnly ? 'danger' : 'secondary'}
@@ -666,28 +826,40 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
               />
             </div>
 
-            <div className="ide-more-menu" ref={moreMenuRef}>
+            <div className={`ide-more-menu ${readOnly ? 'ide-more-menu-readonly' : ''}`} ref={moreMenuRef}>
               <ResponsiveToolbarButton
                 icon="⋯"
                 label="Mais"
                 tooltip="Mais"
                 variant="secondary"
                 className="ide-more-toggle"
-                aria-expanded={isMoreOpen}
-                aria-haspopup="menu"
-                aria-controls="ide-more-panel"
+                ariaExpanded={isMoreOpen}
+                ariaControls="ide-more-panel"
                 onClick={() => setIsMoreOpen((open) => !open)}
               />
               {isMoreOpen && (
-                <div id="ide-more-panel" className="ide-more-panel" role="menu" aria-label="Mais ações do projeto">
+                <div
+                  id="ide-more-panel"
+                  className="ide-more-panel"
+                  role="group"
+                  aria-label="Mais ações do projeto"
+                >
                   {!readOnly && !projectId && (
-                  <button type="button" role="menuitem" onClick={() => { setIsMoreOpen(false); void handleSaveProject(true); }}>Salvar como…</button>
+                  <button type="button" disabled={isSaving} onClick={() => { closeMoreMenu(true); void handleSaveProject(true); }}>
+                    <img src={iconSalvarComo} alt="" /> Salvar como…
+                  </button>
                   )}
                   {!readOnly && (
-                  <button type="button" role="menuitem" onClick={() => { setIsMoreOpen(false); handleDownloadProject(); }}>⤓ Exportar JSON</button>
+                  <button type="button" disabled={isExporting} onClick={() => { closeMoreMenu(true); void handleDownloadProject(); }}>
+                    <span className="ide-toolbar-json-icon">JSON</span> {isExporting ? 'Exportando…' : 'Exportar JSON…'}
+                  </button>
                   )}
-                  <button type="button" role="menuitem" onClick={() => { setIsMoreOpen(false); void handleToggleSerial(); }}>{isSerialOpen ? 'Parar chat' : isSerialStarting ? 'Conectando…' : readOnly ? 'Monitorar' : 'Chat'}</button>
-                  <button type="button" role="menuitem" onClick={() => { setIsMoreOpen(false); handleAttemptBack(); }}>Sair</button>
+                  <button className="ide-more-mobile-action" type="button" onClick={() => { closeMoreMenu(true); void handleToggleSerial(); }}>
+                    <img src={iconChat} alt="" /> {isSerialOpen ? (readOnly ? 'Parar monitor' : 'Parar chat') : isSerialStarting ? 'Conectando…' : readOnly ? 'Monitorar' : 'Chat'}
+                  </button>
+                  <button className="ide-more-mobile-action" type="button" onClick={() => { closeMoreMenu(); handleAttemptBack(); }}>
+                    <img src={iconSair} alt="" /> Sair
+                  </button>
                 </div>
               )}
             </div>
@@ -743,10 +915,10 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
         />
       )}
 
-      {saveStatus === 'success' && (
+      {saveStatus && (
         <div className="save-toast" role="status" aria-live="polite">
           <span aria-hidden="true">✓</span>
-          <span>Projeto salvo com sucesso.</span>
+          <span>{saveStatus === 'exported' ? 'Projeto exportado com sucesso.' : 'Projeto salvo com sucesso.'}</span>
         </div>
       )}
 

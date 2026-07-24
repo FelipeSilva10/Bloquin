@@ -77,23 +77,61 @@ export const ProjectService = {
    * Copia um projeto para um aluno específico ou para todos da turma.
    * Cada cópia é independente — não há vínculo com o original.
    */
-  async shareProject(sourceProjectId: string, targetUserIds: string[], newName?: string): Promise<void> {
-    // 1. Busca projeto original (Incluindo turma_id, que é obrigatório no seu banco)
+  async shareProject(
+    sourceProjectId: string,
+    targetUserIds: string[],
+    targetTurmaId: string,
+    newName?: string,
+  ): Promise<void> {
+    if (targetUserIds.length === 0) return;
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) throw userError ?? new Error("Sessão não encontrada.");
+
+    // 1. Confirma que a turma de destino é uma das turmas do professor.
+    const { data: targetTurma, error: turmaError } = await supabase
+      .from("turmas")
+      .select("id")
+      .eq("id", targetTurmaId)
+      .eq("professor_id", user.id)
+      .maybeSingle();
+    if (turmaError) throw turmaError;
+    if (!targetTurma) throw new Error("A turma selecionada não pertence ao professor.");
+
+    // 2. Busca um projeto do próprio professor.
     const { data: source, error: fetchError } = await supabase
       .from("projetos")
-      .select("nome, descricao, target_board, workspace_data, turma_id")
+      .select("nome, descricao, target_board, workspace_data")
       .eq("id", sourceProjectId)
+      .eq("dono_id", user.id)
       .single();
 
     if (fetchError || !source) throw fetchError ?? new Error("Projeto não encontrado.");
 
+    // 3. Confirma que todos os destinatários são alunos da turma aberta. Além
+    // de evitar associações inconsistentes, isso protege chamadas acidentais
+    // com IDs de outra turma.
+    const uniqueTargetIds = [...new Set(targetUserIds)];
+    const { data: students, error: studentsError } = await supabase
+      .from("perfis")
+      .select("id")
+      .in("id", uniqueTargetIds)
+      .eq("turma_id", targetTurmaId)
+      .eq("role", "student");
+
+    if (studentsError) throw studentsError;
+    if ((students?.length ?? 0) !== uniqueTargetIds.length) {
+      throw new Error("Um ou mais alunos não pertencem à turma selecionada.");
+    }
+
     const copyName = newName ?? `[Compartilhado] ${source.nome}`;
     const now = new Date().toISOString();
 
-    // 2. Cria uma cópia para cada aluno
-    const copies = targetUserIds.map((uid) => ({
-      dono_id: uid,                   // No seu banco é dono_id e não user_id
-      turma_id: source.turma_id,      // Obrigatório (NOT NULL) no seu banco
+    // 4. Cria uma cópia independente para cada aluno, sempre vinculada à turma
+    // para a qual o professor está enviando o projeto.
+    const copies = uniqueTargetIds.map((uid) => ({
+      dono_id: uid,
+      turma_id: targetTurmaId,
       nome: copyName,
       descricao: source.descricao ?? "",
       target_board: source.target_board,

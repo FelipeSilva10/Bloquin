@@ -33,6 +33,21 @@ BREAKING CHANGE: apenas Arduino Uno R3+ é suportado a partir desta versão.
 
 <!-- Histórico de versões -->
 
+## [1.1.1] — 24/07/2026
+
+### Correções
+
+- Corrigida a geração de código para ESP-NOW, servo motor, PWM, I²C, ultrassônico e L298N em Arduino e ESP32.
+- Corrigidos escapes de texto, literais decimais, identificadores de variáveis/funções e dependências auxiliares no C++ gerado.
+- Corrigidos casos de sessão expirada, logout offline e modo visitante herdando autenticação ou limites de conta.
+- Corrigidos pinos inválidos, conflitos de pinos, blocos fora de PREPARAR/AGIR e blocos ESP-NOW usados em placas incompatíveis.
+
+### Interface e manutenção
+
+- Toolbar da IDE ajustada para telas estreitas, com ícones, menu de ações e tooltips responsivos.
+- Adicionada auditoria automatizada dos blocos e fixtures de compilação para validar boards, toolbox e código gerado.
+- O setup passa a tentar instalar as bibliotecas Servo e ESP32Servo, sem bloquear o uso quando a instalação opcional falhar.
+
 ## [1.1.0] — 23/07/2026
 
 ### Correções

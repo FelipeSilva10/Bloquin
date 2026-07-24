@@ -4,13 +4,18 @@ import { supabase } from '../lib/supabase';
 import logoCompleta from '../assets/LogoCompleta.png';
 import TutorialModal from "../components/modals/TutorialModal";
 import GuestInfoModal from "../components/modals/GuestInfoModal";
-import { clearSession, registerSession } from "../services/sessionService";
+import {
+  clearSession,
+  registerSession,
+  signOutLocalSafely,
+} from "../services/sessionService";
 
 interface LoginScreenProps {
   onLogin: (role: 'student' | 'teacher' | 'visitor') => void;
+  beforeLogin?: () => Promise<void>;
 }
 
-export function LoginScreen({ onLogin }: LoginScreenProps) {
+export function LoginScreen({ onLogin, beforeLogin }: LoginScreenProps) {
   const [email, setEmail]             = useState('');
   const [password, setPassword]       = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -38,6 +43,10 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
     let authenticatedUserId: string | null = null;
     try {
+      // Evita que a limpeza assíncrona do logout anterior apague uma sessão
+      // recém-criada caso o usuário tente entrar novamente imediatamente.
+      await beforeLogin?.();
+
       // 2. Autentica no Supabase
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: resolvedEmail,
@@ -64,14 +73,26 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
       if (perfil.role === 'teacher')      onLogin('teacher');
       else if (perfil.role === 'student') onLogin('student');
-      else                                onLogin('visitor');
+      else                                throw new Error('UNSUPPORTED_PROFILE_ROLE');
     } catch (loginError) {
       if (authenticatedUserId) {
-        await Promise.allSettled([clearSession(authenticatedUserId), supabase.auth.signOut()]);
+        try {
+          await clearSession(authenticatedUserId);
+        } catch {
+          // A limpeza local ainda precisa acontecer se o Supabase estiver
+          // indisponível durante a remoção do registro de sessão.
+        } finally {
+          await signOutLocalSafely();
+        }
       }
-      setError(loginError instanceof Error && loginError.message === 'PROFILE_NOT_FOUND'
-        ? 'Erro ao carregar seu perfil. Contate o suporte.'
-        : 'Não foi possível concluir o login. Verifique sua conexão e tente novamente.');
+      const errorCode = loginError instanceof Error ? loginError.message : '';
+      setError(
+        errorCode === 'PROFILE_NOT_FOUND'
+          ? 'Erro ao carregar seu perfil. Contate o suporte.'
+          : errorCode === 'UNSUPPORTED_PROFILE_ROLE'
+            ? 'Este perfil não tem permissão para acessar este aplicativo.'
+            : 'Não foi possível concluir o login. Verifique sua conexão e tente novamente.'
+      );
     } finally {
       setLoading(false);
     }

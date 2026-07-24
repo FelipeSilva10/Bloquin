@@ -14,6 +14,7 @@ interface ResponsiveToolbarButtonProps {
   className?: string;
   ariaExpanded?: boolean;
   ariaHasPopup?: boolean | 'menu';
+  ariaControls?: string;
 }
 
 export function ResponsiveToolbarButton({
@@ -28,6 +29,7 @@ export function ResponsiveToolbarButton({
   className = '',
   ariaExpanded,
   ariaHasPopup,
+  ariaControls,
 }: ResponsiveToolbarButtonProps) {
   const classes = [
     'ide-toolbar-button',
@@ -45,10 +47,11 @@ export function ResponsiveToolbarButton({
       aria-label={ariaLabel}
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHasPopup}
+      aria-controls={ariaControls}
     >
       <span className="ide-toolbar-button-icon" aria-hidden="true">{icon}</span>
       <span className="ide-toolbar-button-label">{label}</span>
-      <span className="ide-toolbar-tooltip" role="tooltip">{tooltip}</span>
+      <span className="ide-toolbar-tooltip" aria-hidden="true">{tooltip}</span>
     </button>
   );
 }
