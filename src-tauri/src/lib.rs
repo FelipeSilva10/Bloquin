@@ -242,6 +242,58 @@ fn ensure_core_installed(cli_path: &str, placa: &str) -> Result<String, String> 
     Ok(fqbn.to_string())
 }
 
+fn ensure_library_installed(cli_path: &str, library: &str, version: &str) -> Result<(), String> {
+    let list = Command::new(cli_path)
+        .hide_window()
+        .args(["lib", "list"])
+        .output()
+        .map_err(|e| format!("Erro ao listar bibliotecas: {}", e))?;
+    if !list.status.success() {
+        return Err(format!(
+            "Falha ao listar bibliotecas: {}",
+            String::from_utf8_lossy(&list.stderr)
+        ));
+    }
+
+    let installed = String::from_utf8_lossy(&list.stdout).lines().any(|line| {
+        let mut columns = line.split_whitespace();
+        columns.next() == Some(library) && columns.next() == Some(version)
+    });
+    if installed {
+        println!(">>> [LIB] '{}@{}' já instalada.", library, version);
+        return Ok(());
+    }
+
+    let update = Command::new(cli_path)
+        .hide_window()
+        .args(["lib", "update-index"])
+        .output()
+        .map_err(|e| format!("Erro ao atualizar o índice de bibliotecas: {}", e))?;
+    if !update.status.success() {
+        return Err(format!(
+            "Falha ao atualizar bibliotecas: {}",
+            String::from_utf8_lossy(&update.stderr)
+        ));
+    }
+
+    let library_versioned = format!("{}@{}", library, version);
+    let install = Command::new(cli_path)
+        .hide_window()
+        .args(["lib", "install", &library_versioned])
+        .output()
+        .map_err(|e| format!("Erro ao instalar a biblioteca {}: {}", library_versioned, e))?;
+    if !install.status.success() {
+        return Err(format!(
+            "Falha ao instalar a biblioteca {}: {}",
+            library_versioned,
+            String::from_utf8_lossy(&install.stderr)
+        ));
+    }
+
+    println!(">>> [LIB] '{}' instalada.", library_versioned);
+    Ok(())
+}
+
 // ─── Setup inicial — chamado pelo frontend na abertura do app ─────────────
 //
 // Emite eventos "setup-progress" para o frontend mostrar uma tela
@@ -339,6 +391,36 @@ fn run_setup(window: tauri::Window, state: tauri::State<AppState>) {
                 percent: 0,
             });
             return;
+        }
+
+        // ── Passo 4: Bibliotecas usadas pelos blocos de servo ─────────────
+        let _ = window.emit(
+            "setup-progress",
+            SetupProgress {
+                step: "core".into(),
+                message: "Preparando os blocos de servo motor...".into(),
+                percent: 88,
+            },
+        );
+
+        for (library, version) in [("Servo", "1.3.0"), ("ESP32Servo", "3.0.9")] {
+            if let Err(e) = ensure_library_installed(&cli, library, version) {
+                eprintln!(
+                    ">>> [LIB] Aviso: suporte opcional '{}@{}' indisponível: {}",
+                    library, version, e
+                );
+                let _ = window.emit(
+                    "setup-progress",
+                    SetupProgress {
+                        step: "core".into(),
+                        message: format!(
+                            "O Bloquin continuará sem bloquear. Os blocos de servo podem precisar de internet depois.\n\nDetalhe: {}",
+                            e,
+                        ),
+                        percent: 92,
+                    },
+                );
+            }
         }
 
         // ── Concluído ─────────────────────────────────────────────────────

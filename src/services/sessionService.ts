@@ -4,6 +4,16 @@ import { v4 as uuidv4 } from "uuid";
 
 const SESSION_TOKEN_KEY    = "bloquin_session_token";
 const INTERVENTION_CHANNEL = "intervention";
+const SUPABASE_AUTH_STORAGE_KEY = (() => {
+  try {
+    const hostname = new URL(import.meta.env.VITE_SUPABASE_URL).hostname;
+    return `sb-${hostname.split(".")[0]}-auth-token`;
+  } catch {
+    return null;
+  }
+})();
+
+export type SessionProbeStatus = "valid" | "invalid" | "unreachable";
 
 // Sessão considerada expirada se não houver heartbeat nos últimos 12 minutos.
 // O timer de inatividade no cliente dispara com 10 min, então os 12 min
@@ -13,7 +23,11 @@ const SESSION_TTL_MS = 12 * 60 * 1000;
 // ─── Token local ──────────────────────────────────────────────────────────────
 
 function getLocalToken(): string | null {
-  return localStorage.getItem(SESSION_TOKEN_KEY);
+  try {
+    return localStorage.getItem(SESSION_TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 function setLocalToken(token: string) {
@@ -21,7 +35,43 @@ function setLocalToken(token: string) {
 }
 
 function clearLocalToken() {
-  localStorage.removeItem(SESSION_TOKEN_KEY);
+  try {
+    localStorage.removeItem(SESSION_TOKEN_KEY);
+  } catch {
+    // O logout não pode depender da disponibilidade do Web Storage.
+  }
+}
+
+function clearStoredSupabaseAuth() {
+  if (!SUPABASE_AUTH_STORAGE_KEY) return;
+  try {
+    localStorage.removeItem(SUPABASE_AUTH_STORAGE_KEY);
+    localStorage.removeItem(`${SUPABASE_AUTH_STORAGE_KEY}-code-verifier`);
+    localStorage.removeItem(`${SUPABASE_AUTH_STORAGE_KEY}-user`);
+  } catch {
+    // O auth-js ainda tentará remover seu estado pelo adaptador configurado.
+  }
+}
+
+/**
+ * Descarta imediatamente toda autenticação deste dispositivo.
+ *
+ * A remoção direta do storage acontece mesmo sem rede. A chamada ao Auth é
+ * mantida para atualizar o estado interno do cliente e seus subscribers.
+ */
+export async function signOutLocalSafely(): Promise<void> {
+  clearLocalToken();
+  clearStoredSupabaseAuth();
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch {
+    // A autenticação persistida já foi removida acima. Uma indisponibilidade
+    // do Auth não pode impedir a entrada no modo local nem o logout da UI.
+  } finally {
+    // Garante a limpeza mesmo se uma implementação futura do Auth tentar usar
+    // a rede ou falhar antes de remover os dados persistidos.
+    clearStoredSupabaseAuth();
+  }
 }
 
 // ─── Registro de sessão ───────────────────────────────────────────────────────
@@ -65,32 +115,60 @@ export async function isSessionActive(userId: string): Promise<boolean> {
  * Mantém a sessão "viva" enquanto o usuário está ativo.
  * Se o usuário sair sem logout explícito, a sessão expira após SESSION_TTL_MS.
  */
-export async function heartbeat(userId: string): Promise<void> {
+export async function heartbeat(userId: string): Promise<SessionProbeStatus> {
   const localToken = getLocalToken();
-  if (!localToken) return;
-  await supabase
-    .from("user_sessions")
-    .update({ updated_at: new Date().toISOString() })
-    .eq("user_id", userId)
-    .eq("session_token", localToken);
+  if (!localToken) return "invalid";
+
+  try {
+    const { data, error } = await supabase
+      .from("user_sessions")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .eq("session_token", localToken)
+      .select("session_token")
+      .maybeSingle();
+
+    // Erros de rede, indisponibilidade e falhas do backend nunca devem ser
+    // interpretados como uma sessão substituída.
+    if (error) return "unreachable";
+    return data?.session_token === localToken ? "valid" : "invalid";
+  } catch {
+    return "unreachable";
+  }
 }
 
 // ─── Validação e limpeza ──────────────────────────────────────────────────────
 
-export async function isSessionValid(userId: string): Promise<boolean> {
+export async function isSessionValid(userId: string): Promise<SessionProbeStatus> {
   const localToken = getLocalToken();
-  if (!localToken) return false;
-  const { data } = await supabase
-    .from("user_sessions")
-    .select("session_token")
-    .eq("user_id", userId)
-    .single();
-  return data?.session_token === localToken;
+  if (!localToken) return "invalid";
+
+  try {
+    const { data, error } = await supabase
+      .from("user_sessions")
+      .select("session_token")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) return "unreachable";
+    return data?.session_token === localToken ? "valid" : "invalid";
+  } catch {
+    return "unreachable";
+  }
 }
 
 export async function clearSession(userId: string): Promise<void> {
+  const localToken = getLocalToken();
   clearLocalToken();
-  const { error } = await supabase.from("user_sessions").delete().eq("user_id", userId);
+  if (!localToken) return;
+
+  // Filtra também pelo token para uma sessão antiga nunca apagar o registro
+  // de outra sessão que acabou de substituí-la.
+  const { error } = await supabase
+    .from("user_sessions")
+    .delete()
+    .eq("user_id", userId)
+    .eq("session_token", localToken);
   if (error) throw error;
 }
 

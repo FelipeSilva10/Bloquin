@@ -474,6 +474,30 @@ input::-webkit-credentials-auto-fill-button {
   font-size: 1rem;
   line-height: 1;
 }
+.ide-toolbar-icon-image {
+  display: block;
+  width: 21px;
+  height: 21px;
+  object-fit: contain;
+}
+.ide-toolbar-button-primary .ide-toolbar-icon-image,
+.ide-toolbar-button-danger .ide-toolbar-icon-image,
+.ide-toolbar-send-action .ide-toolbar-icon-image {
+  filter: brightness(0) invert(1);
+}
+.ide-toolbar-json-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 18px;
+  padding: 0 3px;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  font-size: 0.55rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
 .ide-toolbar-button-label { min-width: 0; }
 .ide-toolbar-button-primary {
   background: var(--btn-primary-bg);
@@ -560,12 +584,29 @@ input::-webkit-credentials-auto-fill-button {
   gap: clamp(6px, 0.6vw, 10px);
   min-width: 0;
   overflow: visible;
+  margin-left: 2px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
 }
+.ide-toolbar-essential-actions {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 0.6vw, 10px);
+}
+.ide-more-mobile-action { display: none !important; }
 .ide-toolbar-secondary-actions .ide-toolbar-button { font-size: 0.82rem; }
 .ide-toolbar-button-secondary:hover { background: #e3edf3; }
 .ide-toolbar-button-neutral:hover { background: #f3f6f8; }
 
-.ide-more-menu { position: relative; display: block; flex: 0 0 auto; overflow: visible; }
+.ide-more-menu {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  overflow: visible;
+  margin-left: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
 .ide-more-toggle { min-width: 78px; gap: 6px; }
 .ide-more-panel {
   position: absolute;
@@ -582,6 +623,9 @@ input::-webkit-credentials-auto-fill-button {
   box-shadow: 0 8px 22px rgba(15, 20, 40, 0.14);
 }
 .ide-more-panel button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   padding: 9px 11px;
   border: 0;
   border-radius: 7px;
@@ -592,6 +636,15 @@ input::-webkit-credentials-auto-fill-button {
   font-weight: 800;
   text-align: left;
   white-space: nowrap;
+}
+.ide-more-panel button img {
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+}
+.ide-more-panel button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 .ide-more-panel button:hover { background: var(--surface); }
 .ide-more-panel button:active { transform: none; }
@@ -1444,14 +1497,18 @@ pre {
 /* ═══════════════════════════════════════════════════
    DEGRADAÇÃO GRACIOSA (RESPONSIVIDADE)
    ═══════════════════════════════════════════════════ */
-@container ide-toolbar (min-width: 1500px) {
+@container ide-toolbar (min-width: 1360px) {
   .ide-toolbar-secondary-actions { display: flex; }
   .ide-more-menu { display: none; }
 }
 
-@container ide-toolbar (max-width: 1499px) {
+@container ide-toolbar (max-width: 1359px) {
   .ide-toolbar-secondary-actions { display: none; }
   .ide-more-menu { display: block; }
+}
+
+@container ide-toolbar (min-width: 768px) and (max-width: 1359px) {
+  .ide-more-menu-readonly { display: none; }
 }
 
 @container ide-toolbar (min-width: 768px) and (max-width: 1099px) {
@@ -1471,6 +1528,12 @@ pre {
   }
   .ide-toolbar-code-action .ide-toolbar-button-label { display: none; }
   .ide-toolbar-code-action .ide-toolbar-tooltip { display: block; }
+  .ide-toolbar-code-action:hover .ide-toolbar-tooltip,
+  .ide-toolbar-code-action:focus-visible .ide-toolbar-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+  }
   .ide-project-context { gap: 8px; }
   .ide-project-context img { height: 30px !important; }
   .ide-project-title { font-size: 1rem; }
@@ -1480,11 +1543,31 @@ pre {
   .control-group select { height: 36px; min-width: 118px; }
   .hardware-controls select { max-width: 145px; min-width: 118px; font-size: 0.8rem; }
   .ide-toolbar-refresh-action { width: 26px; height: 26px; }
+  .ide-toolbar-essential-actions .ide-toolbar-button {
+    width: 40px;
+    padding: 0;
+    gap: 0;
+  }
+  .ide-toolbar-essential-actions .ide-toolbar-button-label { display: none; }
+  .ide-toolbar-essential-actions .ide-toolbar-tooltip { display: block; }
+  .ide-toolbar-essential-actions .ide-toolbar-button:hover .ide-toolbar-tooltip,
+  .ide-toolbar-essential-actions .ide-toolbar-button:focus-visible .ide-toolbar-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+  }
 }
 
 @container ide-toolbar (max-width: 767px) {
-  .ide-toolbar { min-height: 56px; padding: 6px 8px; }
-  .ide-toolbar-main { gap: 6px; }
+  .ide-toolbar { min-height: 96px; padding: 7px 8px; }
+  .ide-toolbar-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+  .ide-toolbar-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
   .ide-toolbar-controls { gap: 5px; }
   .ide-toolbar-button {
     width: 38px;
@@ -1494,10 +1577,17 @@ pre {
   }
   .ide-toolbar-button-label { display: none; }
   .ide-toolbar-button-icon { font-size: 0.95rem; }
+  .ide-toolbar-icon-image { width: 19px; height: 19px; }
   .ide-toolbar-button .ide-toolbar-tooltip { display: block; }
+  .ide-toolbar-button:hover .ide-toolbar-tooltip,
+  .ide-toolbar-button:focus-visible .ide-toolbar-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+  }
   .ide-project-context { gap: 6px; }
   .ide-project-context img { height: 30px !important; }
-  .ide-project-title { max-width: min(42vw, 220px); font-size: 0.9rem; }
+  .ide-project-title { max-width: calc(100vw - 60px); font-size: 0.9rem; }
   .ide-project-name-input { min-width: 48px; width: 100%; }
   .ide-toolbar .board-badge {
     width: 30px;
@@ -1514,16 +1604,52 @@ pre {
   .hardware-controls select { max-width: 108px; min-width: 92px; font-size: 0.74rem; }
   .ide-toolbar-refresh-action { width: 26px; height: 26px; }
   .ide-more-toggle { min-width: 38px; }
+  .ide-more-menu { margin-left: 0; padding-left: 5px; }
+  .ide-toolbar-essential-actions { display: none; }
+  .ide-more-mobile-action { display: flex !important; }
+}
+
+@container ide-toolbar (max-width: 359px) {
+  .ide-toolbar-controls { gap: 3px; }
+  .ide-hardware-controls { gap: 4px; }
+  .ide-toolbar .board-badge { display: none; }
+  .control-group { padding-inline: 2px; }
+  .control-group select {
+    width: 72px;
+    min-width: 72px;
+  }
+  .hardware-controls select {
+    width: 72px;
+    min-width: 72px;
+    max-width: 72px;
+  }
+  .ide-toolbar-refresh-action {
+    width: 24px;
+    height: 24px;
+  }
+  .ide-more-menu {
+    padding-left: 2px;
+    border-left: 0;
+  }
 }
 
 /* Fallback de padding para navegadores sem suporte a container queries. */
 @media (max-width: 767px) {
   .ide-toolbar {
+    min-height: 96px;
+    padding-block: 7px;
     padding-inline-start: max(8px, env(safe-area-inset-left));
     padding-inline-end: max(8px, env(safe-area-inset-right));
   }
   .serial-monitor, .serial-monitor.shifted { right: 16px; bottom: 16px; }
   .serial-monitor { height: min(440px, calc(100vh - 32px)); }
+}
+
+@media (min-width: 768px) and (max-width: 1099px) {
+  .ide-toolbar {
+    min-height: 60px;
+    padding: 8px 10px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

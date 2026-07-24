@@ -3,6 +3,24 @@ import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 
 const JSON_FILTER = [{ name: 'Projeto do Bloquin', extensions: ['json'] }];
 
+interface BrowserWritableFile {
+  write(data: string): Promise<void>;
+  close(): Promise<void>;
+}
+
+interface BrowserFileHandle {
+  name: string;
+  createWritable(): Promise<BrowserWritableFile>;
+}
+
+type BrowserSavePicker = (options: {
+  suggestedName: string;
+  types: Array<{
+    description: string;
+    accept: Record<string, string[]>;
+  }>;
+}) => Promise<BrowserFileHandle>;
+
 export function isTauriRuntime() {
   return typeof window !== 'undefined'
     && Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
@@ -18,6 +36,41 @@ export function downloadTextFile(fileName: string, contents: string) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function saveWithBrowserPicker(
+  contents: string,
+  suggestedName: string,
+): Promise<string | null> {
+  const pickerWindow = window as Window & {
+    showSaveFilePicker?: BrowserSavePicker;
+  };
+  const showSaveFilePicker = pickerWindow.showSaveFilePicker;
+
+  // O seletor de arquivos é suportado pelo Chromium usado no desktop e por
+  // navegadores compatíveis. Em navegadores antigos, o download tradicional
+  // continua sendo o fallback possível.
+  if (!showSaveFilePicker) {
+    downloadTextFile(suggestedName, contents);
+    return suggestedName;
+  }
+
+  try {
+    const handle = await showSaveFilePicker.call(pickerWindow, {
+      suggestedName,
+      types: [{
+        description: 'Projeto do Bloquin',
+        accept: { 'application/json': ['.json'] },
+      }],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(contents);
+    await writable.close();
+    return handle.name;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return null;
+    throw error;
+  }
 }
 
 export async function openLocalProjectFile(): Promise<{ path: string; contents: string } | null> {
@@ -39,16 +92,16 @@ export async function saveLocalProjectFile(
   suggestedName: string,
   existingPath?: string,
   saveAs = false,
+  dialogTitle?: string,
 ): Promise<string | null> {
   if (!isTauriRuntime()) {
-    downloadTextFile(suggestedName, contents);
-    return existingPath ?? suggestedName;
+    return saveWithBrowserPicker(contents, suggestedName);
   }
 
   const path = !saveAs && existingPath
     ? existingPath
     : await save({
-      title: saveAs ? 'Salvar projeto como…' : 'Salvar projeto do Bloquin',
+      title: dialogTitle ?? (saveAs ? 'Salvar projeto como…' : 'Salvar projeto do Bloquin'),
       defaultPath: suggestedName,
       filters: JSON_FILTER,
       canCreateDirectories: true,
@@ -58,4 +111,17 @@ export async function saveLocalProjectFile(
   const jsonPath = path.toLowerCase().endsWith('.json') ? path : `${path}.json`;
   await writeTextFile(jsonPath, contents);
   return jsonPath;
+}
+
+export function exportLocalProjectFile(
+  contents: string,
+  suggestedName: string,
+): Promise<string | null> {
+  return saveLocalProjectFile(
+    contents,
+    suggestedName,
+    undefined,
+    true,
+    'Exportar projeto JSON',
+  );
 }

@@ -1,6 +1,35 @@
 import * as Blockly from 'blockly/core';
+import type { BoardKey } from './boards';
+import { toCppIdentifier } from './identifiers';
 
 export const cppGenerator = new Blockly.Generator('CPP');
+let targetBoard: BoardKey = 'uno';
+
+function cppStringLiteral(value: unknown): string {
+  return `"${String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t')}"`;
+}
+
+function floatLiteral(value: unknown, fallback = 0): string {
+  const parsed = Number(value);
+  const number = Number.isFinite(parsed) ? parsed : fallback;
+  return Number.isInteger(number) ? `${number}.0f` : `${number}f`;
+}
+
+function isInsideLoop(block: Blockly.Block): boolean {
+  let parent = block.getSurroundParent();
+  while (parent) {
+    if (parent.type === 'repetir_vezes' || parent.type === 'enquanto_verdadeiro') {
+      return true;
+    }
+    parent = parent.getSurroundParent();
+  }
+  return false;
+}
 
 export function initGenerators() {
   cppGenerator.scrub_ = function (block, code, opt_thisOnly) {
@@ -35,7 +64,10 @@ export function initGenerators() {
     return `  static unsigned long ${timerVar} = 0;\n  if (millis() - ${timerVar} >= ${ms}) {\n    ${timerVar} = millis();\n${doCode}  }\n`;
   };
   cppGenerator.forBlock['enquanto_verdadeiro'] = (b: Blockly.Block) => `  while (${cppGenerator.valueToCode(b, 'CONDICAO', 0) || 'false'}) {\n${cppGenerator.statementToCode(b, 'DO') || ''}  }\n`;
-  cppGenerator.forBlock['parar_repeticao'] = (_b: Blockly.Block) => `  break;\n`;
+  cppGenerator.forBlock['parar_repeticao'] = (b: Blockly.Block) =>
+    isInsideLoop(b)
+      ? '  break;\n'
+      : '  // “Parar repetição” ignorado: o bloco não está dentro de uma repetição.\n';
 
   // Condições e Matemática
   cppGenerator.forBlock['se_entao'] = (b: Blockly.Block) => `  if (${cppGenerator.valueToCode(b, 'CONDICAO', 0) || 'false'}) {\n${cppGenerator.statementToCode(b, 'ENTAO') || ''}  }\n`;
@@ -48,74 +80,83 @@ export function initGenerators() {
   cppGenerator.forBlock['operacao_matematica'] = (b: Blockly.Block) => {
     const a = cppGenerator.valueToCode(b, 'A', 99) || '0';
     const bv = cppGenerator.valueToCode(b, 'B', 99) || '0';
+    if (b.getFieldValue('OP') === '%') return [`fmod(${a}, ${bv})`, 0];
     return [`(${a} ${b.getFieldValue('OP')} ${bv})`, 0];
   };
   cppGenerator.forBlock['valor_absoluto'] = (b: Blockly.Block) => [`abs(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'})`, 0];
   cppGenerator.forBlock['constrain_valor'] = (b: Blockly.Block) => [`constrain(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}, ${b.getFieldValue('MIN')}, ${b.getFieldValue('MAX')})`, 0];
-  cppGenerator.forBlock['random_valor'] = (b: Blockly.Block) => [`random(${b.getFieldValue('MIN')}, ${b.getFieldValue('MAX')})`, 0];
+  cppGenerator.forBlock['random_valor'] = (b: Blockly.Block) => {
+    const maximum = Number(b.getFieldValue('MAX'));
+    return [`random(${b.getFieldValue('MIN')}, ${Number.isFinite(maximum) ? maximum + 1 : 101})`, 0];
+  };
   cppGenerator.forBlock['millis_atual'] = (_b: Blockly.Block) => [`millis()`, 0];
 
   // Variáveis
-  cppGenerator.forBlock['declarar_variavel_global'] = (b: Blockly.Block) => `${b.getFieldValue('TIPO')} ${(b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'};\n`;
-  cppGenerator.forBlock['atribuir_variavel'] = (b: Blockly.Block) => `  ${(b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'};\n`;
-  cppGenerator.forBlock['ler_variavel'] = (b: Blockly.Block) => [(b.getFieldValue('NOME') || 'minha_var').replace(/\s+/g, '_'), 0];
-  cppGenerator.forBlock['incrementar_variavel'] = (b: Blockly.Block) => `  ${(b.getFieldValue('NOME') || 'contador').replace(/\s+/g, '_')} += ${cppGenerator.valueToCode(b, 'VALOR', 99) || '1'};\n`;
+  cppGenerator.forBlock['declarar_variavel_global'] = (b: Blockly.Block) => `${b.getFieldValue('TIPO')} ${toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'};\n`;
+  cppGenerator.forBlock['atribuir_variavel'] = (b: Blockly.Block) => `  ${toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'};\n`;
+  cppGenerator.forBlock['ler_variavel'] = (b: Blockly.Block) => [toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var'), 0];
+  cppGenerator.forBlock['incrementar_variavel'] = (b: Blockly.Block) => `  ${toCppIdentifier(b.getFieldValue('NOME'), 'contador', 'var')} += ${cppGenerator.valueToCode(b, 'VALOR', 99) || '1'};\n`;
   cppGenerator.forBlock['valor_booleano_fixo'] = (b: Blockly.Block) => [b.getFieldValue('VALOR'), 0];
 
   // Funções
   cppGenerator.forBlock['definir_funcao'] = (b: Blockly.Block) => {
-    return `void ${(b.getFieldValue('NOME') || 'minhaFuncao').replace(/\s+/g, '_')}() {\n${cppGenerator.statementToCode(b, 'DO') || ''}}\n\n`;
+    return `void ${toCppIdentifier(b.getFieldValue('NOME'), 'minhaFuncao', 'fn')}() {\n${cppGenerator.statementToCode(b, 'DO') || ''}}\n\n`;
   };
-  cppGenerator.forBlock['chamar_funcao'] = (b: Blockly.Block) => `  ${(b.getFieldValue('NOME') || 'minhaFuncao').replace(/\s+/g, '_')}();\n`;
+  cppGenerator.forBlock['chamar_funcao'] = (b: Blockly.Block) => `  ${toCppIdentifier(b.getFieldValue('NOME'), 'minhaFuncao', 'fn')}();\n`;
   cppGenerator.forBlock['definir_funcao_retorno'] = (b: Blockly.Block) => {
-    const nome = (b.getFieldValue('NOME') || 'calcular').replace(/\s+/g, '_');
+    const nome = toCppIdentifier(b.getFieldValue('NOME'), 'calcular', 'fn');
     const corpo = cppGenerator.statementToCode(b, 'DO') || '';
     const ret = cppGenerator.valueToCode(b, 'RETURN', 99) || '0.0f';
     return `float ${nome}() {\n${corpo}  return (float)(${ret});\n}\n\n`;
   };
-  cppGenerator.forBlock['chamar_funcao_retorno'] = (b: Blockly.Block) => [`${(b.getFieldValue('NOME') || 'calcular').replace(/\s+/g, '_')}()`, 0];
+  cppGenerator.forBlock['chamar_funcao_retorno'] = (b: Blockly.Block) => [`${toCppIdentifier(b.getFieldValue('NOME'), 'calcular', 'fn')}()`, 0];
 
   // ESP-NOW
   cppGenerator.forBlock['espnow_iniciar_wifi'] = (_b: Blockly.Block) => `  WiFi.mode(WIFI_STA);\n  WiFi.disconnect();\n  delay(100);\n`;
   cppGenerator.forBlock['espnow_mac_serial'] = (_b: Blockly.Block) => `  Serial.print("[INFO] MAC: ");\n  Serial.println(WiFi.macAddress());\n`;
   cppGenerator.forBlock['espnow_transmissor_init'] = (_b: Blockly.Block) =>
     `  if (esp_now_init() != ESP_OK) {\n    Serial.println("[ERRO] ESP-NOW falhou");\n    while(true) delay(1000);\n  }\n` +
-    `  {\n` +
-    `    esp_now_peer_info_t _pi = {};\n` +
-    `    memcpy(_pi.peer_addr, _espnow_peer_mac, 6);\n` +
-    `    _pi.channel = 0;\n` +
-    `    _pi.encrypt = false;\n` +
-    `    _pi.ifidx = WIFI_IF_STA;\n` +
-    `    if (esp_now_add_peer(&_pi) != ESP_OK) {\n      Serial.println("[ERRO] Falha ao adicionar peer");\n      while(true) delay(1000);\n    }\n` +
-    `    Serial.println("[OK] ESP-NOW pronto.");\n` +
-    `  }\n`;
+    `  Serial.println("[OK] ESP-NOW iniciado.");\n`;
 
   cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
     const mac = (b.getFieldValue('MAC') || 'AA:BB:CC:DD:EE:FF');
-    const safeMac = mac.replace(/-/g, ':').trim();
+    const normalizedMac = String(mac).replace(/-/g, ':').trim();
+    const safeMac = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(normalizedMac)
+      ? normalizedMac
+      : 'FF:FF:FF:FF:FF:FF';
     const parts = safeMac.split(':').map((p: string) => `0x${p.toUpperCase()}`);
     return (
       `  uint8_t _tmp_mac[6] = {${parts.join(', ')}};\n` +
-      `  memcpy(_espnow_peer_mac, _tmp_mac, 6);\n`
+      `  memcpy(_espnow_peer_mac, _tmp_mac, 6);\n` +
+      `  if (esp_now_is_peer_exist(_espnow_peer_mac)) esp_now_del_peer(_espnow_peer_mac);\n` +
+      `  esp_now_peer_info_t _pi = {};\n` +
+      `  memcpy(_pi.peer_addr, _espnow_peer_mac, 6);\n` +
+      `  _pi.channel = 0;\n` +
+      `  _pi.encrypt = false;\n` +
+      `  _pi.ifidx = WIFI_IF_STA;\n` +
+      `  if (esp_now_add_peer(&_pi) != ESP_OK) {\n` +
+      `    Serial.println("[ERRO] Falha ao conectar ao receptor");\n` +
+      `    while(true) delay(1000);\n` +
+      `  }\n`
     );
   };
 
   cppGenerator.forBlock['espnow_enviar_pacote'] = (b: Blockly.Block) => `  _PacoteDados _pkt;\n  _pkt.pitch = (float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'});\n  _pkt.roll  = (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'});\n  _pkt.parar = ${cppGenerator.valueToCode(b, 'PARAR', 0) || 'false'};\n  esp_now_send(_espnow_peer_mac, (uint8_t*)&_pkt, sizeof(_pkt));\n`;
   cppGenerator.forBlock['espnow_receptor_init'] = (_b: Blockly.Block) => `  if (esp_now_init() != ESP_OK) {\n    Serial.println("[ERRO] ESP-NOW falhou");\n    while(true) delay(1000);\n  }\n  esp_now_register_recv_cb(_bloquin_OnDataRecv);\n`;
   cppGenerator.forBlock['espnow_tem_dados_novos'] = (_b: Blockly.Block) => [`_bloquin_temDadosNovos()`, 0];
-  cppGenerator.forBlock['espnow_ler_pitch'] = (_b: Blockly.Block) => [`_espnow_pacote.pitch`, 0];
-  cppGenerator.forBlock['espnow_ler_roll'] = (_b: Blockly.Block) => [`_espnow_pacote.roll`, 0];
-  cppGenerator.forBlock['espnow_ler_flag_parar'] = (_b: Blockly.Block) => [`_espnow_pacote.parar`, 0];
-  cppGenerator.forBlock['espnow_timeout_ms'] = (b: Blockly.Block) => [`(_espnow_primeiroRx && (millis() - _espnow_ultimoRx > ${b.getFieldValue('MS')}UL))`, 0];
-  cppGenerator.forBlock['espnow_marcar_lido'] = (_b: Blockly.Block) => `  _espnow_dadosNovos = false;\n`;
+  cppGenerator.forBlock['espnow_ler_pitch'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowPitch()`, 0];
+  cppGenerator.forBlock['espnow_ler_roll'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowRoll()`, 0];
+  cppGenerator.forBlock['espnow_ler_flag_parar'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowParar()`, 0];
+  cppGenerator.forBlock['espnow_timeout_ms'] = (b: Blockly.Block) => [`_bloquin_espnowTimeout(${b.getFieldValue('MS')}UL)`, 0];
+  cppGenerator.forBlock['espnow_marcar_lido'] = (_b: Blockly.Block) => `  _bloquin_marcarEspnowLido();\n`;
 
   // Ultrassônico
   cppGenerator.forBlock['configurar_ultrassonico'] = (b: Blockly.Block) => `  pinMode(${b.getFieldValue('TRIG')}, OUTPUT);\n  pinMode(${b.getFieldValue('ECHO')}, INPUT);\n`;
   cppGenerator.forBlock['ler_distancia_cm'] = (b: Blockly.Block) => [`_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')})`, 0];
   cppGenerator.forBlock['mostrar_distancia'] = (b: Blockly.Block) => `  Serial.println(_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}));\n`;
-  cppGenerator.forBlock['objeto_esta_perto'] = (b: Blockly.Block) => [`(_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}) < ${b.getFieldValue('CM')})`, 0];
-  cppGenerator.forBlock['distancia_entre'] = (b: Blockly.Block) => [`_distanciaEntre(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}, ${b.getFieldValue('MIN')}.0f, ${b.getFieldValue('MAX')}.0f)`, 0];
-  cppGenerator.forBlock['escrever_serial'] = (b: Blockly.Block) => `  Serial.println("${b.getFieldValue('TEXT')}");\n`;
+  cppGenerator.forBlock['objeto_esta_perto'] = (b: Blockly.Block) => [`_objetoPerto(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}, ${floatLiteral(b.getFieldValue('CM'))})`, 0];
+  cppGenerator.forBlock['distancia_entre'] = (b: Blockly.Block) => [`_distanciaEntre(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}, ${floatLiteral(b.getFieldValue('MIN'))}, ${floatLiteral(b.getFieldValue('MAX'))})`, 0];
+  cppGenerator.forBlock['escrever_serial'] = (b: Blockly.Block) => `  Serial.println(${cppStringLiteral(b.getFieldValue('TEXT'))});\n`;
   cppGenerator.forBlock['escrever_serial_valor'] = (b: Blockly.Block) => `  Serial.println(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
   cppGenerator.forBlock['servo_configurar'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.attach(${b.getFieldValue('PIN')});\n`;
   cppGenerator.forBlock['servo_mover'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.write(${cppGenerator.valueToCode(b, 'ANGULO', 99) || '90'});\n`;
@@ -129,7 +170,9 @@ export function initGenerators() {
     return `  _bloquin_tocarMusica(_bloquin_mel_${musica}, _bloquin_notes_${musica}, _bloquin_tempo_${musica}, ${pin});\n`;
   };
   cppGenerator.forBlock['mpu_iniciar'] = (b: Blockly.Block) =>
-    `  Wire.begin(${b.getFieldValue('SDA')}, ${b.getFieldValue('SCL')});\n` +
+    (targetBoard === 'esp32'
+      ? `  Wire.begin(${b.getFieldValue('SDA')}, ${b.getFieldValue('SCL')});\n`
+      : '  Wire.begin(); // SDA=A4, SCL=A5 no Arduino Uno/Nano\n') +
     `  Wire.beginTransmission(0x68);\n  Wire.write(0x6B);\n  Wire.write(0);\n` +
     `  Wire.endTransmission(true);\n  Serial.println("[OK] MPU-6050 iniciado");\n`;
   cppGenerator.forBlock['mpu_ler_pitch'] = (_b: Blockly.Block) => [`_bloquin_lerPitch()`, 0];
@@ -150,8 +193,10 @@ export function initGenerators() {
       `  digitalWrite(${in1},LOW); digitalWrite(${in2},LOW);\n` +
       `  digitalWrite(${in3},LOW); digitalWrite(${in4},LOW);\n` +
       // Bug 4 fix: canais 0 e 1 → compatível Core 2.x e Core 3.x via macro
-      `  _LEDC_ATTACH(${ena}, 0, 1000, 8); _LEDC_WRITE(${ena}, 0, 0);\n` +
-      `  _LEDC_ATTACH(${enb}, 1, 1000, 8); _LEDC_WRITE(${enb}, 1, 0);\n`
+      (targetBoard === 'esp32'
+        ? `  _LEDC_ATTACH(${ena}, 0, 1000, 8); _LEDC_WRITE(${ena}, 0, 0);\n` +
+          `  _LEDC_ATTACH(${enb}, 1, 1000, 8); _LEDC_WRITE(${enb}, 1, 0);\n`
+        : `  analogWrite(${ena}, 0); analogWrite(${enb}, 0);\n`)
     );
   };
   cppGenerator.forBlock['l298n_mover_robo'] = (b: Blockly.Block) => {
@@ -171,31 +216,48 @@ export function initGenerators() {
   };
   cppGenerator.forBlock['l298n_parar'] = (_b: Blockly.Block) => `  _bloquin_motorE(0);\n  _bloquin_motorD(0);\n`;
   cppGenerator.forBlock['l298n_velocidade_por_pitch_roll'] = (b: Blockly.Block) => `  _bloquin_aplicarControle((float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'}), (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'}), 10.0f, 8.0f);\n`;
-  cppGenerator.forBlock['util_map_float'] = (b: Blockly.Block) => [`_bloquin_mapFloat((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}), ${b.getFieldValue('DE_MIN')}.0f, ${b.getFieldValue('DE_MAX')}.0f, ${b.getFieldValue('PARA_MIN')}.0f, ${b.getFieldValue('PARA_MAX')}.0f)`, 0];
+  cppGenerator.forBlock['util_map_float'] = (b: Blockly.Block) => [`_bloquin_mapFloat((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}), ${floatLiteral(b.getFieldValue('DE_MIN'))}, ${floatLiteral(b.getFieldValue('DE_MAX'))}, ${floatLiteral(b.getFieldValue('PARA_MIN'))}, ${floatLiteral(b.getFieldValue('PARA_MAX'))})`, 0];
   cppGenerator.forBlock['util_fabsf'] = (b: Blockly.Block) => [`fabsf((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}))`, 0];
 }
 
-export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
+export const generateCode = (
+  ws: Blockly.WorkspaceSvg,
+  board: BoardKey = 'uno',
+): string => {
+  targetBoard = board;
+  cppGenerator.nameDB_?.reset();
+  if (cppGenerator.nameDB_) {
+    cppGenerator.nameDB_.setVariableMap(ws.getVariableMap());
+  }
+
   const topBlocks = ws.getTopBlocks(true);
+  const blockTypes = new Set(ws.getAllBlocks(false).map((block) => block.type));
+  const hasBlock = (...types: string[]) => types.some((type) => blockTypes.has(type));
 
   const globalVarLines: string[] = [];
+  const functionPrototypes: string[] = [];
   const funcDefLines: string[] = [];
   let setupCode = '';
   let loopCode = '';
 
   for (const block of topBlocks) {
     if (block.type === 'bloco_setup') {
-      setupCode = cppGenerator.blockToCode(block) as string;
+      if (!setupCode) setupCode = cppGenerator.blockToCode(block) as string;
     } else if (block.type === 'bloco_loop') {
-      loopCode = cppGenerator.blockToCode(block) as string;
+      if (!loopCode) loopCode = cppGenerator.blockToCode(block) as string;
     } else if (block.type === 'declarar_variavel_global') {
       globalVarLines.push(cppGenerator.blockToCode(block) as string);
     } else if (block.type === 'definir_funcao' || block.type === 'definir_funcao_retorno') {
+      const returnType = block.type === 'definir_funcao_retorno' ? 'float' : 'void';
+      functionPrototypes.push(
+        `${returnType} ${toCppIdentifier(block.getFieldValue('NOME'), block.type === 'definir_funcao_retorno' ? 'calcular' : 'minhaFuncao', 'fn')}();\n`,
+      );
       funcDefLines.push(cppGenerator.blockToCode(block) as string);
     }
   }
 
   const mainCode = [
+    ...functionPrototypes, functionPrototypes.length > 0 ? '\n' : '',
     ...globalVarLines, globalVarLines.length > 0 ? '\n' : '',
     ...funcDefLines,
     setupCode || 'void setup() {\n  Serial.begin(115200);\n}\n\n',
@@ -203,24 +265,32 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
   ].filter(Boolean).join('');
 
   // ── Servo ─────────────────────────────────────────────────────────────────
-  const needsServo = mainCode.includes('_servoObj_');
+  const needsServo = hasBlock('servo_configurar', 'servo_mover', 'servo_ler');
   let servoHeader = '';
   if (needsServo) {
-    const pins = new Set<string>();
-    const re = /_servoObj_(\w+)/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(mainCode)) !== null) pins.add(m[1]);
+    const pins = new Set(
+      ws.getAllBlocks(false)
+        .filter((block) => block.type.startsWith('servo_'))
+        .map((block) => String(block.getFieldValue('PIN'))),
+    );
     servoHeader =
-      '#include <Servo.h>\n' +
+      (targetBoard === 'esp32' ? '#include <ESP32Servo.h>\n' : '#include <Servo.h>\n') +
       [...pins].map(p => `Servo _servoObj_${p};`).join('\n') +
       '\n\n';
   }
 
   // ── Ultrassônico ──────────────────────────────────────────────────────────
-  const needsEntre   = mainCode.includes('_distanciaEntre(');
-  const needsUltrass = mainCode.includes('_lerDistancia(') || needsEntre;
+  const needsEntre = hasBlock('distancia_entre');
+  const needsPerto = hasBlock('objeto_esta_perto');
+  const needsUltrass = hasBlock(
+    'ler_distancia_cm',
+    'mostrar_distancia',
+    'objeto_esta_perto',
+    'distancia_entre',
+  );
   let helperLer   = '';
   let helperEntre = '';
+  let helperPerto = '';
   if (needsUltrass) {
     helperLer =
       'float _lerDistancia(int trig, int echo) {\n' +
@@ -235,12 +305,30 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
         '  float d = _lerDistancia(trig, echo);\n' +
         '  return d > 0.0f && d >= minCm && d < maxCm;\n}\n';
     }
+    if (needsPerto) {
+      helperPerto =
+        '\nbool _objetoPerto(int trig, int echo, float maxCm) {\n' +
+        '  float d = _lerDistancia(trig, echo);\n' +
+        '  return d > 0.0f && d < maxCm;\n}\n';
+    }
   }
 
   // ── ESP-NOW ───────────────────────────────────────────────────────────────
-  const needsEspNowRx = mainCode.includes('_bloquin_OnDataRecv') || mainCode.includes('_espnow_dadosNovos') || mainCode.includes('_espnow_pacote');
-  const needsEspNowTx = mainCode.includes('esp_now_send(');
-  const needsEspNow   = needsEspNowTx || needsEspNowRx || mainCode.includes('esp_now_init()') || mainCode.includes('WiFi.mode(');
+  const needsEspNowRx = hasBlock(
+    'espnow_receptor_init',
+    'espnow_tem_dados_novos',
+    'espnow_ler_pitch',
+    'espnow_ler_roll',
+    'espnow_ler_flag_parar',
+    'espnow_timeout_ms',
+    'espnow_marcar_lido',
+  );
+  const needsEspNowTx = hasBlock(
+    'espnow_transmissor_init',
+    'espnow_adicionar_receptor',
+    'espnow_enviar_pacote',
+  );
+  const needsEspNow = [...blockTypes].some((type) => type.startsWith('espnow_'));
 
   let espNowHeader = '';
   if (needsEspNow) {
@@ -248,53 +336,73 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
       '#include <esp_now.h>\n' +
       '#include <WiFi.h>\n\n' +
       'typedef struct { float pitch; float roll; bool parar; } _PacoteDados;\n' +
-      '_PacoteDados _espnow_pacote;\n' +
-      // Bug 1 fix: volatile em dadosNovos já existia; adicionado em ultimoRx e primeiroRx
-      // Sem volatile o compilador pode cachear os valores lidos no loop() e nunca
-      // enxergar as atualizações feitas dentro do callback (outra task do WiFi stack).
-      'volatile bool _espnow_dadosNovos = false;\n' +
+      '_PacoteDados _espnow_pacoteBruto = {};\n' +
+      '_PacoteDados _espnow_snapshot = {};\n' +
+      'volatile uint32_t _espnow_geracao = 0;\n' +
       'volatile unsigned long _espnow_ultimoRx = 0;\n' +
       'volatile bool _espnow_primeiroRx = false;\n' +
-      // Bug 3 fix: mutex protege o struct _espnow_pacote contra leitura simultânea
-      // no loop() enquanto o callback ainda está escrevendo (race condition).
+      'uint32_t _espnow_geracaoLida = 0;\n' +
+      'uint32_t _espnow_geracaoConsultada = 0;\n' +
       'portMUX_TYPE _espnow_mux = portMUX_INITIALIZER_UNLOCKED;\n';
 
-    if (mainCode.includes('_espnow_peer_mac')) {
+    if (needsEspNowTx) {
       espNowHeader += 'uint8_t _espnow_peer_mac[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};\n';
     }
 
     if (needsEspNowRx) {
       espNowHeader +=
-        // Bug 2 fix: IRAM_ATTR força o callback para a RAM interna do ESP32.
-        // Sem ele, um cache miss durante execução causa panic/reset quando o
-        // código está em flash e o WiFi stack chama o callback de outra task.
-        '\nvoid IRAM_ATTR _bloquin_OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {\n' +
+        '\nvoid _bloquin_OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {\n' +
+        '  (void)info;\n' +
         '  if (len != sizeof(_PacoteDados)) return;\n' +
-        // Bug 3 fix: seção crítica garante que o memcpy seja atômico em relação
-        // ao loop(). portENTER_CRITICAL_ISR é a versão correta para contextos de
-        // callback (pode ser chamada de task ou de ISR sem travar o sistema).
-        '  portENTER_CRITICAL_ISR(&_espnow_mux);\n' +
-        '  memcpy(&_espnow_pacote, data, sizeof(_PacoteDados));\n' +
-        '  _espnow_dadosNovos = true;\n' +
+        '  portENTER_CRITICAL(&_espnow_mux);\n' +
+        '  memcpy(&_espnow_pacoteBruto, data, sizeof(_PacoteDados));\n' +
+        '  _espnow_geracao++;\n' +
         '  _espnow_ultimoRx = millis();\n' +
         '  _espnow_primeiroRx = true;\n' +
-        '  portEXIT_CRITICAL_ISR(&_espnow_mux);\n' +
+        '  portEXIT_CRITICAL(&_espnow_mux);\n' +
         '}\n' +
         '\nbool _bloquin_temDadosNovos() {\n' +
-        '  if (!_espnow_dadosNovos) return false;\n' +
-        // Bug 3 fix: mesma proteção no lado da leitura para garantir que o flag
-        // e o pacote sejam vistos em estado consistente pelo loop().
         '  portENTER_CRITICAL(&_espnow_mux);\n' +
-        '  _espnow_dadosNovos = false;\n' +
+        '  bool novos = _espnow_geracao != _espnow_geracaoLida;\n' +
+        '  if (novos) {\n' +
+        '    _espnow_snapshot = _espnow_pacoteBruto;\n' +
+        '    _espnow_geracaoConsultada = _espnow_geracao;\n' +
+        '  }\n' +
         '  portEXIT_CRITICAL(&_espnow_mux);\n' +
-        '  return true;\n' +
+        '  return novos;\n' +
+        '}\n' +
+        '\n_PacoteDados _bloquin_obterSnapshotEspnow() {\n' +
+        '  portENTER_CRITICAL(&_espnow_mux);\n' +
+        '  _espnow_snapshot = _espnow_pacoteBruto;\n' +
+        '  _espnow_geracaoConsultada = _espnow_geracao;\n' +
+        '  _PacoteDados copia = _espnow_snapshot;\n' +
+        '  portEXIT_CRITICAL(&_espnow_mux);\n' +
+        '  return copia;\n' +
+        '}\n' +
+        '\nfloat _bloquin_lerEspnowPitch() { return _bloquin_obterSnapshotEspnow().pitch; }\n' +
+        'float _bloquin_lerEspnowRoll() { return _bloquin_obterSnapshotEspnow().roll; }\n' +
+        'bool _bloquin_lerEspnowParar() { return _bloquin_obterSnapshotEspnow().parar; }\n' +
+        '\nvoid _bloquin_marcarEspnowLido() {\n' +
+        '  portENTER_CRITICAL(&_espnow_mux);\n' +
+        '  _espnow_geracaoLida = _espnow_geracaoConsultada;\n' +
+        '  portEXIT_CRITICAL(&_espnow_mux);\n' +
+        '}\n' +
+        '\nbool _bloquin_espnowTimeout(unsigned long limite) {\n' +
+        '  portENTER_CRITICAL(&_espnow_mux);\n' +
+        '  bool recebeu = _espnow_primeiroRx;\n' +
+        '  unsigned long ultimo = _espnow_ultimoRx;\n' +
+        '  portEXIT_CRITICAL(&_espnow_mux);\n' +
+        '  return recebeu && (millis() - ultimo > limite);\n' +
         '}\n';
+    }
+    if (targetBoard !== 'esp32') {
+      espNowHeader += '#error "Os blocos ESP-NOW exigem uma placa ESP32."\n';
     }
     espNowHeader += '\n';
   }
 
   // ── MPU-6050 ─────────────────────────────────────────────────────────────
-  const needsMPU = mainCode.includes('_bloquin_lerPitch') || mainCode.includes('_bloquin_lerRoll');
+  const needsMPU = hasBlock('mpu_iniciar', 'mpu_ler_pitch', 'mpu_ler_roll');
 
   let mpuHeader = '';
   if (needsMPU) {
@@ -329,27 +437,30 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
   }
 
   // ── Ponte H L298N ─────────────────────────────────────────────────────────
-  const needsL298N = mainCode.includes('_bloquin_motorE') || mainCode.includes('_bloquin_motorD') || mainCode.includes('_l298n_');
-  const needsAplicarControle = mainCode.includes('_bloquin_aplicarControle');
-  const needsMapFloat = mainCode.includes('_bloquin_mapFloat');
+  const needsL298N = hasBlock(
+    'l298n_configurar_simples',
+    'l298n_mover_robo',
+    'l298n_parar',
+    'l298n_mover_motor',
+    'l298n_velocidade_por_pitch_roll',
+  );
+  const needsAplicarControle = hasBlock('l298n_velocidade_por_pitch_roll');
+  const needsMapFloat = hasBlock('util_map_float') || needsAplicarControle;
 
   let l298nHeader = '';
 
   if (needsL298N) {
     l298nHeader =
-      // Bug 4 fix: macros de compatibilidade entre ESP32 Core 2.x e Core 3.x.
-      // No Core 2.x: ledcAttach não existe; usa-se ledcSetup(canal)+ledcAttachPin(pino,canal)
-      //              e ledcWrite(canal, valor).
-      // No Core 3.x: ledcAttach(pino, freq, res) e ledcWrite(pino, valor).
-      // Os canais 0 (ENA) e 1 (ENB) são fixos — suficiente para um único L298N.
-      '// Compatibilidade ledcAttach: ESP32 Core 2.x e Core 3.x\n' +
-      '#if !defined(ESP_ARDUINO_VERSION_MAJOR) || ESP_ARDUINO_VERSION_MAJOR < 3\n' +
-      '  #define _LEDC_ATTACH(pin,ch,freq,res) ledcSetup(ch,freq,res); ledcAttachPin(pin,ch)\n' +
-      '  #define _LEDC_WRITE(pin,ch,val)       ledcWrite(ch,val)\n' +
-      '#else\n' +
-      '  #define _LEDC_ATTACH(pin,ch,freq,res) ledcAttach(pin,freq,res)\n' +
-      '  #define _LEDC_WRITE(pin,ch,val)       ledcWrite(pin,val)\n' +
-      '#endif\n\n' +
+      (targetBoard === 'esp32'
+        ? '// Compatibilidade LEDC: ESP32 Arduino Core 2.x e 3.x\n' +
+          '#if !defined(ESP_ARDUINO_VERSION_MAJOR) || ESP_ARDUINO_VERSION_MAJOR < 3\n' +
+          '  #define _LEDC_ATTACH(pin,ch,freq,res) ledcSetup(ch,freq,res); ledcAttachPin(pin,ch)\n' +
+          '  #define _LEDC_WRITE(pin,ch,val)       ledcWrite(ch,val)\n' +
+          '#else\n' +
+          '  #define _LEDC_ATTACH(pin,ch,freq,res) ledcAttach(pin,freq,res)\n' +
+          '  #define _LEDC_WRITE(pin,ch,val)       ledcWrite(pin,val)\n' +
+          '#endif\n\n'
+        : '') +
       '// Pinos globais L298N gerenciados dinamicamente pelo bloco de Setup\n' +
       'int _l298n_ENA=0, _l298n_IN1=0, _l298n_IN2=0;\n' +
       'int _l298n_ENB=0, _l298n_IN3=0, _l298n_IN4=0;\n\n';
@@ -361,20 +472,25 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
         '}\n\n';
     }
 
+    const writeMotorE = targetBoard === 'esp32'
+      ? '  _LEDC_WRITE(_l298n_ENA, 0, abs(v));\n'
+      : '  analogWrite(_l298n_ENA, abs(v));\n';
+    const writeMotorD = targetBoard === 'esp32'
+      ? '  _LEDC_WRITE(_l298n_ENB, 1, abs(v));\n'
+      : '  analogWrite(_l298n_ENB, abs(v));\n';
+
     l298nHeader +=
       'void _bloquin_motorE(int v) {\n' +
       '  v = constrain(v, -255, 255);\n' +
       '  digitalWrite(_l298n_IN1, v > 0 ? HIGH : LOW);\n' +
       '  digitalWrite(_l298n_IN2, v < 0 ? HIGH : LOW);\n' +
-      // Bug 4 fix: usa macro _LEDC_WRITE com canal 0 (ENA)
-      '  _LEDC_WRITE(_l298n_ENA, 0, abs(v));\n' +
+      writeMotorE +
       '}\n' +
       'void _bloquin_motorD(int v) {\n' +
       '  v = constrain(v, -255, 255);\n' +
       '  digitalWrite(_l298n_IN3, v > 0 ? HIGH : LOW);\n' +
       '  digitalWrite(_l298n_IN4, v < 0 ? HIGH : LOW);\n' +
-      // Bug 4 fix: usa macro _LEDC_WRITE com canal 1 (ENB)
-      '  _LEDC_WRITE(_l298n_ENB, 1, abs(v));\n' +
+      writeMotorD +
       '}\n\n';
 
     if (needsAplicarControle) {
@@ -400,13 +516,24 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
   }
 
   // ── Músicas prontas (Buzzer) ──────────────────────────────────────────────
-  const needsMusica   = mainCode.includes('_bloquin_tocarMusica');
-  const needsMario    = mainCode.includes('_bloquin_mel_mario');
-  const needsParabens = mainCode.includes('_bloquin_mel_parabens');
+  const musicBlocks = ws.getAllBlocks(false).filter(
+    (block) => block.type === 'buzzer_tocar_musica',
+  );
+  const needsMusica = musicBlocks.length > 0;
+  const needsMario = musicBlocks.some((block) => block.getFieldValue('MUSICA') === 'mario');
+  const needsParabens = musicBlocks.some((block) => block.getFieldValue('MUSICA') === 'parabens');
 
   let musicaHeader = '';
   if (needsMusica) {
     musicaHeader =
+      '#if defined(ARDUINO_ARCH_AVR)\n' +
+      '  #include <avr/pgmspace.h>\n' +
+      '  #define _BLOQUIN_PROGMEM PROGMEM\n' +
+      '  #define _BLOQUIN_READ_MELODY(arr,idx) pgm_read_word_near((arr) + (idx))\n' +
+      '#else\n' +
+      '  #define _BLOQUIN_PROGMEM\n' +
+      '  #define _BLOQUIN_READ_MELODY(arr,idx) ((arr)[idx])\n' +
+      '#endif\n' +
       '#define REST      0\n' +
       '#define NOTE_B0   31\n#define NOTE_C1   33\n#define NOTE_CS1  35\n' +
       '#define NOTE_D1   37\n#define NOTE_DS1  39\n#define NOTE_E1   41\n' +
@@ -443,11 +570,12 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
       'void _bloquin_tocarMusica(const int* mel, int notes, int tempo, int pin) {\n' +
       '  int wholenote = (60000 * 4) / tempo;\n' +
       '  for (int i = 0; i < notes * 2; i += 2) {\n' +
-      '    int divider = mel[i + 1];\n' +
+      '    int note = _BLOQUIN_READ_MELODY(mel, i);\n' +
+      '    int divider = _BLOQUIN_READ_MELODY(mel, i + 1);\n' +
       '    int dur = (divider > 0)\n' +
       '      ? wholenote / divider\n' +
       '      : (int)((wholenote / abs(divider)) * 1.5f);\n' +
-      '    if (mel[i] != REST) tone(pin, mel[i], (int)(dur * 0.9f));\n' +
+      '    if (note != REST) tone(pin, note, (int)(dur * 0.9f));\n' +
       '    delay(dur);\n' +
       '    noTone(pin);\n' +
       '  }\n' +
@@ -456,7 +584,7 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
     if (needsMario) {
       musicaHeader +=
         '// Melodia: Super Mario Bros (Koji Kondo) — arr. Robson Couto 2019\n' +
-        'const int _bloquin_mel_mario[] = {\n' +
+        'const int _bloquin_mel_mario[] _BLOQUIN_PROGMEM = {\n' +
         '  NOTE_E5,8, NOTE_E5,8, REST,8, NOTE_E5,8, REST,8, NOTE_C5,8, NOTE_E5,8,\n' +
         '  NOTE_G5,4, REST,4, NOTE_G4,8, REST,4,\n' +
         '  NOTE_C5,-4, NOTE_G4,8, REST,4, NOTE_E4,-4,\n' +
@@ -532,7 +660,7 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
     if (needsParabens) {
       musicaHeader +=
         '// Melodia: Parabéns a Você — arr. Robson Couto 2019\n' +
-        'const int _bloquin_mel_parabens[] = {\n' +
+        'const int _bloquin_mel_parabens[] _BLOQUIN_PROGMEM = {\n' +
         '  NOTE_C4,4, NOTE_C4,8,\n' +
         '  NOTE_D4,-4, NOTE_C4,-4, NOTE_F4,-4,\n' +
         '  NOTE_E4,-2, NOTE_C4,4, NOTE_C4,8,\n' +
@@ -548,6 +676,8 @@ export const generateCode = (ws: Blockly.WorkspaceSvg): string => {
     }
   }
 
-  const prefix = musicaHeader + espNowHeader + mpuHeader + l298nHeader + servoHeader + helperLer + helperEntre + (needsUltrass ? '\n' : '');
+  const prefix = musicaHeader + espNowHeader + mpuHeader + l298nHeader
+    + servoHeader + helperLer + helperEntre + helperPerto
+    + (needsUltrass ? '\n' : '');
   return prefix + mainCode;
 };

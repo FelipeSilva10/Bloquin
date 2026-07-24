@@ -4,9 +4,21 @@ export { BOARDS, BOARD_UNSET } from './boards';
 export type { BoardKey } from './boards';
 
 let currentBoardPins: [string, string][] = [...BOARDS.uno.pins] as [string, string][];
+let currentOutputPins: [string, string][] = [...BOARDS.uno.outputPins] as [string, string][];
+let currentPwmPins: [string, string][] = [...BOARDS.uno.pwmPins] as [string, string][];
+let currentAnalogPins: [string, string][] = [...BOARDS.uno.analogPins] as [string, string][];
+let currentI2cSdaPins: [string, string][] = [...BOARDS.uno.i2cSdaPins] as [string, string][];
+let currentI2cSclPins: [string, string][] = [...BOARDS.uno.i2cSclPins] as [string, string][];
+let currentBoardKey: BoardKey = 'uno';
 
 export function syncBoardPins(boardKey: BoardKey) {
+  currentBoardKey = boardKey;
   currentBoardPins = [...BOARDS[boardKey].pins] as [string, string][];
+  currentOutputPins = [...BOARDS[boardKey].outputPins] as [string, string][];
+  currentPwmPins = [...BOARDS[boardKey].pwmPins] as [string, string][];
+  currentAnalogPins = [...BOARDS[boardKey].analogPins] as [string, string][];
+  currentI2cSdaPins = [...BOARDS[boardKey].i2cSdaPins] as [string, string][];
+  currentI2cSclPins = [...BOARDS[boardKey].i2cSclPins] as [string, string][];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,26 +26,12 @@ export function syncBoardPins(boardKey: BoardKey) {
 // ─────────────────────────────────────────────────────────────────────────────
 export function initBlocks() {
   
-  // Extensão de Validação do MAC Address (C2, UX2)
-  if (!Blockly.Extensions.isRegistered('validacao_mac_ext')) {
-    Blockly.Extensions.register('validacao_mac_ext', function (this: Blockly.Block) {
-      this.setOnChange(function (this: Blockly.Block, _e: any) {
-        if (!this.workspace || this.isInFlyout) return;
-        const mac = this.getFieldValue('MAC');
-        if (mac && !/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(mac)) {
-          this.setWarningText('Formato de MAC inválido.\nUse o padrão: AA:BB:CC:DD:EE:FF');
-        } else {
-          this.setWarningText(null);
-        }
-      });
-    });
-  }
-
   // Extensão de Validação de Contexto (Setup/Preparar) (C5, UX2)
   if (!Blockly.Extensions.isRegistered('validacao_setup_ext')) {
     Blockly.Extensions.register('validacao_setup_ext', function (this: Blockly.Block) {
       this.setOnChange(function (this: Blockly.Block, _e: any) {
         if (!this.workspace || this.isInFlyout) return;
+        const warnings: string[] = [];
         let parent = this.getSurroundParent();
         let valid = false;
         while (parent) {
@@ -41,10 +39,65 @@ export function initBlocks() {
           parent = parent.getSurroundParent();
         }
         if (!valid) {
-          this.setWarningText('Atenção: Este bloco de configuração deve ficar dentro do bloco "PREPARAR".');
-        } else {
-          this.setWarningText(null);
+          warnings.push('Este bloco de configuração deve ficar dentro do bloco "PREPARAR".');
         }
+
+        if (
+          this.type === 'configurar_pino'
+          && currentBoardKey === 'esp32'
+          && ['34', '35', '36', '39'].includes(this.getFieldValue('PIN'))
+          && this.getFieldValue('MODE') !== 'INPUT'
+        ) {
+          warnings.push('Os GPIO 34, 35, 36 e 39 do ESP32 aceitam somente entrada, sem pull-up interno.');
+        }
+
+        this.setWarningText(warnings.length > 0 ? warnings.join('\n') : null);
+      });
+    });
+  }
+
+  if (!Blockly.Extensions.isRegistered('validacao_setup_mac_ext')) {
+    Blockly.Extensions.register('validacao_setup_mac_ext', function (this: Blockly.Block) {
+      this.setOnChange(function (this: Blockly.Block, _e: any) {
+        if (!this.workspace || this.isInFlyout) return;
+        const warnings: string[] = [];
+
+        let parent = this.getSurroundParent();
+        let isInSetup = false;
+        while (parent) {
+          if (parent.type === 'bloco_setup') {
+            isInSetup = true;
+            break;
+          }
+          parent = parent.getSurroundParent();
+        }
+        if (!isInSetup) {
+          warnings.push('Este bloco deve ficar dentro do bloco "PREPARAR".');
+        }
+
+        const mac = this.getFieldValue('MAC');
+        if (mac && !/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(mac)) {
+          warnings.push('Formato de MAC inválido. Use AA:BB:CC:DD:EE:FF.');
+        }
+
+        this.setWarningText(warnings.length > 0 ? warnings.join('\n') : null);
+      });
+    });
+  }
+
+  if (!Blockly.Extensions.isRegistered('validacao_repeticao_ext')) {
+    Blockly.Extensions.register('validacao_repeticao_ext', function (this: Blockly.Block) {
+      this.setOnChange(function (this: Blockly.Block, _e: any) {
+        if (!this.workspace || this.isInFlyout) return;
+        let parent = this.getSurroundParent();
+        while (parent) {
+          if (parent.type === 'repetir_vezes' || parent.type === 'enquanto_verdadeiro') {
+            this.setWarningText(null);
+            return;
+          }
+          parent = parent.getSurroundParent();
+        }
+        this.setWarningText('“Parar repetição” precisa ficar dentro de “Repetir” ou “Enquanto”.');
       });
     });
   }
@@ -56,17 +109,17 @@ export function initBlocks() {
 
     // ── PINOS
     { type: 'configurar_pino', colour: 165, message0: '⚡ Configurar pino %1 como %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'MODE', options: [['Saída (Enviar sinal)', 'OUTPUT'], ['Entrada (Ler sensor)', 'INPUT'], ['Entrada com redutor de energia', 'INPUT_PULLUP']] }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
-    { type: 'escrever_pino', colour: 165, message0: 'Colocar pino %1 em estado %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'STATE', options: [['Ligado (HIGH)', 'HIGH'], ['Desligado (LOW)', 'LOW']] }], previousStatement: null, nextStatement: null },
+    { type: 'escrever_pino', colour: 165, message0: 'Colocar pino %1 em estado %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'STATE', options: [['Ligado (HIGH)', 'HIGH'], ['Desligado (LOW)', 'LOW']] }], previousStatement: null, nextStatement: null },
     { type: 'ler_pino_digital', colour: 165, message0: 'Ler pino digital %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], output: 'Number' }, // C6
-    { type: 'escrever_pino_pwm', colour: 165, message0: 'Força do pino %1 → %2 (0 a 255)', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'input_value', name: 'VALOR', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },
-    { type: 'ler_pino_analogico', colour: 165, message0: 'Ler sensor analógico no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], output: 'Number' }, // C6
+    { type: 'escrever_pino_pwm', colour: 165, message0: 'Força do pino %1 → %2 (0 a 255)', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentPwmPins }, { type: 'input_value', name: 'VALOR', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },
+    { type: 'ler_pino_analogico', colour: 165, message0: 'Ler sensor analógico no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentAnalogPins }], output: 'Number' }, // C6
 
     // ── CONTROLE
     { type: 'esperar', colour: 120, message0: 'Esperar %1 milissegundos', args0: [{ type: 'field_number', name: 'TIME', value: 1000, min: 0 }], previousStatement: null, nextStatement: null },
     { type: 'repetir_vezes', colour: 120, message0: 'Repetir %1 vezes %2 %3', args0: [{ type: 'field_number', name: 'TIMES', value: 5, min: 1 }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null },
     { type: 'a_cada_x_ms', colour: 120, message0: '⏳ A cada %1 ms fazer %2 %3', args0: [{ type: 'field_number', name: 'MS', value: 1000, min: 1 }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null, tooltip: 'Temporizador sem travar o robô (substitui delay).' }, // Eixo 6
     { type: 'enquanto_verdadeiro', colour: 120, message0: 'Enquanto %1 fizer %2 %3', args0: [{ type: 'input_value', name: 'CONDICAO', check: 'Boolean' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null },
-    { type: 'parar_repeticao', colour: 120, message0: '⛔ Parar repetição', args0: [], previousStatement: null, nextStatement: null },
+    { type: 'parar_repeticao', colour: 120, message0: '⛔ Parar repetição', args0: [], previousStatement: null, nextStatement: null, extensions: ['validacao_repeticao_ext'] },
 
     // ── CONDIÇÕES
     { type: 'se_entao', colour: 210, message0: 'SE %1 ENTÃO %2 %3', args0: [{ type: 'input_value', name: 'CONDICAO', check: 'Boolean' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'ENTAO' }], previousStatement: null, nextStatement: null },
@@ -100,39 +153,39 @@ export function initBlocks() {
     { type: 'chamar_funcao_retorno', colour: 270, message0: 'Resposta de %1', args0: [{ type: 'field_input', name: 'NOME', text: 'calcular' }], output: 'Number' }, // Eixo 6
 
     // ── ULTRASSÔNICO
-    { type: 'configurar_ultrassonico', colour: 30, message0: '📏 Configurar sensor de distância: Trigger %1 Echo %2', args0: [{ type: 'field_dropdown', name: 'TRIG', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
-    { type: 'ler_distancia_cm', colour: 30, message0: 'Distância em cm (Trigger %1 Echo %2)', args0: [{ type: 'field_dropdown', name: 'TRIG', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], output: 'Number' }, // C6
-    { type: 'mostrar_distancia', colour: 30, message0: 'O robô diz a distância em cm (Trigger %1 Echo %2)', args0: [{ type: 'field_dropdown', name: 'TRIG', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], previousStatement: null, nextStatement: null },
-    { type: 'objeto_esta_perto', colour: 30, message0: 'Tem objeto a menos de %1 cm? (Trigger %2 Echo %3)', args0: [{ type: 'field_number', name: 'CM', value: 20, min: 1 }, { type: 'field_dropdown', name: 'TRIG', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], output: 'Boolean' },
-    { type: 'distancia_entre', colour: 30, message0: 'Distância entre %1 e %2 cm? (Trigger %3 Echo %4)', args0: [{ type: 'field_number', name: 'MIN', value: 10, min: 0 }, { type: 'field_number', name: 'MAX', value: 20, min: 0 }, { type: 'field_dropdown', name: 'TRIG', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], output: 'Boolean' },
+    { type: 'configurar_ultrassonico', colour: 30, message0: '📏 Configurar sensor de distância: Trigger %1 Echo %2', args0: [{ type: 'field_dropdown', name: 'TRIG', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
+    { type: 'ler_distancia_cm', colour: 30, message0: 'Distância em cm (Trigger %1 Echo %2)', args0: [{ type: 'field_dropdown', name: 'TRIG', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], output: 'Number' }, // C6
+    { type: 'mostrar_distancia', colour: 30, message0: 'O robô diz a distância em cm (Trigger %1 Echo %2)', args0: [{ type: 'field_dropdown', name: 'TRIG', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], previousStatement: null, nextStatement: null },
+    { type: 'objeto_esta_perto', colour: 30, message0: 'Tem objeto a menos de %1 cm? (Trigger %2 Echo %3)', args0: [{ type: 'field_number', name: 'CM', value: 20, min: 1 }, { type: 'field_dropdown', name: 'TRIG', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], output: 'Boolean' },
+    { type: 'distancia_entre', colour: 30, message0: 'Distância entre %1 e %2 cm? (Trigger %3 Echo %4)', args0: [{ type: 'field_number', name: 'MIN', value: 10, min: 0 }, { type: 'field_number', name: 'MAX', value: 20, min: 0 }, { type: 'field_dropdown', name: 'TRIG', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], output: 'Boolean' },
 
     // ── COMUNICAÇÃO
     { type: 'escrever_serial', colour: 160, message0: 'O robô diz o texto: %1', args0: [{ type: 'field_input', name: 'TEXT', text: 'Olá!' }], previousStatement: null, nextStatement: null },
     { type: 'escrever_serial_valor', colour: 160, message0: 'O robô diz o valor: %1', args0: [{ type: 'input_value', name: 'VALOR' }], previousStatement: null, nextStatement: null },
 
     // ── SERVO MOTOR
-    { type: 'servo_configurar', colour: 170, message0: 'Conectar servo no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
-    { type: 'servo_mover', colour: 170, message0: 'Mover servo (pino %1) para %2 °', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'input_value', name: 'ANGULO', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },
-    { type: 'servo_ler', colour: 170, message0: 'Posição atual do servo (pino %1)', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], output: 'Number' }, // C6
+    { type: 'servo_configurar', colour: 170, message0: 'Conectar servo no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
+    { type: 'servo_mover', colour: 170, message0: 'Mover servo (pino %1) para %2 °', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }, { type: 'input_value', name: 'ANGULO', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },
+    { type: 'servo_ler', colour: 170, message0: 'Posição atual do servo (pino %1)', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }], output: 'Number' }, // C6
 
     // ── BUZZER
-    { type: 'buzzer_tocar', colour: 75, message0: '🔊 Tocar som: pino %1 frequência %2 Hz', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'field_number', name: 'FREQ', value: 440, min: 31, max: 65535 }], previousStatement: null, nextStatement: null },
+    { type: 'buzzer_tocar', colour: 75, message0: '🔊 Tocar som: pino %1 frequência %2 Hz', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }, { type: 'field_number', name: 'FREQ', value: 440, min: 31, max: 65535 }], previousStatement: null, nextStatement: null },
     { type: 'buzzer_tocar_musica', colour: 75, message0: '🎵 Tocar música: pino %1  %2', args0: [
-    { type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins },
+    { type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins },
     { type: 'field_dropdown', name: 'MUSICA', options: [['🍄 Super Mario Bros', 'mario'],['🎂 Parabéns a Você', 'parabens'],
     ]},
   ],
   previousStatement: null, nextStatement: null,
   tooltip: 'Toca uma melodia completa no buzzer. O programa fica parado até a música terminar.',
 },
-    { type: 'buzzer_tocar_tempo', colour: 75, message0: '🔊 Tocar som: pino %1 frequência %2 Hz por %3 ms', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'field_number', name: 'FREQ', value: 440, min: 31 }, { type: 'field_number', name: 'DUR', value: 500, min: 1 }], previousStatement: null, nextStatement: null },
-    { type: 'buzzer_parar', colour: 75, message0: '🔇 Parar som no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], previousStatement: null, nextStatement: null },
+    { type: 'buzzer_tocar_tempo', colour: 75, message0: '🔊 Tocar som: pino %1 frequência %2 Hz por %3 ms', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }, { type: 'field_number', name: 'FREQ', value: 440, min: 31 }, { type: 'field_number', name: 'DUR', value: 500, min: 1 }], previousStatement: null, nextStatement: null },
+    { type: 'buzzer_parar', colour: 75, message0: '🔇 Parar som no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }], previousStatement: null, nextStatement: null },
 
     // ── ESP-NOW (Sem Fio)
     { type: 'espnow_iniciar_wifi', colour: 300, message0: '📶 Preparar comunicação sem fio (Wi-Fi)', previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
     { type: 'espnow_mac_serial', colour: 300, message0: '📋 Mostrar Código deste dispositivo (MAC)', previousStatement: null, nextStatement: null },
     { type: 'espnow_transmissor_init', colour: 300, message0: '📡 Preparar Luva (Transmissor)', previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
-    { type: 'espnow_adicionar_receptor', colour: 300, message0: '🔗 Conectar ao Robô (Código: %1)', args0: [{ type: 'field_input', name: 'MAC', text: 'AA:BB:CC:DD:EE:FF' }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext', 'validacao_mac_ext'] }, // C2
+    { type: 'espnow_adicionar_receptor', colour: 300, message0: '🔗 Conectar ao Robô (Código: %1)', args0: [{ type: 'field_input', name: 'MAC', text: 'AA:BB:CC:DD:EE:FF' }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_mac_ext'] }, // C2
     { type: 'espnow_enviar_pacote', colour: 300, message0: 'Enviar para o robô: inclinação frente/trás %1 inclinação esq/dir %2 parar %3', args0: [{ type: 'input_value', name: 'PITCH', check: 'Number' }, { type: 'input_value', name: 'ROLL', check: 'Number' }, { type: 'input_value', name: 'PARAR', check: 'Boolean' }], inputsInline: true, previousStatement: null, nextStatement: null },
     { type: 'espnow_receptor_init', colour: 300, message0: '📡 Preparar Robô (Receptor)', previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
     { type: 'espnow_tem_dados_novos', colour: 300, message0: 'Chegou mensagem da luva?', output: 'Boolean' }, // C6
@@ -143,12 +196,12 @@ export function initBlocks() {
     { type: 'espnow_marcar_lido', colour: 300, message0: '✅ Marcar mensagem como lida', args0: [], previousStatement: null, nextStatement: null, tooltip: 'Reseta o flag de dados novos. Coloque como primeiro bloco dentro de "SE Chegou mensagem da luva?".' },
 
     // ── MPU-6050
-    { type: 'mpu_iniciar', colour: 310, message0: '🧭 Iniciar Acelerômetro (SDA %1 SCL %2)', args0: [{ type: 'field_dropdown', name: 'SDA', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'SCL', options: () => currentBoardPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
+    { type: 'mpu_iniciar', colour: 310, message0: '🧭 Iniciar Acelerômetro (SDA %1 SCL %2)', args0: [{ type: 'field_dropdown', name: 'SDA', options: () => currentI2cSdaPins }, { type: 'field_dropdown', name: 'SCL', options: () => currentI2cSclPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
     { type: 'mpu_ler_pitch', colour: 310, message0: '🧭 Inclinação frente/trás (graus)', output: 'Number' }, // C6
     { type: 'mpu_ler_roll', colour: 310, message0: '🧭 Inclinação esquerda/direita (graus)', output: 'Number' }, // C6
 
     // ── PONTE H
-    { type: 'l298n_configurar_simples', colour: 120, message0: '⚙️ Configurar Motores do Robô%1Motor Esquerdo (Força %2 IN1 %3 IN2 %4)%5Motor Direito (Força %6 IN3 %7 IN4 %8)', args0: [{ type: 'input_dummy' }, { type: 'field_dropdown', name: 'ENA', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'IN1', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'IN2', options: () => currentBoardPins }, { type: 'input_dummy' }, { type: 'field_dropdown', name: 'ENB', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'IN3', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'IN4', options: () => currentBoardPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
+    { type: 'l298n_configurar_simples', colour: 120, message0: '⚙️ Configurar Motores do Robô%1Motor Esquerdo (Força %2 IN1 %3 IN2 %4)%5Motor Direito (Força %6 IN3 %7 IN4 %8)', args0: [{ type: 'input_dummy' }, { type: 'field_dropdown', name: 'ENA', options: () => currentPwmPins }, { type: 'field_dropdown', name: 'IN1', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'IN2', options: () => currentOutputPins }, { type: 'input_dummy' }, { type: 'field_dropdown', name: 'ENB', options: () => currentPwmPins }, { type: 'field_dropdown', name: 'IN3', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'IN4', options: () => currentOutputPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
     { type: 'l298n_mover_robo', colour: 120, message0: '🚗 Mover robô para %1 com força %2', args0: [{ type: 'field_dropdown', name: 'DIRECAO', options: [['Frente', 'FRENTE'], ['Trás', 'TRAS'], ['Esquerda', 'ESQUERDA'], ['Direita', 'DIREITA'], ['Parar', 'PARAR']] }, { type: 'input_value', name: 'FORCA', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },
     { type: 'l298n_mover_motor', colour: 120, message0: 'Girar motor %1 para %2 com força %3', args0: [{ type: 'field_dropdown', name: 'MOTOR', options: [['Esquerdo', 'E'], ['Direito', 'D']] }, { type: 'field_dropdown', name: 'DIRECAO', options: [['Frente', 'FRENTE'], ['Trás', 'TRAS'], ['Parar', 'PARAR']] }, { type: 'input_value', name: 'FORCA', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },
     { type: 'l298n_velocidade_por_pitch_roll', colour: 120, message0: '🚗 Mover por inclinação (Frente/Trás %1 Esq/Dir %2)', args0: [{ type: 'input_value', name: 'PITCH', check: 'Number' }, { type: 'input_value', name: 'ROLL', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },

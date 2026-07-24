@@ -1,3 +1,5 @@
+import type { BoardKey } from './boards';
+
 export const toolboxConfig = {
   kind: 'categoryToolbox',
   contents: [
@@ -150,6 +152,64 @@ export const toolboxConfig = {
     },
   ],
 };
+
+export function getToolboxConfig(board: BoardKey) {
+  const defaults = board === 'esp32'
+    ? {
+        ultrasonic: { TRIG: '18', ECHO: '19' },
+        l298n: { ENA: '25', IN1: '26', IN2: '27', ENB: '33', IN3: '32', IN4: '14' },
+        servo: { PIN: '13' },
+      }
+    : {
+        ultrasonic: { TRIG: '12', ECHO: '13' },
+        l298n: { ENA: '3', IN1: '2', IN2: '4', ENB: '5', IN3: '7', IN4: '8' },
+        servo: { PIN: '9' },
+      };
+
+  return {
+    ...toolboxConfig,
+    contents: toolboxConfig.contents
+      .filter((category) => board === 'esp32' || category.name !== 'Comunicação Sem Fio')
+      .map((category) => {
+        return {
+          ...category,
+          contents: category.contents.map((item) => {
+            if (item.kind !== 'block') return item;
+            const type = item.type;
+            if (!type) return item;
+            if ([
+              'configurar_ultrassonico',
+              'ler_distancia_cm',
+              'mostrar_distancia',
+              'objeto_esta_perto',
+              'distancia_entre',
+            ].includes(type)) {
+              return { ...item, fields: defaults.ultrasonic };
+            }
+            if (item.type === 'l298n_configurar_simples') {
+              return { ...item, fields: defaults.l298n };
+            }
+            if (['servo_configurar', 'servo_mover', 'servo_ler'].includes(type)) {
+              return { ...item, fields: defaults.servo };
+            }
+            if (
+              board !== 'esp32'
+              && item.type === 'l298n_velocidade_por_pitch_roll'
+            ) {
+              return {
+                ...item,
+                inputs: {
+                  PITCH: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+                  ROLL: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+                },
+              };
+            }
+            return item;
+          }),
+        };
+      }),
+  };
+}
 
 export const BLOCK_NAMES: Record<string, string> = {
   // Mantém exatamente o mesmo dicionário de nomes anterior + os novos:
