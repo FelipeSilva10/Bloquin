@@ -57,6 +57,101 @@ body, html, #root {
 }
 
 /* ═══════════════════════════════════════════════════
+   SPLASH DE INICIALIZAÇÃO
+   ═══════════════════════════════════════════════════ */
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #fff;
+  opacity: 1;
+  transition: opacity 420ms ease;
+}
+
+.splash-screen--exiting {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.splash-logo {
+  position: relative;
+  width: min(92vw, 900px);
+  aspect-ratio: 2172 / 392;
+  background: #fff;
+  isolation: isolate;
+  animation: splash-logo-pulse 620ms ease-out 1750ms both;
+}
+
+.splash-letter {
+  position: absolute;
+  top: 0;
+  left: var(--splash-left);
+  width: var(--splash-width);
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+  contain: paint;
+  opacity: 0;
+  transform: translate3d(0, 44px, 0) rotate(var(--splash-rotation)) scale(0.88);
+  transform-origin: 50% 80%;
+  animation: splash-letter-in 760ms cubic-bezier(0.22, 1.28, 0.36, 1) var(--splash-delay) both;
+  will-change: transform, opacity;
+}
+
+.splash-letter-image {
+  position: absolute;
+  top: 0;
+  left: var(--splash-image-left);
+  width: var(--splash-image-width);
+  max-width: none;
+  height: auto;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+@keyframes splash-letter-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 44px, 0) rotate(var(--splash-rotation)) scale(0.88);
+  }
+  58% {
+    opacity: 1;
+    transform: translate3d(0, -6px, 0) rotate(-2deg) scale(1.025);
+  }
+  78% {
+    transform: translate3d(0, 2px, 0) rotate(1deg) scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes splash-logo-pulse {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.018); }
+}
+
+@media (max-width: 480px) {
+  .splash-logo { width: 94vw; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-screen { transition-duration: 180ms; }
+  .splash-logo { animation: none; }
+  .splash-letter {
+    opacity: 1;
+    transform: none;
+    animation: none;
+    will-change: auto;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
    ANIMAÇÕES GLOBAIS
    ═══════════════════════════════════════════════════ */
 @keyframes popIn {
