@@ -25,6 +25,7 @@ import {
 } from './services/sessionService';
 import { getFriendlyError } from './components/modals/ErrorModal';
 import { useModalA11y } from './hooks/useModalA11y';
+import { SplashScreen } from './components/SplashScreen';
 import './App.css';
 
 const IdeScreen = lazy(() => import('./screens/IdeScreen').then(({ IdeScreen: screen }) => ({ default: screen })));
@@ -355,6 +356,30 @@ function UnsavedTabDialog({ title, onCancel, onConfirm }: { title: string; onCan
   );
 }
 
+function AppContent() {
+  const setup = useSetup();
+  const [splashVisible, setSplashVisible] = useState(true);
+  const setupReady = setup.status === 'ready'
+    || setup.status === 'deferred'
+    || setup.status === 'error';
+
+  return (
+    <>
+      <Router>
+        <SetupBanner />
+        <AppRoutes />
+      </Router>
+
+      {splashVisible && (
+        <SplashScreen
+          ready={setupReady}
+          onFinished={() => setSplashVisible(false)}
+        />
+      )}
+    </>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Raiz
 // ─────────────────────────────────────────────────────────────────────────────
@@ -362,7 +387,7 @@ export default function App() {
   return (
     <SetupProvider>
       <TabsProvider>
-        <Router><SetupBanner /><AppRoutes /></Router>
+        <AppContent />
       </TabsProvider>
     </SetupProvider>
   );
