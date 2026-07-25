@@ -440,15 +440,21 @@ fn run_setup(window: tauri::Window, state: tauri::State<AppState>) {
 }
 
 // ─── Pipeline de compilação + upload ─────────────────────────────────────
+fn temporary_sketch_paths(process_id: u32) -> (std::path::PathBuf, std::path::PathBuf) {
+    let sketch_stem = format!("bloquin_sketch_{}", process_id);
+    let sketch_dir = env::temp_dir().join(&sketch_stem);
+    let sketch_path = sketch_dir.join(format!("{}.ino", sketch_stem));
+    (sketch_dir, sketch_path)
+}
+
 fn run_upload_pipeline(codigo: &str, placa: &str, porta: &str, cli: &str) -> Result<(), String> {
     println!(">>> [UPLOAD] Iniciando pipeline...");
 
     // ensure_core_installed é rápido aqui — versão já instalada pelo setup
     let fqbn = ensure_core_installed(cli, placa)?;
 
-    let temp_dir = env::temp_dir();
-    let sketch_dir = temp_dir.join(format!("bloquin_sketch_{}", std::process::id()));
-    let sketch_path = sketch_dir.join("bloquin_sketch.ino");
+    // O arduino-cli exige que o arquivo principal tenha o mesmo nome da pasta.
+    let (sketch_dir, sketch_path) = temporary_sketch_paths(std::process::id());
 
     let _ = fs::create_dir_all(&sketch_dir);
     fs::write(&sketch_path, codigo).map_err(|e| format!("Erro ao criar arquivo: {}", e))?;
@@ -491,6 +497,22 @@ fn run_upload_pipeline(codigo: &str, placa: &str, porta: &str, cli: &str) -> Res
 
     println!(">>> [UPLOAD] CONCLUÍDO COM SUCESSO!");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::temporary_sketch_paths;
+
+    #[test]
+    fn temporary_sketch_file_matches_directory_name() {
+        let (sketch_dir, sketch_path) = temporary_sketch_paths(6421);
+
+        assert_eq!(sketch_dir.file_name(), sketch_path.file_stem());
+        assert_eq!(
+            sketch_path.extension().and_then(|ext| ext.to_str()),
+            Some("ino")
+        );
+    }
 }
 
 #[tauri::command]

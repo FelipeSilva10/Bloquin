@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/assets/LogoCompleta.png" alt="Bloquin IDE" width="300"/>
+<img src="LogoCompleta.pngsrc/assets/" alt="Bloquin IDE" width="300"/>
 
 # Bloquin IDE
 
