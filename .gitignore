@@ -2,11 +2,15 @@
 .env
 .env.local
 .env.*.local
+.tmp/
 
 # ── Node / Vite ──────────────────────────────────────────────────────────────
 node_modules/
 dist/
 .vite/
+coverage/
+.eslintcache
+.bloquin-block-audit-*/
 
 # ── Rust / Tauri ─────────────────────────────────────────────────────────────
 src-tauri/target/
@@ -24,7 +28,20 @@ src-tauri/resources/arduino-cli.exe
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
 
 # ── Sistema ──────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# ── Artefatos locais de release/download ────────────────────────────────────
+RELEASE_NOTES.md
+arduino-cli*.zip
+*.AppImage
+*.deb
+*.dmg
+*.msi

@@ -104,13 +104,14 @@ jobs:
       - name: Instalar dependências npm
         run: npm ci
 
-      - name: Sincronizar versão com a tag
+      - name: Sincronizar versões com a tag
         shell: bash
         run: |
           VERSION="${{ needs.metadata.outputs.version }}"
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
-          echo "Versão definida:"
-          grep '"version"' src-tauri/tauri.conf.json
+          node scripts/sync-version.mjs "$VERSION"
+          grep -m1 '"version"' package.json
+          grep -m1 '"version"' src-tauri/tauri.conf.json
+          grep -m1 '^version' src-tauri/Cargo.toml
 
       - name: Baixar arduino-cli (Windows)
         shell: powershell

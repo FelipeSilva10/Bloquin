@@ -1,6 +1,6 @@
 {
   "productName": "bloquin",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "identifier": "com.bloquin.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -17,7 +17,7 @@
       }
     ],
     "security": {
-        "csp": "default-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: asset: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; font-src 'self' data: https://fonts.gstatic.com"
+        "csp": "default-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; img-src 'self' data: asset: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; font-src 'self' data: https://fonts.gstatic.com"
     }
   },
   "bundle": {

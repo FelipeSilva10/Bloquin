@@ -9,7 +9,6 @@ import {
   useParams,
   useLocation,
 } from 'react-router-dom';
-import { supabase } from './lib/supabase';
 import { useInactivity } from './hooks/useInactivity';
 import { LoginScreen }      from './screens/LoginScreen';
 import { TeacherDashboard } from './screens/TeacherDashboard';
@@ -26,6 +25,13 @@ import {
 import { getFriendlyError } from './components/modals/ErrorModal';
 import { useModalA11y } from './hooks/useModalA11y';
 import { SplashScreen } from './components/SplashScreen';
+import {
+  APP_BUILD_VERSION,
+  checkForUpdate,
+  getInstalledVersion,
+  openOfficialSite,
+  type AppUpdateInfo,
+} from './services/appVersionService';
 import './App.css';
 
 const IdeScreen = lazy(() => import('./screens/IdeScreen').then(({ IdeScreen: screen }) => ({ default: screen })));
@@ -124,7 +130,7 @@ function InactivityGuard({
 // ─────────────────────────────────────────────────────────────────────────────
 // Rotas do app
 // ─────────────────────────────────────────────────────────────────────────────
-function AppRoutes() {
+function AppRoutes({ installedVersion }: { installedVersion: string }) {
   // A entrada padrão deve passar pela tela de login; visitante é uma escolha explícita.
   const [role, setRole]     = useState<UserRole>('guest');
   const [userId, setUserId] = useState<string | null>(null);
@@ -133,7 +139,7 @@ function AppRoutes() {
   const navigate = useNavigate();
   const { openProject, activateTab, resetTabs } = useTabs();
 
-  const handleLogin = (loggedRole: 'student' | 'teacher' | 'visitor') => {
+  const handleLogin = (loggedRole: 'student' | 'teacher' | 'visitor', loggedUserId?: string) => {
     logoutInProgressRef.current = false;
     resetTabs();
     setRole(loggedRole);
@@ -147,10 +153,9 @@ function AppRoutes() {
       navigate('/dashboard');
       return;
     }
-    // Captura o userId logo após o login para alimentar o InactivityGuard
-    supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id ?? null);
-    }).catch(() => setUserId(null));
+    // O LoginScreen já recebeu o id da sessão criada. Reutilizá-lo evita uma
+    // chamada redundante a /auth/v1/user durante cada login.
+    setUserId(loggedUserId ?? null);
     navigate('/dashboard');
   };
 
@@ -215,6 +220,7 @@ function AppRoutes() {
                 <LoginScreen
                   onLogin={handleLogin}
                   beforeLogin={() => logoutCleanupRef.current}
+                  version={installedVersion}
                 />
               )
               : <Navigate to="/dashboard" replace />
@@ -226,12 +232,14 @@ function AppRoutes() {
           element={
             role === 'teacher' ? (
               <TeacherDashboard
+                userId={userId ?? ''}
                 onLogout={handleLogout}
                 onOpenOwnProject={(id) => openIde(id, false)}
                 onInspectStudentProject={(id) => openIde(id, true)}
               />
             ) : role === 'student' ? (
               <StudentDashboard
+                userId={userId ?? ''}
                 onLogout={handleLogout}
                 onOpenIde={(id) => openIde(id, false)}
               />
@@ -250,7 +258,7 @@ function AppRoutes() {
           path="/ide/:projectId?"
           element={
               role !== 'guest'
-              ? <IdeScreenWrapper role={role} onBack={handleBackToDashboard} />
+              ? <IdeScreenWrapper role={role} userId={userId ?? undefined} onBack={handleBackToDashboard} />
               : <Navigate to="/" replace />
           }
         />
@@ -259,11 +267,33 @@ function AppRoutes() {
   );
 }
 
+function UpdateNotice({ update, onClose, onUpdate }: {
+  update: AppUpdateInfo;
+  onClose: () => void;
+  onUpdate: () => void;
+}) {
+  return (
+    <aside className="update-notice" role="status" aria-live="polite" aria-label="Atualização disponível">
+      <button type="button" className="update-notice-close" onClick={onClose} aria-label="Fechar aviso de atualização">
+        ×
+      </button>
+      <strong>Nova versão do Bloquin disponível</strong>
+      <span>Instalada: v{update.installedVersion} · Nova: v{update.latestVersion}</span>
+      <div className="update-notice-actions">
+        <button type="button" className="btn-primary" onClick={onUpdate}>Atualizar</button>
+        <button type="button" className="btn-text" onClick={onClose}>Depois</button>
+      </div>
+    </aside>
+  );
+}
+
 function IdeScreenWrapper({
   role,
+  userId,
   onBack,
 }: {
   role: Exclude<UserRole, 'guest'>;
+  userId?: string;
   onBack: () => void;
 }) {
   const { projectId } = useParams();
@@ -277,6 +307,7 @@ function IdeScreenWrapper({
       <IdeScreen
         key={activeTab.id}
         role={role}
+        userId={userId}
         readOnly={readOnly}
         onBack={onBack}
         projectId={currentProjectId}
@@ -357,22 +388,63 @@ function UnsavedTabDialog({ title, onCancel, onConfirm }: { title: string; onCan
 }
 
 function AppContent() {
-  const setup = useSetup();
   const [splashVisible, setSplashVisible] = useState(true);
-  const setupReady = setup.status === 'ready'
-    || setup.status === 'deferred'
-    || setup.status === 'error';
+  const [installedVersion, setInstalledVersion] = useState(APP_BUILD_VERSION);
+  const [availableUpdate, setAvailableUpdate] = useState<AppUpdateInfo | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    void getInstalledVersion().then((version) => {
+      if (!disposed) setInstalledVersion(version);
+    });
+
+    let shouldCheck = true;
+    try {
+      shouldCheck = !sessionStorage.getItem('bloquin.update-check');
+      if (shouldCheck) sessionStorage.setItem('bloquin.update-check', '1');
+    } catch {
+      // Storage can be unavailable in restricted webviews; the check is still
+      // safe to perform once for this mounted application instance.
+    }
+
+    if (shouldCheck) {
+      void checkForUpdate().then((update) => {
+        if (!disposed && update) setAvailableUpdate(update);
+      });
+    }
+
+    return () => { disposed = true; };
+  }, []);
+
+  const handleUpdate = () => {
+    void openOfficialSite().catch(() => {
+      // Opening the external browser is best effort and must not interrupt the
+      // user's current session if the operating system rejects the request.
+    });
+    setAvailableUpdate(null);
+  };
 
   return (
     <>
       <Router>
         <SetupBanner />
-        <AppRoutes />
+        <AppRoutes installedVersion={installedVersion} />
       </Router>
+
+      {!splashVisible && availableUpdate && (
+        <UpdateNotice
+          update={availableUpdate}
+          onClose={() => setAvailableUpdate(null)}
+          onUpdate={handleUpdate}
+        />
+      )}
 
       {splashVisible && (
         <SplashScreen
-          ready={setupReady}
+          // A preparação do Arduino acontece em segundo plano. O usuário
+          // pode autenticar e navegar enquanto ela termina; o upload continua
+          // protegido pelo estado `setup_done` no backend Rust.
+          ready
           onFinished={() => setSplashVisible(false)}
         />
       )}

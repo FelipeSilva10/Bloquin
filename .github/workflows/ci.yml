@@ -78,4 +78,3 @@ jobs:
 
       - name: cargo clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-        continue-on-error: true  # Avisa mas não bloqueia por ora; remover quando limpar warnings

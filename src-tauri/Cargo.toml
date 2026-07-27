@@ -1,6 +1,6 @@
 [package]
 name = "bloquin"
-version = "1.1.1"
+version = "1.2.0"
 description = "Ambiente visual de programação para Arduino e ESP32 voltado para o ensino."
 authors = ["Felipe da Conceição Silva"]
 license = "MIT"
@@ -18,6 +18,7 @@ tauri-build = { version = "2", features = [] }
 tauri             = { version = "~2.11.1", features = ["webview-data-url"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-opener = "2"
 serde             = { version = "1", features = ["derive"] }
 serde_json        = "1"
 serialport        = "4.3.0"

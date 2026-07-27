@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::Emitter;
@@ -23,6 +23,15 @@ impl HideWindow for Command {
     }
 }
 
+fn cli_is_usable(path: &str) -> bool {
+    Command::new(path)
+        .hide_window()
+        .arg("version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 // ─── Evento de progresso emitido para o frontend ──────────────────────────
 #[derive(serde::Serialize, Clone)]
 struct SetupProgress {
@@ -33,6 +42,9 @@ struct SetupProgress {
 
 struct AppState {
     is_reading_serial: Arc<AtomicBool>,
+    // Cada início/parada cria uma geração. Isso impede que uma thread serial
+    // antiga continue lendo caso outra seja iniciada antes de ela encerrar.
+    serial_generation: Arc<AtomicU64>,
     is_uploading: Arc<AtomicBool>,
     setup_done: Arc<AtomicBool>,
     setup_running: Arc<AtomicBool>,
@@ -62,7 +74,7 @@ fn find_or_download_cli() -> Result<String, String> {
             .unwrap_or(std::path::Path::new("."))
             .join("resources")
             .join(exe_name);
-        if bundled.exists() {
+        if bundled.exists() && cli_is_usable(bundled.to_string_lossy().as_ref()) {
             println!(">>> [CLI] Usando binário empacotado: {:?}", bundled);
             return Ok(bundled.to_string_lossy().to_string());
         }
@@ -70,19 +82,14 @@ fn find_or_download_cli() -> Result<String, String> {
 
     // 2. Variável de ambiente explícita
     if let Ok(path) = std::env::var("ARDUINO_CLI_PATH") {
-        if std::path::Path::new(&path).exists() {
+        if std::path::Path::new(&path).exists() && cli_is_usable(&path) {
             println!(">>> [CLI] Usando ARDUINO_CLI_PATH={}", path);
             return Ok(path);
         }
     }
 
     // 3. No PATH do sistema
-    if Command::new("arduino-cli")
-        .hide_window()
-        .arg("version")
-        .output()
-        .is_ok()
-    {
+    if cli_is_usable("arduino-cli") {
         println!(">>> [CLI] arduino-cli encontrado no PATH do sistema.");
         return Ok("arduino-cli".to_string());
     }
@@ -90,7 +97,7 @@ fn find_or_download_cli() -> Result<String, String> {
     // 4. Cache de download anterior
     let temp_dir = env::temp_dir().join("bloquin_cli");
     let local_cli = temp_dir.join(exe_name);
-    if local_cli.exists() {
+    if local_cli.exists() && cli_is_usable(local_cli.to_string_lossy().as_ref()) {
         println!(">>> [CLI] arduino-cli em cache: {:?}", local_cli);
         return Ok(local_cli.to_string_lossy().to_string());
     }
@@ -122,6 +129,14 @@ fn find_or_download_cli() -> Result<String, String> {
             "--proto",
             "=https",
             "--tlsv1.2",
+            "--connect-timeout",
+            "10",
+            "--max-time",
+            "120",
+            "--retry",
+            "2",
+            "--retry-delay",
+            "1",
             url,
             "--output",
             archive_path.to_str().unwrap(),
@@ -447,6 +462,18 @@ fn temporary_sketch_paths(process_id: u32) -> (std::path::PathBuf, std::path::Pa
     (sketch_dir, sketch_path)
 }
 
+struct TemporarySketchDir(std::path::PathBuf);
+
+impl Drop for TemporarySketchDir {
+    fn drop(&mut self) {
+        if let Err(error) = fs::remove_dir_all(&self.0) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                eprintln!(">>> [UPLOAD] Não consegui limpar o sketch temporário: {}", error);
+            }
+        }
+    }
+}
+
 fn run_upload_pipeline(codigo: &str, placa: &str, porta: &str, cli: &str) -> Result<(), String> {
     println!(">>> [UPLOAD] Iniciando pipeline...");
 
@@ -455,8 +482,9 @@ fn run_upload_pipeline(codigo: &str, placa: &str, porta: &str, cli: &str) -> Res
 
     // O arduino-cli exige que o arquivo principal tenha o mesmo nome da pasta.
     let (sketch_dir, sketch_path) = temporary_sketch_paths(std::process::id());
+    let _sketch_cleanup = TemporarySketchDir(sketch_dir.clone());
 
-    let _ = fs::create_dir_all(&sketch_dir);
+    fs::create_dir_all(&sketch_dir).map_err(|e| format!("Erro ao preparar o sketch: {}", e))?;
     fs::write(&sketch_path, codigo).map_err(|e| format!("Erro ao criar arquivo: {}", e))?;
 
     println!(">>> [UPLOAD] Compilando com FQBN: {}", fqbn);
@@ -526,6 +554,12 @@ fn upload_code(
     if porta.trim().is_empty() {
         return Err("Selecione uma porta USB antes de enviar o código.".to_string());
     }
+    if codigo.len() > 2 * 1024 * 1024 {
+        return Err("O código excede o limite seguro de 2 MB.".to_string());
+    }
+    if !matches!(placa.as_str(), "uno" | "nano" | "esp32") {
+        return Err("Placa não suportada pelo Bloquin.".to_string());
+    }
 
     // Barreira de segurança — impede compilação antes do setup terminar
     if !state.setup_done.load(Ordering::Relaxed) {
@@ -545,11 +579,11 @@ fn upload_code(
         return Err("Já existe um envio em andamento. Aguarde a conclusão.".to_string());
     }
     state.is_reading_serial.store(false, Ordering::Relaxed);
+    state.serial_generation.fetch_add(1, Ordering::AcqRel);
 
     let window_clone = window.clone();
 
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(600));
         let result = run_upload_pipeline(&codigo, &placa, &porta, &cli);
         is_uploading.store(false, Ordering::Release);
         match result {
@@ -571,11 +605,12 @@ fn start_serial(
     window: tauri::Window,
     state: tauri::State<AppState>,
 ) -> Result<String, String> {
-    state.is_reading_serial.store(false, Ordering::Relaxed);
     if porta.trim().is_empty() {
         return Err("Selecione uma porta USB antes de abrir o monitor serial.".to_string());
     }
-    std::thread::sleep(Duration::from_millis(200));
+    state.is_reading_serial.store(false, Ordering::Relaxed);
+    let serial_generation = Arc::clone(&state.serial_generation);
+    let generation = serial_generation.fetch_add(1, Ordering::AcqRel) + 1;
 
     let is_reading = Arc::clone(&state.is_reading_serial);
     is_reading.store(true, Ordering::Relaxed);
@@ -601,7 +636,9 @@ fn start_serial(
         let mut serial_buf: Vec<u8> = vec![0; 1000];
         let mut string_acumulada = String::new();
 
-        while is_reading.load(Ordering::Relaxed) {
+        while is_reading.load(Ordering::Relaxed)
+            && serial_generation.load(Ordering::Acquire) == generation
+        {
             match port.read(serial_buf.as_mut_slice()) {
                 Ok(t) if t > 0 => {
                     let pedaco: String = serial_buf[..t]
@@ -640,6 +677,7 @@ fn start_serial(
 #[tauri::command]
 fn stop_serial(state: tauri::State<AppState>) -> Result<String, String> {
     state.is_reading_serial.store(false, Ordering::Relaxed);
+    state.serial_generation.fetch_add(1, Ordering::AcqRel);
     Ok("Monitor parado".to_string())
 }
 
@@ -707,6 +745,7 @@ async fn open_admin_panel(
 pub fn run() {
     let app_state = AppState {
         is_reading_serial: Arc::new(AtomicBool::new(false)),
+        serial_generation: Arc::new(AtomicU64::new(0)),
         is_uploading: Arc::new(AtomicBool::new(false)),
         setup_done: Arc::new(AtomicBool::new(false)),
         setup_running: Arc::new(AtomicBool::new(false)),
@@ -716,6 +755,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             run_setup,

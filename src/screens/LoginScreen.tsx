@@ -11,11 +11,12 @@ import {
 } from "../services/sessionService";
 
 interface LoginScreenProps {
-  onLogin: (role: 'student' | 'teacher' | 'visitor') => void;
+  onLogin: (role: 'student' | 'teacher' | 'visitor', userId?: string) => void;
   beforeLogin?: () => Promise<void>;
+  version: string;
 }
 
-export function LoginScreen({ onLogin, beforeLogin }: LoginScreenProps) {
+export function LoginScreen({ onLogin, beforeLogin, version }: LoginScreenProps) {
   const [email, setEmail]             = useState('');
   const [password, setPassword]       = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -71,8 +72,8 @@ export function LoginScreen({ onLogin, beforeLogin }: LoginScreenProps) {
 
       if (perfilError || !perfil) throw new Error('PROFILE_NOT_FOUND');
 
-      if (perfil.role === 'teacher')      onLogin('teacher');
-      else if (perfil.role === 'student') onLogin('student');
+      if (perfil.role === 'teacher')      onLogin('teacher', authenticatedUserId);
+      else if (perfil.role === 'student') onLogin('student', authenticatedUserId);
       else                                throw new Error('UNSUPPORTED_PROFILE_ROLE');
     } catch (loginError) {
       if (authenticatedUserId) {
@@ -181,6 +182,10 @@ export function LoginScreen({ onLogin, beforeLogin }: LoginScreenProps) {
       >
         Tutorial
       </button>
+
+      <span className="app-version" aria-label={`Versão instalada ${version}`}>
+        Bloquin IDE v{version}
+      </span>
 
       {showTutorial  && <TutorialModal  onClose={() => setShowTutorial(false)} />}
       {showGuestInfo && <GuestInfoModal onClose={handleGuestConfirmed} />}
