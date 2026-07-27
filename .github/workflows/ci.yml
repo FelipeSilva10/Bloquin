@@ -73,6 +73,11 @@ jobs:
           workspaces: "src-tauri -> target"
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
+      - name: Preparar recurso opcional para cargo check
+        run: |
+          mkdir -p src-tauri/resources
+          touch src-tauri/resources/ci-placeholder
+
       - name: cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
