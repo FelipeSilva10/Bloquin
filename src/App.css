@@ -1553,6 +1553,57 @@ pre {
   transform: translateY(1px);
   box-shadow: none;
 }
+.app-version {
+  position: fixed;
+  left: 24px;
+  bottom: 24px;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.update-notice {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 100001;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(330px, calc(100vw - 36px));
+  padding: 16px 18px;
+  border: 1px solid rgba(0, 168, 255, 0.22);
+  border-left: 5px solid var(--primary);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.97);
+  color: var(--dark);
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.25s ease;
+}
+.update-notice strong { font-size: 0.92rem; }
+.update-notice > span { color: var(--text-muted); font-size: 0.82rem; font-weight: 700; }
+.update-notice-close {
+  position: absolute;
+  top: 4px;
+  right: 7px;
+  padding: 0 4px;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+.update-notice-close:hover { color: var(--dark); }
+.update-notice-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.update-notice-actions .btn-primary,
+.update-notice-actions .btn-text { padding: 8px 12px; font-size: 0.82rem; }
+
+@media (max-width: 560px) {
+  .app-version { left: 16px; bottom: 18px; }
+  .tutorial-corner-btn { right: 16px; bottom: 18px; }
+}
 /* ── Share Modal ── */
 .share-modal { max-width: 500px; }
 .share-modal h2 { margin: 0 0 1rem; font-size: 1.2rem; font-weight: 700; }

@@ -211,6 +211,7 @@ type InterventionCallback = (payload: InterventionPayload) => void;
 let interventionChannel: ReturnType<typeof supabase.channel> | null = null;
 
 export function watchIntervention(userId: string, onIntervention: InterventionCallback) {
+  stopWatchingIntervention();
   interventionChannel = supabase
     .channel(`${INTERVENTION_CHANNEL}:${userId}`)
     .on("broadcast", { event: "lock" }, (msg) => {
@@ -230,17 +231,28 @@ export function stopWatchingIntervention() {
 }
 
 export async function lockStudentScreen(studentUserId: string, teacherName: string): Promise<void> {
-  await supabase.channel(`${INTERVENTION_CHANNEL}:${studentUserId}`).send({
-    type: "broadcast",
-    event: "lock",
-    payload: { teacher_name: teacherName },
-  });
+  await sendIntervention(studentUserId, "lock", { teacher_name: teacherName });
 }
 
 export async function unlockStudentScreen(studentUserId: string): Promise<void> {
-  await supabase.channel(`${INTERVENTION_CHANNEL}:${studentUserId}`).send({
+  await sendIntervention(studentUserId, "unlock", {});
+}
+
+async function sendIntervention(
+  studentUserId: string,
+  event: "lock" | "unlock",
+  payload: Record<string, string>,
+): Promise<void> {
+  const channel = supabase.channel(`${INTERVENTION_CHANNEL}:${studentUserId}`);
+  try {
+    await channel.send({
     type: "broadcast",
-    event: "unlock",
-    payload: {},
-  });
+      event,
+      payload,
+    });
+  } finally {
+    // Canais efêmeros de intervenção não podem ficar registrados no cliente
+    // do professor a cada clique de bloquear/desbloquear.
+    await supabase.removeChannel(channel);
+  }
 }

@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="LogoCompleta.pngsrc/assets/" alt="Bloquin IDE" width="300"/>
+<img src="src/assets/LogoCompleta.png" alt="Bloquin IDE" width="300"/>
 
 # Bloquin IDE
 
-**Versão atual: 1.1.0**
+**Versão atual:** consulte a [última release](https://github.com/FelipeSilva10/Bloquin/releases/latest)
 
 **Ambiente visual de programação para Arduino e ESP32 voltado para o ensino.**
 

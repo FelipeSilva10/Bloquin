@@ -8,6 +8,7 @@ import { lockStudentScreen, unlockStudentScreen } from '../services/sessionServi
 import ProjectModal from '../components/modals/ProjectModal';
 
 interface TeacherDashboardProps {
+  userId: string;
   onLogout: () => void;
   onOpenOwnProject: (projectId: string) => void;
   onInspectStudentProject: (projectId: string) => void;
@@ -19,7 +20,7 @@ interface Projeto { id: string; nome: string; descricao?: string; target_board?:
 
 type Tab = 'turmas' | 'projetos';
 
-export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentProject }: TeacherDashboardProps) {
+export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspectStudentProject }: TeacherDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('turmas');
 
   const [turmas, setTurmas] = useState<Turma[]>([]);
@@ -58,13 +59,12 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
   const [shareSuccess, setShareSuccess] = useState(false);
   const [pageError, setPageError] = useState('');
 
-  useEffect(() => { fetchTurmas(); fetchOwnProjects(); }, []);
+  useEffect(() => { void fetchTurmas(); void fetchOwnProjects(); }, [userId]);
 
   const fetchTurmas = async () => {
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw userError ?? new Error('Sessão não encontrada.');
-      const { data, error } = await supabase.from('turmas').select('id, nome, ano_letivo').eq('professor_id', user.id).order('created_at', { ascending: false });
+      if (!userId) throw new Error('Sessão não encontrada.');
+      const { data, error } = await supabase.from('turmas').select('id, nome, ano_letivo').eq('professor_id', userId).order('created_at', { ascending: false });
       if (error) throw error;
       setTurmas(data ?? []);
     } catch (error) {
@@ -76,9 +76,8 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
 
   const fetchOwnProjects = async () => {
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw userError ?? new Error('Sessão não encontrada.');
-      const { data, error } = await supabase.from('projetos').select('id, nome, descricao, target_board, updated_at').eq('dono_id', user.id).order('updated_at', { ascending: false });
+      if (!userId) throw new Error('Sessão não encontrada.');
+      const { data, error } = await supabase.from('projetos').select('id, nome, descricao, target_board, updated_at').eq('dono_id', userId).order('updated_at', { ascending: false });
       if (error) throw error;
       setOwnProjects(data ?? []);
     } catch (error) {
@@ -175,6 +174,14 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
     }
   };
 
+  const openShareModal = (targets: string[]) => {
+    setShareTargets(targets);
+    setProjectToShare(null);
+    setShareSuccess(false);
+    setPageError('');
+    setShareModalOpen(true);
+  };
+
   const handleSaveProjectMeta = async (id: string, name: string, description: string) => {
     await ProjectService.updateProjectMeta(id, name, description);
     
@@ -200,13 +207,12 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
     setCreateError('');
 
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw userError ?? new Error('Sessão não encontrada.');
+      if (!userId) throw new Error('Sessão não encontrada.');
 
       const { data, error } = await supabase
         .from('projetos')
         .insert([{
-          dono_id: user.id,
+          dono_id: userId,
           turma_id: selectedTurma.id,
           nome: newProjectName.trim(),
           target_board: BOARD_UNSET,
@@ -349,7 +355,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
                 </div>
                 <button 
                   className="btn-primary" 
-                  onClick={() => { setShareTargets(['all']); setShareModalOpen(true); }}
+                  onClick={() => openShareModal(['all'])}
                 >
                   📤 Enviar projeto para turma
                 </button>
@@ -367,7 +373,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
                           <button className="btn-secondary" style={{ flex: 1, padding: '8px' }} onClick={() => viewAlunoProjects(aluno)}>
                             Projetos
                           </button>
-                          <button className="btn-outline" style={{ flex: 1, padding: '8px' }} onClick={() => { setShareTargets([aluno.id]); setShareModalOpen(true); }}>
+                          <button className="btn-outline" style={{ flex: 1, padding: '8px' }} onClick={() => openShareModal([aluno.id])}>
                             📤 Enviar
                           </button>
                           <button
@@ -482,7 +488,7 @@ export function TeacherDashboard({ onLogout, onOpenOwnProject, onInspectStudentP
             </div>
 
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-              <button type="button" className="btn-text" style={{ flex: 1 }} onClick={() => setShareModalOpen(false)}>Cancelar</button>
+              <button type="button" className="btn-text" style={{ flex: 1 }} onClick={() => { setShareModalOpen(false); setProjectToShare(null); setShareTargets([]); }}>Cancelar</button>
               <button
                 className="btn-primary"
                 style={{ flex: 1 }}

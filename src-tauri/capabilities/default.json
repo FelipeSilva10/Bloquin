@@ -10,6 +10,10 @@
     "core:default",
     "core:webview:allow-create-webview-window",
     "dialog:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://bloquin.online/" }]
+    },
     "fs:allow-read-text-file",
     "fs:allow-write-text-file"
   ]

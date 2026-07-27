@@ -7,6 +7,7 @@ import { ProjectService } from '../services/projectService';
 import ProjectModal from "../components/modals/ProjectModal";
 
 interface StudentDashboardProps {
+  userId: string;
   onLogout: () => void;
   onOpenIde: (projectId: string) => void;
 }
@@ -19,7 +20,7 @@ export interface Projeto {
   updated_at: string;
 }
 
-export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps) {
+export function StudentDashboard({ userId, onLogout, onOpenIde }: StudentDashboardProps) {
   const [projects, setProjects] = useState<Projeto[]>([]);
   const [loading, setLoading]   = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -41,13 +42,12 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
   // ─── Carrega projetos ──────────────────────────────────────────────────────
   const fetchProjects = async () => {
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw userError ?? new Error('Usuário não encontrado.');
+      if (!userId) throw new Error('Usuário não encontrado.');
 
       const { data, error } = await supabase
         .from('projetos')
         .select('id, nome, descricao, target_board, updated_at')
-        .eq('dono_id', user.id)
+        .eq('dono_id', userId)
         .order('updated_at', { ascending: false });
       if (error) throw error;
       setProjects(data ?? []);
@@ -59,7 +59,49 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
     }
   };
 
-  useEffect(() => { fetchProjects(); }, []);
+  useEffect(() => { void fetchProjects(); }, [userId]);
+
+  // Mantém o painel atualizado enquanto o professor compartilha um projeto.
+  // O carregamento inicial continua sendo a fonte de verdade; o canal apenas
+  // evita que o aluno precise atualizar a página para enxergar a nova cópia.
+  useEffect(() => {
+    let disposed = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const subscribeToProjects = async () => {
+      if (!userId || disposed) return;
+
+      channel = supabase
+        .channel(`student-projects:${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'projetos', filter: `dono_id=eq.${userId}` },
+          (payload) => {
+            const nextProject = payload.new as Projeto & { dono_id?: string };
+            const projectId = (payload.old as { id?: string }).id ?? nextProject.id;
+
+            if (payload.eventType === 'INSERT' && nextProject.dono_id === userId) {
+              setProjects((current) => current.some((project) => project.id === nextProject.id)
+                ? current
+                : [nextProject, ...current]);
+            } else if (payload.eventType === 'UPDATE' && nextProject.dono_id === userId) {
+              setProjects((current) => current.map((project) => (
+                project.id === nextProject.id ? { ...project, ...nextProject } : project
+              )));
+            } else if (payload.eventType === 'DELETE') {
+              setProjects((current) => current.filter((project) => project.id !== projectId));
+            }
+          },
+        )
+        .subscribe();
+    };
+
+    void subscribeToProjects();
+    return () => {
+      disposed = true;
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   // ─── Ações ────────────────────────────────────────────────────────────────
   const handleSaveProjectMeta = async (id: string, nome: string, descricao: string) => {
@@ -77,17 +119,16 @@ export function StudentDashboard({ onLogout, onOpenIde }: StudentDashboardProps)
     setCreateError('');
 
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw userError ?? new Error('Sessão não encontrada.');
+      if (!userId) throw new Error('Sessão não encontrada.');
 
       const { data: perfil, error: profileError } = await supabase
-        .from('perfis').select('turma_id').eq('id', user.id).single();
+        .from('perfis').select('turma_id').eq('id', userId).single();
       if (profileError) throw profileError;
       if (!perfil?.turma_id) throw new Error('Seu perfil não está vinculado a uma turma. Fale com o professor.');
 
       const { data, error } = await supabase
         .from('projetos')
-        .insert([{ dono_id: user.id, turma_id: perfil.turma_id, nome: newProjectName.trim(), target_board: BOARD_UNSET }])
+        .insert([{ dono_id: userId, turma_id: perfil.turma_id, nome: newProjectName.trim(), target_board: BOARD_UNSET }])
         .select('id, nome, descricao, target_board, updated_at')
         .single();
       if (error || !data) throw error ?? new Error('Projeto não foi criado.');

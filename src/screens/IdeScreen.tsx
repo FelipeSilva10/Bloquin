@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Blockly from 'blockly/core';
 import 'blockly/blocks';
 import * as PtBr from 'blockly/msg/pt-br';
-import { supabase } from '../lib/supabase'; // Adicionado para buscar o ID do aluno
 import { ProjectService } from '../services/projectService';
 import { HardwareService } from '../services/hardwareService';
 import { watchIntervention, stopWatchingIntervention } from "../services/sessionService"; // Novo serviço de sessão
@@ -49,14 +48,15 @@ function BoardBadge({ boardKey }: { boardKey: BoardKey }) {
   );
 }
 
-interface IdeScreenProps { role: 'student' | 'teacher' | 'visitor'; readOnly?: boolean; onBack: () => void; projectId?: string; initialWorkspaceData?: Record<string, unknown>; initialBoard?: BoardKey | null; }
+interface IdeScreenProps { role: 'student' | 'teacher' | 'visitor'; userId?: string; readOnly?: boolean; onBack: () => void; projectId?: string; initialWorkspaceData?: Record<string, unknown>; initialBoard?: BoardKey | null; }
 type BoardLoadState = 'resolving' | 'selecting' | 'ready' | 'error';
 const TOP_LEVEL_BLOCK_TYPES = new Set(['bloco_setup', 'bloco_loop', 'declarar_variavel_global', 'definir_funcao', 'definir_funcao_retorno']);
 
-export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWorkspaceData, initialBoard = null }: IdeScreenProps) {
+export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, initialWorkspaceData, initialBoard = null }: IdeScreenProps) {
   const blocklyDiv = useRef<HTMLDivElement>(null);
   const workspace  = useRef<Blockly.WorkspaceSvg | null>(null);
   const codeGeneratorRef = useRef<any>(null);
+  const codeGenerationFrame = useRef<number | null>(null);
   const { activeTab, updateTab } = useTabs();
   const dirtyRef = useRef(activeTab.dirty);
   const workspaceLoadFailedRef = useRef(false);
@@ -167,20 +167,17 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
 
     let isMounted = true;
     
-    // Busca o ID do usuário de forma assíncrona já que não está nas props
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user && isMounted) {
-        watchIntervention(data.user.id, (payload) => {
-          setIntervention(payload); // null desbloqueia a tela
-        });
-      }
+    if (!userId) return;
+
+    watchIntervention(userId, (payload) => {
+      if (isMounted) setIntervention(payload); // null desbloqueia a tela
     });
 
     return () => {
       isMounted = false;
       stopWatchingIntervention();
     };
-  }, [role]);
+  }, [role, userId]);
 
   // ─── Carregamento Inicial do Projeto ────────────────────────────────────────
   useEffect(() => {
@@ -299,19 +296,29 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
       sounds: false,
     });
 
+    const generateCurrentCode = () => {
+      if (!workspace.current || !codeGeneratorRef.current) return;
+      try {
+        setGeneratedCode(codeGeneratorRef.current(workspace.current, board) || '// Arraste blocos para dentro de PREPARAR e AGIR!');
+      } catch (e) {
+        console.error('Erro ao gerar código:', e);
+        setGeneratedCode('// Não foi possível gerar o código. Revise o último bloco alterado.');
+      }
+    };
+
     workspace.current.addChangeListener((event) => {
       if (event.isUiEvent) return;
       if (trackChanges.current) {
         dirtyRef.current = true;
         setIsDirty(true);
       }
-      try { 
-        if(codeGeneratorRef.current) {
-          setGeneratedCode(codeGeneratorRef.current(workspace.current!, board) || '// Arraste blocos para dentro de PREPARAR e AGIR!');
-        }
-      } catch (e) {
-        console.error('Erro ao gerar código:', e);
-        setGeneratedCode('// Não foi possível gerar o código. Revise o último bloco alterado.');
+      // Drag/connection events can arrive in bursts. Generate at most once
+      // per animation frame so Blockly remains responsive on larger graphs.
+      if (codeGenerationFrame.current === null) {
+        codeGenerationFrame.current = window.requestAnimationFrame(() => {
+          codeGenerationFrame.current = null;
+          generateCurrentCode();
+        });
       }
     });
 
@@ -363,6 +370,10 @@ export function IdeScreen({ role, readOnly = false, onBack, projectId, initialWo
     
     return () => {
       clearTimeout(trackTimer);
+      if (codeGenerationFrame.current !== null) {
+        window.cancelAnimationFrame(codeGenerationFrame.current);
+        codeGenerationFrame.current = null;
+      }
       trackChanges.current = false;
       if (workspace.current) {
         if (!workspaceLoadFailedRef.current) {

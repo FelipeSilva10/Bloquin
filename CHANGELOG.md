@@ -33,6 +33,34 @@ BREAKING CHANGE: apenas Arduino Uno R3+ é suportado a partir desta versão.
 
 <!-- Histórico de versões -->
 
+## [1.2.0] — 27/07/2026
+
+### Novas funcionalidades
+
+- Adicionado indicador discreto da versão instalada nas telas de login e inicialização.
+- Adicionada verificação silenciosa e não bloqueante de novas versões, com opção de atualizar pelo site oficial ou continuar depois.
+- Versões do frontend, Tauri e Rust passam a ser sincronizadas automaticamente pelo script de release.
+
+### Segurança e persistência
+
+- Endurecidas as policies de ownership de projetos para impedir troca de dono ou turma fora do escopo autorizado.
+- Corrigidas permissões e search paths das RPCs de projetos; chamadas anônimas de exclusão e compartilhamento foram bloqueadas.
+- Otimizadas as policies do aplicativo para inicializar auth.uid() uma vez por consulta.
+- Adicionadas migrations e índices para governança, auditoria e consistência do Supabase.
+
+### Confiabilidade
+
+- Melhorado o ciclo de sessão, heartbeat, logout offline e limpeza de listeners.
+- Upload, serial, sketch temporário e preparação do arduino-cli passaram a validar estados e falhas com mais segurança.
+- Inicialização da aplicação e preparação do backend ficaram menos bloqueantes.
+- Geração Blockly passou a reduzir atualizações redundantes e a auditoria automatizada continua cobrindo blocos, placas e geradores.
+
+### Manutenção
+
+- Removidos do versionamento o ambiente local, o binário local do arduino-cli e um backup de imagem sem uso.
+- Corrigidos o caminho do logo no README, a referência manual de versão e o launcher local.
+- Atualizadas configurações de CI, release, capacidades Tauri e dependências Rust.
+
 ## [1.1.1] — 24/07/2026
 
 ### Correções
