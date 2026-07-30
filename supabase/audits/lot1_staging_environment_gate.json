@@ -1,0 +1,33 @@
+{
+  "captured_at": "2026-07-30T15:37:27Z",
+  "scope": "lot1_staging_environment_gate",
+  "supabase_cli_version": "2.110.0",
+  "management_api_checks": [
+    "supabase projects list --output-format json",
+    "supabase branches list --output-format json"
+  ],
+  "evidence": {
+    "cli_authenticated": true,
+    "accessible_projects_count": 1,
+    "linked_project_name": "Bloquin",
+    "linked_project_status": "ACTIVE_HEALTHY",
+    "linked_ref_matches_application_env": true,
+    "preview_branch_count": 0,
+    "staging_environment_proven": false
+  },
+  "classification": "production_or_unproven_active_environment",
+  "decision": "halted_before_remote_database_connection",
+  "remote_database_commands_not_executed": [
+    "supabase migration list --linked",
+    "supabase db push --linked --dry-run",
+    "supabase db dump --linked",
+    "remote SQL inventories",
+    "supabase db advisors --linked",
+    "supabase db push --linked",
+    "authenticated staging tests"
+  ],
+  "required_to_resume": [
+    "a separate Supabase staging project, or",
+    "an explicitly authorized preview branch identified as staging"
+  ]
+}

@@ -1,5 +1,11 @@
 # Auditoria de Supabase, segurança e arquitetura do Bloquin
 
+> **Documento histórico.** Este relatório retrata o estado de 27/07/2026,
+> anterior à reconciliação do baseline e ao hardening do Lote 1. Para o estado
+> vigente de perfis, sessões, grants, migrations e da RPC
+> `delete_student_user`, consulte
+> `supabase/LOT1_FINAL_REPORT.md` e `supabase/LOT1_BASELINE.md`.
+
 **Data:** 27/07/2026
 **Escopo:** schema, views, RPCs, funções, triggers, índices, constraints, foreign keys, policies, RLS, permissões, storage, migrations e fluxos de persistência.
 **Projeto:** iabajqkkodldjwcgvpiz

@@ -60,21 +60,27 @@ export function LoginScreen({ onLogin, beforeLogin, version }: LoginScreenProps)
       }
       authenticatedUserId = authData.user.id;
 
-      // 3. Registra a nova sessão — invalida qualquer sessão anterior via upsert.
-      await registerSession(authenticatedUserId);
-
-      // 4. Busca o perfil para determinar o papel
+      // 3. Busca o perfil pelo id confirmado pelo Auth. O papel vem
+      // exclusivamente da tabela protegida por RLS, nunca de metadata editável
+      // do usuário nem do formulário de login.
       const { data: perfil, error: perfilError } = await supabase
         .from('perfis')
-        .select('role')
+        .select('id, role')
         .eq('id', authenticatedUserId)
         .single();
 
-      if (perfilError || !perfil) throw new Error('PROFILE_NOT_FOUND');
+      if (perfilError || !perfil || perfil.id !== authenticatedUserId) {
+        throw new Error('PROFILE_NOT_FOUND');
+      }
 
-      if (perfil.role === 'teacher')      onLogin('teacher', authenticatedUserId);
-      else if (perfil.role === 'student') onLogin('student', authenticatedUserId);
-      else                                throw new Error('UNSUPPORTED_PROFILE_ROLE');
+      if (perfil.role !== 'teacher' && perfil.role !== 'student') {
+        throw new Error('UNSUPPORTED_PROFILE_ROLE');
+      }
+
+      // 4. Só cria/substitui a linha de sessão depois que identidade e papel
+      // foram aceitos. O upsert invalida imediatamente a sessão anterior.
+      await registerSession(authenticatedUserId);
+      onLogin(perfil.role, authenticatedUserId);
     } catch (loginError) {
       if (authenticatedUserId) {
         try {

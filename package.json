@@ -6,8 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test:sessions": "node --experimental-strip-types --test scripts/session-policy.test.mjs",
     "audit:blocks": "node scripts/run-blockly-audit.mjs",
+    "audit:supabase-baseline": "node scripts/supabase-baseline-audit.mjs",
+    "test:supabase-db": "supabase test db --local supabase/tests/database",
     "preview": "vite preview",
+    "supabase": "supabase",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -30,6 +34,7 @@
     "@types/react-dom": "^19.1.6",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.6.0",
+    "supabase": "2.110.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

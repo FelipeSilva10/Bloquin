@@ -1,0 +1,106 @@
+{
+  "captured_at": "2026-07-30T14:10:45.012839+00:00",
+  "scope": [
+    "public",
+    "private"
+  ],
+  "database": {
+    "server_version": "17.6",
+    "server_version_num": 170006
+  },
+  "schema_dump": {
+    "source_file": ".tmp/lot1/remote-public-private-schema.sql",
+    "sha256": "360fdc73d3947fc73b83cc2a9930441a005073f761527aae16715d160be54523",
+    "baseline_file": "supabase/migrations/20260727144628_add_audit_query_indexes.sql",
+    "baseline_sha256": "743ff8b1a954a8eab4551d1adf52116b253ff07a9caf0eea2a2531a8a195ccbd",
+    "normalization": "O patch preservou todo o DDL, removeu espaços ao fim de três linhas vazias e normalizou as linhas vazias no final do arquivo."
+  },
+  "advisor_artifacts": {
+    "security": {
+      "source_file": ".tmp/lot1/security-advisors.json",
+      "sha256": "3ab3d8526a171ed916a234884f4d27dc0e724e71c3af7471756663e0233b9e46",
+      "issues": 1,
+      "summary": {
+        "auth_leaked_password_protection": 1
+      }
+    },
+    "performance": {
+      "source_file": ".tmp/lot1/performance-advisors.json",
+      "sha256": "60e2feb0cef71e31b51c744081d414d2e588598cec94de3d142bb06d360035d7",
+      "issues": 55,
+      "summary": {
+        "multiple_permissive_policies": 54,
+        "duplicate_index": 1
+      }
+    }
+  },
+  "integrity_summary": {
+    "profiles": 2,
+    "sessions": 1,
+    "sessions_without_profile": 0,
+    "profiles_without_auth_user": 0,
+    "sessions_without_auth_user": 0
+  },
+  "migration_history": [
+    {
+      "version": "20260727144628",
+      "name": "add_audit_query_indexes"
+    },
+    {
+      "version": "20260727151053",
+      "name": "harden_project_rpc_privileges_and_search_paths"
+    },
+    {
+      "version": "20260727151317",
+      "name": "tighten_project_ownership_policies"
+    },
+    {
+      "version": "20260727151415",
+      "name": "optimize_app_rls_auth_checks"
+    },
+    {
+      "version": "20260728005251",
+      "name": "create_library"
+    },
+    {
+      "version": "20260728014634",
+      "name": "library_archive_restore"
+    },
+    {
+      "version": "20260728014958",
+      "name": "library_payload_hardening"
+    },
+    {
+      "version": "20260728015220",
+      "name": "library_metadata_limits"
+    },
+    {
+      "version": "20260728020815",
+      "name": "harden_legacy_security"
+    },
+    {
+      "version": "20260728020931",
+      "name": "finalize_legacy_security"
+    },
+    {
+      "version": "20260728021256",
+      "name": "fix_rls_policy_recursion"
+    },
+    {
+      "version": "20260728021442",
+      "name": "add_library_cover_index"
+    },
+    {
+      "version": "20260728023217",
+      "name": "fix_library_class_access"
+    },
+    {
+      "version": "20260728025447",
+      "name": "harden_library_publish_identity"
+    },
+    {
+      "version": "20260728030130",
+      "name": "restore_archived_library_permissions"
+    }
+  ]
+}
