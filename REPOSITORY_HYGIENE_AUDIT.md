@@ -4,6 +4,11 @@
 **Escopo:** árvore do projeto, Git, segredos, artefatos, dependências, assets, scripts, workflows, releases, documentação e migrations.
 **Estado auditado:** worktree local do Bloquin, incluindo alterações existentes de tarefas anteriores.
 
+> Atualização de 31/07/2026: o cliente foi migrado para a publishable key,
+> os componentes server-side foram migrados para a secret key e as chaves JWT
+> antigas foram desativadas após validação. As referências abaixo a `anon` e
+> `service_role` descrevem somente o estado histórico desta auditoria.
+
 ## Resumo executivo
 
 A árvore rastreada tem 136 arquivos antes das alterações desta auditoria. Os problemas objetivos encontrados foram:
@@ -183,7 +188,9 @@ O build apresentou apenas o aviso conhecido de chunks acima de 500 kB, sem falha
 ## Riscos residuais e recomendações não aplicadas
 
 - Reescrita do histórico para retirar blobs grandes e .env: requer backup, comunicação e force push.
-- Rotação da chave anon: não indicada como obrigatória pela evidência atual; revisar se houver dúvida sobre políticas públicas.
+- Chaves JWT antigas: desativadas em 31/07/2026 após migração e validação das
+  chaves atuais; os valores históricos permanecem inutilizáveis nos commits
+  antigos até eventual limpeza coordenada do histórico.
 - Remoção de ícones Android/iOS e cópias -1: aguardar decisão de targets móveis.
 - Remoção de supabaseHelper e métodos de serviço sem consumidores locais: confirmar painel/integradores externos.
 - Ajuste da etapa lint da CI: decidir entre adicionar ESLint ou remover a etapa no-op.
