@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import logoSimples from '../icons/LogoSimples.png';
 import { BOARD_UNSET } from '../blockly/boards';
-import { invoke } from '@tauri-apps/api/core';
 import { ProjectService } from '../services/projectService';
 import { lockStudentScreen, unlockStudentScreen } from '../services/sessionService';
+import { AdminPanelAccessError, openAdminPanel } from '../services/adminPanelService';
 import ProjectModal from '../components/modals/ProjectModal';
 
 interface TeacherDashboardProps {
@@ -91,12 +91,16 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
     setAdminLoading(true);
     setAdminError('');
     try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error || !session) { setAdminError('Sessão não encontrada. Faça login novamente.'); return; }
-      await invoke('open_admin_panel', { accessToken: session.access_token, refreshToken: session.refresh_token });
+      await openAdminPanel(userId);
     } catch (err) {
-      console.error('Erro ao abrir o painel administrativo:', err);
-      setAdminError('Não consegui abrir o painel administrativo. Tente novamente.');
+      const code = err instanceof AdminPanelAccessError ? err.code : '';
+      setAdminError(
+        code === 'SESSION_MISSING' || code === 'SESSION_REPLACED'
+          ? 'Sua sessão mudou ou expirou. Entre novamente antes de abrir o painel.'
+          : code === 'NOT_AUTHORIZED'
+            ? 'O painel administrativo está disponível somente para professores autorizados.'
+            : 'Não consegui abrir o painel administrativo. Tente novamente.',
+      );
     } finally {
       setAdminLoading(false);
     }

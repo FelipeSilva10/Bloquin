@@ -25,6 +25,11 @@ import {
 import { getFriendlyError } from './components/modals/ErrorModal';
 import { useModalA11y } from './hooks/useModalA11y';
 import { SplashScreen } from './components/SplashScreen';
+import { supabase } from './lib/supabase';
+import {
+  closeAdminPanelWindow,
+  revokeAdminPanelAccess,
+} from './services/adminPanelService';
 import {
   APP_BUILD_VERSION,
   checkForUpdate,
@@ -141,6 +146,7 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
 
   const handleLogin = (loggedRole: 'student' | 'teacher' | 'visitor', loggedUserId?: string) => {
     logoutInProgressRef.current = false;
+    void closeAdminPanelWindow();
     resetTabs();
     setRole(loggedRole);
     if (loggedRole === 'visitor') {
@@ -163,11 +169,18 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
     if (logoutInProgressRef.current) return;
     logoutInProgressRef.current = true;
     const currentUserId = userId;
+    void closeAdminPanelWindow();
     resetTabs();
     setRole('guest');
     setUserId(null);
     navigate('/');
     logoutCleanupRef.current = (async () => {
+      try {
+        await revokeAdminPanelAccess();
+      } catch {
+        // A validação server-side também invalida o painel quando a sessão de
+        // origem some ou é substituída; o logout local nunca fica bloqueado.
+      }
       try {
         if (currentUserId) await clearSession(currentUserId);
       } catch {
@@ -178,6 +191,15 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
       }
     })();
   };
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') void closeAdminPanelWindow();
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (!userId || (role !== 'student' && role !== 'teacher')) return;

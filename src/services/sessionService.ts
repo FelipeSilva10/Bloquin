@@ -21,7 +21,7 @@ export type SessionProbeStatus = "valid" | "invalid" | "unreachable";
 
 // ─── Token local ──────────────────────────────────────────────────────────────
 
-function getLocalToken(): string | null {
+export function getCurrentSessionToken(): string | null {
   try {
     return localStorage.getItem(SESSION_TOKEN_KEY);
   } catch {
@@ -114,7 +114,7 @@ export async function isSessionActive(userId: string): Promise<boolean> {
  * Se o usuário sair sem logout explícito, a sessão expira após SESSION_TTL_MS.
  */
 export async function heartbeat(userId: string): Promise<SessionProbeStatus> {
-  const localToken = getLocalToken();
+  const localToken = getCurrentSessionToken();
   if (!localToken) return "invalid";
 
   try {
@@ -144,7 +144,7 @@ export async function heartbeat(userId: string): Promise<SessionProbeStatus> {
 // ─── Validação e limpeza ──────────────────────────────────────────────────────
 
 export async function isSessionValid(userId: string): Promise<SessionProbeStatus> {
-  const localToken = getLocalToken();
+  const localToken = getCurrentSessionToken();
   if (!localToken) return "invalid";
 
   try {
@@ -165,7 +165,7 @@ export async function isSessionValid(userId: string): Promise<SessionProbeStatus
 }
 
 export async function clearSession(userId: string): Promise<void> {
-  const localToken = getLocalToken();
+  const localToken = getCurrentSessionToken();
   clearLocalToken();
   if (!localToken) return;
 
@@ -205,7 +205,7 @@ export function watchSession(userId: string, onKilled: SessionKilledCallback) {
         const remoteToken = (
           payload.new as { session_token?: string } | null
         )?.session_token;
-        if (!remoteToken || remoteToken !== getLocalToken()) onKilled();
+        if (!remoteToken || remoteToken !== getCurrentSessionToken()) onKilled();
       }
     )
     .subscribe();
