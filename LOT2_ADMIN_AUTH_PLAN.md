@@ -188,8 +188,8 @@ Nenhuma alteração remota foi executada. Para disponibilizar o fluxo:
 2. configurar `BLOQUIN_ALLOWED_ORIGINS` nas secrets das Edge Functions;
 3. publicar `admin-handoff-request` e `admin-session-revoke`;
 4. garantir no Vercel do SAG:
-   `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e credenciais de
-   banco já usadas pelo backend;
+   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
+   `SUPABASE_SECRET_KEY` e credenciais de banco já usadas pelo backend;
 5. publicar o SAG;
 6. publicar o Bloquin somente depois dos backends, evitando uma versão que peça
    handoff antes dos endpoints existirem;

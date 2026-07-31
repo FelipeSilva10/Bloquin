@@ -4,6 +4,10 @@ import {
   ADMIN_HANDOFF_PURPOSE,
   getAuthSessionIdFromJwt,
 } from "./adminHandoffCore.ts";
+import {
+  publishableApiKey,
+  secretApiKey,
+} from "./supabaseApiKeys.ts";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:1420",
@@ -69,9 +73,11 @@ export async function authenticateFunctionRequest(
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const publishableKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !publishableKey || !serviceRoleKey) {
+  const publishableKey = publishableApiKey(
+    Deno.env.get("SUPABASE_PUBLISHABLE_KEYS"),
+  );
+  const secretKey = secretApiKey(Deno.env.get("SUPABASE_SECRET_KEYS"));
+  if (!supabaseUrl || !publishableKey || !secretKey) {
     return jsonResponse(request, { error: "server_not_configured" }, 500);
   }
 
@@ -90,7 +96,7 @@ export async function authenticateFunctionRequest(
     return jsonResponse(request, { error: "invalid_session" }, 401);
   }
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, {
+  const admin = createClient(supabaseUrl, secretKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

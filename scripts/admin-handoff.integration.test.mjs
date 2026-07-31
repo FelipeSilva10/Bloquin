@@ -18,7 +18,7 @@ async function callFunction(status, name, accessToken, body) {
   return fetch(`${status.FUNCTIONS_URL}/${name}`, {
     method: "POST",
     headers: {
-      apikey: status.ANON_KEY,
+      apikey: status.PUBLISHABLE_KEY,
       "Content-Type": "application/json",
       Origin: "http://localhost:1420",
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
@@ -29,10 +29,10 @@ async function callFunction(status, name, accessToken, body) {
 
 test("Edge Function emite, consome uma vez e revoga o handoff local", async () => {
   const status = localSupabaseStatus();
-  const admin = createClient(status.API_URL, status.SERVICE_ROLE_KEY, {
+  const admin = createClient(status.API_URL, status.SECRET_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const browser = createClient(status.API_URL, status.ANON_KEY, {
+  const browser = createClient(status.API_URL, status.PUBLISHABLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 

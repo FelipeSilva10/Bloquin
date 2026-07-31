@@ -12,6 +12,10 @@ import {
   isSourceSessionToken,
   sha256Hex,
 } from "../supabase/functions/_shared/adminHandoffCore.ts";
+import {
+  publishableApiKey,
+  secretApiKey,
+} from "../supabase/functions/_shared/supabaseApiKeys.ts";
 
 test("gera código Base64URL de 256 bits sem padding", () => {
   const code = generateOpaqueCode((target) => {
@@ -57,6 +61,21 @@ test("extrai somente session_id UUID de um JWT já validado", () => {
   assert.equal(getAuthSessionIdFromJwt("invalid"), null);
 });
 
+test("Edge Functions aceitam somente os formatos atuais de API key", () => {
+  const publishable = "sb_publishable_example";
+  const secret = "sb_secret_example";
+
+  assert.equal(
+    publishableApiKey(JSON.stringify({ default: publishable })),
+    publishable,
+  );
+  assert.equal(secretApiKey(JSON.stringify({ default: secret })), secret);
+  assert.equal(publishableApiKey(JSON.stringify({ default: secret })), null);
+  assert.equal(secretApiKey(JSON.stringify({ default: publishable })), null);
+  assert.equal(publishableApiKey("invalid-json"), null);
+  assert.equal(secretApiKey(undefined), null);
+});
+
 test("fronteira React/Tauri não recebe tokens do Supabase Auth", async () => {
   const sources = await Promise.all([
     readFile(new URL("../src/services/adminPanelService.ts", import.meta.url), "utf8"),
@@ -71,4 +90,31 @@ test("fronteira React/Tauri não recebe tokens do Supabase Auth", async () => {
   );
   assert.match(adminFlowSource, /handoffCode|handoff_code/u);
   assert.match(adminFlowSource, /\.destroy\(\)/u);
+});
+
+test("clientes usam somente variáveis das chaves atuais", async () => {
+  const sources = await Promise.all([
+    readFile(new URL("../src/lib/supabase.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL(
+        "../supabase/functions/_shared/adminHandoffHttp.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ]);
+  const currentSource = sources.join("\n");
+  const legacyPublicName = ["VITE", "SUPABASE", "ANON", "KEY"].join("_");
+  const legacyPrivilegedName = [
+    "SUPABASE",
+    "SERVICE",
+    "ROLE",
+    "KEY",
+  ].join("_");
+
+  assert.match(currentSource, /VITE_SUPABASE_PUBLISHABLE_KEY/u);
+  assert.match(currentSource, /SUPABASE_PUBLISHABLE_KEYS/u);
+  assert.match(currentSource, /SUPABASE_SECRET_KEYS/u);
+  assert.equal(currentSource.includes(legacyPublicName), false);
+  assert.equal(currentSource.includes(legacyPrivilegedName), false);
 });

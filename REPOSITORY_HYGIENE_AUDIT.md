@@ -64,17 +64,19 @@ A busca atual e histórica procurou chaves privadas, service_role, tokens GitHub
 
 Resultado:
 
-- nenhum service_role encontrado;
+- nenhuma chave privilegiada do Supabase encontrada;
 - nenhuma chave privada ou certificado encontrado;
 - nenhum token GitHub/Slack encontrado;
 - nenhum dump SQL com dados reais encontrado;
 - nenhum usuário, aluno ou professor identificado em arquivos versionados;
-- o .env contém apenas VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY; o payload da chave informa role anon;
-- a chave anon do Supabase é publicável por desenho, mas .env ainda é configuração local e foi removido do índice;
+- o .env contém apenas VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY;
+- a chave publishable do Supabase é pública por desenho, mas .env ainda é configuração local e foi removido do índice;
 - src/lib/supabase.ts contém somente o cliente com variáveis Vite, sem segredo hardcoded;
 - workflows usam secrets do GitHub para certificado, senha do certificado e GITHUB_TOKEN, sem valores embutidos.
 
-Remover .env do commit atual não remove seu conteúdo dos commits antigos. Como a chave encontrada é anon, não há evidência de vazamento de service_role que exija rotação imediata. Ainda assim, se o projeto tiver qualquer dúvida sobre a validade histórica da chave, ela deve ser revisada no dashboard; a rotação deve ser coordenada com o deploy.
+Remover .env do commit atual não remove seu conteúdo dos commits antigos.
+Credenciais privilegiadas devem permanecer somente nos backends e ser
+rotacionadas antes de qualquer rollout quando houver suspeita de exposição.
 
 ## Histórico Git e blobs grandes
 
