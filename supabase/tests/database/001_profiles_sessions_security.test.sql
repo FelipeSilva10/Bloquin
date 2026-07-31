@@ -2,6 +2,8 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
+set local search_path = extensions, public, pg_catalog;
+
 select plan(31);
 
 select has_table('public', 'perfis', 'o baseline define public.perfis');
@@ -303,13 +305,13 @@ select ok(
 );
 
 select ok(
-  not has_column_privilege(
+  has_column_privilege(
     'authenticated',
     'public.user_sessions',
     'user_id',
     'UPDATE'
   ),
-  'authenticated não troca o proprietário de uma sessão'
+  'authenticated pode executar o SET inócuo de user_id gerado pelo PostgREST'
 );
 
 select ok(

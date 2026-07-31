@@ -2,7 +2,9 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(21);
+set local search_path = extensions, public, pg_catalog;
+
+select plan(22);
 
 insert into auth.users (
   id,
@@ -263,7 +265,8 @@ select lives_ok(
       now()
     )
     on conflict (user_id) do update
-    set session_token = excluded.session_token,
+    set user_id = excluded.user_id,
+        session_token = excluded.session_token,
         updated_at = excluded.updated_at
   $$,
   'upsert da própria sessão continua autorizado'
@@ -277,6 +280,17 @@ select is(
   ),
   'teacher-a-replaced',
   'o upsert persistiu o novo token da própria sessão'
+);
+
+select throws_ok(
+  $$
+    update public.user_sessions
+    set user_id = '30000000-0000-0000-0000-000000000001'
+    where user_id = '10000000-0000-0000-0000-000000000001'
+  $$,
+  '42501'::character(5),
+  'new row violates row-level security policy for table "user_sessions"',
+  'WITH CHECK impede transferir a sessão para outro usuário'
 );
 
 select throws_ok(
@@ -386,7 +400,8 @@ select lives_ok(
       now()
     )
     on conflict (user_id) do update
-    set session_token = excluded.session_token,
+    set user_id = excluded.user_id,
+        session_token = excluded.session_token,
         updated_at = excluded.updated_at
   $$,
   'aluno também pode substituir somente a própria sessão'
