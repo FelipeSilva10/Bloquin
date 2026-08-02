@@ -468,7 +468,10 @@ impl Drop for TemporarySketchDir {
     fn drop(&mut self) {
         if let Err(error) = fs::remove_dir_all(&self.0) {
             if error.kind() != std::io::ErrorKind::NotFound {
-                eprintln!(">>> [UPLOAD] Não consegui limpar o sketch temporário: {}", error);
+                eprintln!(
+                    ">>> [UPLOAD] Não consegui limpar o sketch temporário: {}",
+                    error
+                );
             }
         }
     }
@@ -698,32 +701,28 @@ fn get_available_ports() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-async fn open_admin_panel(
-    app: tauri::AppHandle,
-    access_token: String,
-    refresh_token: String,
-) -> Result<String, String> {
+async fn open_admin_panel(app: tauri::AppHandle, handoff_code: String) -> Result<String, String> {
     use tauri::Manager;
+
+    if !is_valid_admin_handoff_code(&handoff_code) {
+        return Err("Código de acesso administrativo inválido.".to_string());
+    }
 
     if let Some(window) = app.get_webview_window("admin-panel") {
         window
-            .set_focus()
-            .map_err(|e| format!("Erro ao focar a janela: {}", e))?;
-        return Ok("ok".to_string());
+            .destroy()
+            .map_err(|e| format!("Erro ao substituir a janela administrativa: {}", e))?;
     }
 
-    let at_json = serde_json::to_string(&access_token)
-        .map_err(|_| "Erro ao serializar access_token".to_string())?;
-    let rt_json = serde_json::to_string(&refresh_token)
-        .map_err(|_| "Erro ao serializar refresh_token".to_string())?;
-
-    let init_script = format!(
-        "(function(){{Object.defineProperty(window,'__bloquin_auth',{{value:{{access_token:{},refresh_token:{}}},writable:false,configurable:false,enumerable:false}});}})();",
-        at_json, rt_json
+    // O fragmento não é enviado no request HTTP, em logs de servidor ou no
+    // cabeçalho Referer. A página do SAG o remove antes de realizar a troca por
+    // uma sessão própria, HttpOnly e de uso contínuo.
+    let panel_url = format!(
+        "https://sagsite.vercel.app/auto-login#code={}",
+        handoff_code
     );
-
     let webview_url = tauri::WebviewUrl::External(
-        "https://sagsite.vercel.app/login?next=%2F"
+        panel_url
             .parse()
             .map_err(|e| format!("URL inválida: {}", e))?,
     );
@@ -734,11 +733,54 @@ async fn open_admin_panel(
         .min_inner_size(900.0, 600.0)
         .center()
         .focused(true)
-        .initialization_script(&init_script)
         .build()
         .map_err(|e| format!("Erro ao abrir janela: {}", e))?;
 
     Ok("ok".to_string())
+}
+
+fn is_valid_admin_handoff_code(code: &str) -> bool {
+    code.len() == 43
+        && code
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+}
+
+#[tauri::command]
+fn close_admin_panel(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+
+    if let Some(window) = app.get_webview_window("admin-panel") {
+        window
+            .destroy()
+            .map_err(|e| format!("Erro ao fechar a janela administrativa: {}", e))?;
+    }
+
+    Ok("ok".to_string())
+}
+
+#[cfg(test)]
+mod admin_panel_tests {
+    use super::is_valid_admin_handoff_code;
+
+    #[test]
+    fn accepts_only_a_32_byte_base64url_code_without_padding() {
+        assert!(is_valid_admin_handoff_code(
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        ));
+        assert!(!is_valid_admin_handoff_code(
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        ));
+        assert!(!is_valid_admin_handoff_code(
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+"
+        ));
+        assert!(!is_valid_admin_handoff_code(
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/"
+        ));
+        assert!(!is_valid_admin_handoff_code(
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        ));
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -764,6 +806,7 @@ pub fn run() {
             stop_serial,
             get_available_ports,
             open_admin_panel,
+            close_admin_panel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

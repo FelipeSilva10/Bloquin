@@ -65,6 +65,7 @@ const ESP32_I2C_SCL_PINS = [
 export const BOARDS = {
   uno: {
     name: 'Arduino Uno',
+    analogReadMaximum: 1023,
     pins: UNO_PINS,
     outputPins: UNO_PINS,
     pwmPins: UNO_PWM_PINS,
@@ -74,6 +75,7 @@ export const BOARDS = {
   },
   nano: {
     name: 'Arduino Nano',
+    analogReadMaximum: 1023,
     pins: UNO_PINS,
     outputPins: UNO_PINS,
     pwmPins: UNO_PWM_PINS,
@@ -83,6 +85,7 @@ export const BOARDS = {
   },
   esp32: {
     name: 'ESP32 DevKit V1',
+    analogReadMaximum: 4095,
     pins: ESP32_PINS,
     outputPins: ESP32_OUTPUT_PINS,
     pwmPins: ESP32_OUTPUT_PINS,

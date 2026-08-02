@@ -77,7 +77,7 @@ Crie um arquivo `.env` na raiz com as variáveis do Supabase:
 
 ```env
 VITE_SUPABASE_URL=https://SEU_PROJETO.supabase.co
-VITE_SUPABASE_ANON_KEY=sua_anon_key
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```
 
 Inicie o dev server:

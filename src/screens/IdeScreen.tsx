@@ -2,6 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Blockly from 'blockly/core';
 import 'blockly/blocks';
 import * as PtBr from 'blockly/msg/pt-br';
+import {
+  Code2,
+  Ellipsis,
+  FileJson,
+  LogOut,
+  MessageCircle,
+  RefreshCw,
+  Save,
+  SaveAll,
+  Upload,
+  Usb,
+} from 'lucide-react';
 import { ProjectService } from '../services/projectService';
 import { HardwareService } from '../services/hardwareService';
 import { watchIntervention, stopWatchingIntervention } from "../services/sessionService"; // Novo serviço de sessão
@@ -12,13 +24,8 @@ import { SerialMonitor, SerialMessage } from '../components/modals/SerialMonitor
 import { ErrorModal, FriendlyError, getFriendlyError } from '../components/modals/ErrorModal';
 import InterventionModal from "../components/modals/InterventionModal"; // Modal de bloqueio de tela
 import { ResponsiveToolbarButton } from '../components/ResponsiveToolbarButton';
+import { BloquinSelect } from '../components/forms/BloquinSelect';
 import logoSimples from '../icons/LogoSimples.png';
-import iconChat from '../icons/icon_chat.png';
-import iconEnviar from '../icons/icon_enviar.png';
-import iconSair from '../icons/icon_sair.png';
-import iconSalvar from '../icons/icon_salvar.png';
-import iconSalvarComo from '../icons/icon_salvar_como.png';
-import iconVerCodigo from '../icons/icon_ver_codigo.png';
 import LZString from 'lz-string';
 import { useTabs } from '../state/tabsStore';
 import { useSetup } from '../state/setupStore';
@@ -30,6 +37,24 @@ import { auditSerializedWorkspace, auditWorkspace } from '../blockly/audit';
 import { BLOCK_NAMES, getToolboxConfig } from '../blockly/toolbox';
 
 Blockly.setLocale(PtBr as any);
+
+// O Blockly monta a URL deste sprite em runtime, então o Vite não consegue
+// descobri-lo apenas pela string "sprites.png" do pacote. Referenciar o asset
+// estaticamente garante que lixeira e zoom também existam no bundle Tauri.
+const blocklyControlsSpriteUrl = new URL(
+  '../../node_modules/blockly/media/sprites.png',
+  import.meta.url,
+).href;
+const xlinkNamespace = 'http://www.w3.org/1999/xlink';
+
+function bindBundledBlocklyControlSprites(container: HTMLElement) {
+  for (const image of container.querySelectorAll<SVGImageElement>('image')) {
+    const href = image.getAttribute('href') ?? image.getAttributeNS(xlinkNamespace, 'href') ?? '';
+    if (!href.endsWith('sprites.png')) continue;
+    image.setAttribute('href', blocklyControlsSpriteUrl);
+    image.setAttributeNS(xlinkNamespace, 'href', blocklyControlsSpriteUrl);
+  }
+}
 
 const bloquinTheme = Blockly.Theme.defineTheme('bloquinTheme', {
   name: 'bloquinTheme', base: Blockly.Themes.Classic,
@@ -57,6 +82,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
   const workspace  = useRef<Blockly.WorkspaceSvg | null>(null);
   const codeGeneratorRef = useRef<any>(null);
   const codeGenerationFrame = useRef<number | null>(null);
+  const workspaceAuditTimer = useRef<number | null>(null);
   const { activeTab, updateTab } = useTabs();
   const dirtyRef = useRef(activeTab.dirty);
   const workspaceLoadFailedRef = useRef(false);
@@ -295,6 +321,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
       trashcan: true,
       sounds: false,
     });
+    bindBundledBlocklyControlSprites(blocklyDiv.current);
 
     const generateCurrentCode = () => {
       if (!workspace.current || !codeGeneratorRef.current) return;
@@ -306,8 +333,19 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
       }
     };
 
+    let isApplyingWorkspaceAudit = false;
+    const runWorkspaceAudit = () => {
+      if (!workspace.current || isApplyingWorkspaceAudit) return;
+      isApplyingWorkspaceAudit = true;
+      try {
+        auditWorkspace(workspace.current, board);
+      } finally {
+        isApplyingWorkspaceAudit = false;
+      }
+    };
+
     workspace.current.addChangeListener((event) => {
-      if (event.isUiEvent) return;
+      if (event.isUiEvent || isApplyingWorkspaceAudit) return;
       if (trackChanges.current) {
         dirtyRef.current = true;
         setIsDirty(true);
@@ -320,6 +358,13 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
           generateCurrentCode();
         });
       }
+      if (workspaceAuditTimer.current !== null) {
+        window.clearTimeout(workspaceAuditTimer.current);
+      }
+      workspaceAuditTimer.current = window.setTimeout(() => {
+        workspaceAuditTimer.current = null;
+        runWorkspaceAudit();
+      }, 220);
     });
 
     const ensureRootBlocks = () => {
@@ -365,6 +410,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
         codeGeneratorRef.current(workspace.current, board)
         || '// Arraste blocos para dentro de PREPARAR e AGIR!',
       );
+      runWorkspaceAudit();
     }
     const trackTimer = setTimeout(() => { trackChanges.current = true; }, 300);
     
@@ -373,6 +419,10 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
       if (codeGenerationFrame.current !== null) {
         window.cancelAnimationFrame(codeGenerationFrame.current);
         codeGenerationFrame.current = null;
+      }
+      if (workspaceAuditTimer.current !== null) {
+        window.clearTimeout(workspaceAuditTimer.current);
+        workspaceAuditTimer.current = null;
       }
       trackChanges.current = false;
       if (workspace.current) {
@@ -390,7 +440,53 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
     };
   }, [activeTab.id, board, boardLoadState, readOnly, updateTab]);
 
-  useEffect(() => { if (workspace.current) Blockly.svgResize(workspace.current); }, [role, isCodeVisible, isFullscreenCode, boardLoadState]);
+  useEffect(() => {
+    const container = blocklyDiv.current;
+    const currentWorkspace = workspace.current;
+    if (boardLoadState !== 'ready' || !container || !currentWorkspace) return;
+
+    let disposed = false;
+    let resizeFrame: number | null = null;
+
+    const resizeWorkspace = () => {
+      resizeFrame = null;
+      if (disposed || workspace.current !== currentWorkspace || !container.isConnected) return;
+
+      const bounds = container.getBoundingClientRect();
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+      Blockly.svgResize(currentWorkspace);
+    };
+
+    const scheduleWorkspaceResize = () => {
+      if (disposed || resizeFrame !== null) return;
+      resizeFrame = window.requestAnimationFrame(resizeWorkspace);
+    };
+
+    // Blockly listens to window.resize, but that does not cover every change
+    // to its flex container (responsive toolbar, code panel and WebView layout).
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(scheduleWorkspaceResize);
+    resizeObserver?.observe(container);
+
+    window.addEventListener('resize', scheduleWorkspaceResize);
+    window.visualViewport?.addEventListener('resize', scheduleWorkspaceResize);
+    document.addEventListener('fullscreenchange', scheduleWorkspaceResize);
+
+    // Font metrics can finish after the first Blockly render and alter the
+    // toolbar height without a global resize event.
+    void document.fonts?.ready.then(scheduleWorkspaceResize);
+    scheduleWorkspaceResize();
+
+    return () => {
+      disposed = true;
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', scheduleWorkspaceResize);
+      window.visualViewport?.removeEventListener('resize', scheduleWorkspaceResize);
+      document.removeEventListener('fullscreenchange', scheduleWorkspaceResize);
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+    };
+  }, [boardLoadState, isCodeVisible, isFullscreenCode, role]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -743,12 +839,19 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
           <div className="ide-toolbar-controls">
             <div className="ide-hardware-controls hardware-controls">
               {boardLoadState === 'ready' && board && <BoardBadge boardKey={board} />}
-              <div className="control-group">
-                <select aria-label="Porta USB da placa" value={port} onChange={(e) => setPort(e.target.value)}>
-                  {availablePorts.length === 0 ? <option value="">Nenhuma porta encontrada</option> : availablePorts.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
+              <div className="control-group ide-port-control">
+                <BloquinSelect
+                  className={`ide-port-select ${port ? 'has-port' : ''}`}
+                  compact
+                  label="Porta USB da placa"
+                  value={port}
+                  onChange={setPort}
+                  placeholder="Sem porta USB"
+                  leadingIcon={<Usb className="ide-action-icon ide-port-icon" />}
+                  options={availablePorts.map((availablePort) => ({ value: availablePort, label: availablePort }))}
+                />
                 <ResponsiveToolbarButton
-                  icon="🔄"
+                  icon={<RefreshCw className="ide-action-icon ide-refresh-icon" />}
                   label="Atualizar porta"
                   tooltip="Atualizar porta"
                   ariaLabel="Atualizar porta"
@@ -756,12 +859,12 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
                   compact
                   onClick={() => { void fetchPorts(); }}
                   disabled={isRefreshingPorts}
-                  className="ide-toolbar-refresh-action"
+                  className={`ide-toolbar-refresh-action ${isRefreshingPorts ? 'is-refreshing' : ''}`}
                 />
               </div>
               {!readOnly && (
                 <ResponsiveToolbarButton
-                  icon={<img className="ide-toolbar-icon-image" src={iconEnviar} alt="" />}
+                  icon={<Upload className="ide-action-icon" />}
                   label="Enviar"
                   tooltip="Enviar"
                   variant="primary"
@@ -774,7 +877,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
             </div>
 
             <ResponsiveToolbarButton
-              icon={<img className="ide-toolbar-icon-image" src={iconVerCodigo} alt="" />}
+              icon={<Code2 className="ide-action-icon" />}
               label={isCodeVisible ? 'Ocultar Código' : 'Ver Código'}
               tooltip={isCodeVisible ? 'Ocultar Código' : 'Ver Código'}
               variant="neutral"
@@ -783,7 +886,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
             />
             {!readOnly && (
               <ResponsiveToolbarButton
-                icon={<img className="ide-toolbar-icon-image" src={iconSalvar} alt="" />}
+                icon={<Save className="ide-action-icon" />}
                 label={isSaving ? 'Salvando…' : 'Salvar'}
                 tooltip="Salvar"
                 variant="primary"
@@ -796,7 +899,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
             <div className="ide-toolbar-secondary-actions">
               {!readOnly && !projectId && (
                 <ResponsiveToolbarButton
-                  icon={<img className="ide-toolbar-icon-image" src={iconSalvarComo} alt="" />}
+                  icon={<SaveAll className="ide-action-icon" />}
                   label="Salvar como"
                   tooltip="Salvar como"
                   variant="secondary"
@@ -807,7 +910,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
               )}
               {!readOnly && (
                 <ResponsiveToolbarButton
-                  icon={<span className="ide-toolbar-json-icon">JSON</span>}
+                  icon={<FileJson className="ide-action-icon" />}
                   label={isExporting ? 'Exportando…' : 'Exportar JSON'}
                   tooltip="Exportar JSON para outro local"
                   variant="secondary"
@@ -820,7 +923,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
 
             <div className="ide-toolbar-essential-actions">
               <ResponsiveToolbarButton
-                icon={<img className="ide-toolbar-icon-image" src={iconChat} alt="" />}
+                icon={<MessageCircle className="ide-action-icon" />}
                 label={isSerialOpen ? (readOnly ? 'Parar monitor' : 'Parar chat') : isSerialStarting ? 'Conectando…' : readOnly ? 'Monitorar' : 'Chat'}
                 tooltip={isSerialOpen ? (readOnly ? 'Parar monitor' : 'Parar chat') : isSerialStarting ? 'Conectando ao robô' : readOnly ? 'Monitorar' : 'Chat'}
                 variant="secondary"
@@ -828,7 +931,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
                 className="ide-toolbar-chat-action"
               />
               <ResponsiveToolbarButton
-                icon={<img className="ide-toolbar-icon-image" src={iconSair} alt="" />}
+                icon={<LogOut className="ide-action-icon" />}
                 label="Sair"
                 tooltip="Sair"
                 variant={isDirty && !readOnly ? 'danger' : 'secondary'}
@@ -839,7 +942,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
 
             <div className={`ide-more-menu ${readOnly ? 'ide-more-menu-readonly' : ''}`} ref={moreMenuRef}>
               <ResponsiveToolbarButton
-                icon="⋯"
+                icon={<Ellipsis className="ide-action-icon" />}
                 label="Mais"
                 tooltip="Mais"
                 variant="secondary"
@@ -857,19 +960,19 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
                 >
                   {!readOnly && !projectId && (
                   <button type="button" disabled={isSaving} onClick={() => { closeMoreMenu(true); void handleSaveProject(true); }}>
-                    <img src={iconSalvarComo} alt="" /> Salvar como…
+                    <SaveAll className="ide-action-icon" aria-hidden="true" /> Salvar como…
                   </button>
                   )}
                   {!readOnly && (
                   <button type="button" disabled={isExporting} onClick={() => { closeMoreMenu(true); void handleDownloadProject(); }}>
-                    <span className="ide-toolbar-json-icon">JSON</span> {isExporting ? 'Exportando…' : 'Exportar JSON…'}
+                    <FileJson className="ide-action-icon" aria-hidden="true" /> {isExporting ? 'Exportando…' : 'Exportar JSON…'}
                   </button>
                   )}
                   <button className="ide-more-mobile-action" type="button" onClick={() => { closeMoreMenu(true); void handleToggleSerial(); }}>
-                    <img src={iconChat} alt="" /> {isSerialOpen ? (readOnly ? 'Parar monitor' : 'Parar chat') : isSerialStarting ? 'Conectando…' : readOnly ? 'Monitorar' : 'Chat'}
+                    <MessageCircle className="ide-action-icon" aria-hidden="true" /> {isSerialOpen ? (readOnly ? 'Parar monitor' : 'Parar chat') : isSerialStarting ? 'Conectando…' : readOnly ? 'Monitorar' : 'Chat'}
                   </button>
                   <button className="ide-more-mobile-action" type="button" onClick={() => { closeMoreMenu(); handleAttemptBack(); }}>
-                    <img src={iconSair} alt="" /> Sair
+                    <LogOut className="ide-action-icon" aria-hidden="true" /> Sair
                   </button>
                 </div>
               )}

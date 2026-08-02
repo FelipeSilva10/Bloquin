@@ -2,9 +2,14 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import logoSimples from '../icons/LogoSimples.png';
 import { BOARD_UNSET } from '../blockly/boards';
-import { invoke } from '@tauri-apps/api/core';
 import { ProjectService } from '../services/projectService';
 import { lockStudentScreen, unlockStudentScreen } from '../services/sessionService';
+import { AdminPanelAccessError, openAdminPanel } from '../services/adminPanelService';
+import { importProjectToAccount } from '../services/projectImportService';
+import type { BloquinProjectFile } from '../types/project';
+import { ProjectImportButton } from '../components/forms/ProjectImportButton';
+import { BloquinSelect } from '../components/forms/BloquinSelect';
+import { useModalA11y } from '../hooks/useModalA11y';
 import ProjectModal from '../components/modals/ProjectModal';
 
 interface TeacherDashboardProps {
@@ -12,6 +17,7 @@ interface TeacherDashboardProps {
   onLogout: () => void;
   onOpenOwnProject: (projectId: string) => void;
   onInspectStudentProject: (projectId: string) => void;
+  onOpenLibrary: () => void;
 }
 
 interface Turma   { id: string; nome: string; ano_letivo: string; }
@@ -20,7 +26,44 @@ interface Projeto { id: string; nome: string; descricao?: string; target_board?:
 
 type Tab = 'turmas' | 'projetos';
 
-export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspectStudentProject }: TeacherDashboardProps) {
+function ProjectImportDialog({ file, classrooms, classroomId, importing, error, onClassroomChange, onCancel, onConfirm }: {
+  file: BloquinProjectFile;
+  classrooms: Turma[];
+  classroomId: string;
+  importing: boolean;
+  error: string;
+  onClassroomChange: (value: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const modalRef = useModalA11y<HTMLDivElement>(onCancel);
+  return (
+    <div className="modal-overlay" onClick={(event) => { if (event.target === event.currentTarget && !importing) onCancel(); }}>
+      <div ref={modalRef} className="modal-box project-import-dialog" role="dialog" aria-modal="true" aria-labelledby="teacher-import-project-title">
+        <div className="project-import-icon" aria-hidden="true">↥</div>
+        <h2 id="teacher-import-project-title">Importar “{file.project.name}”</h2>
+        <p>Escolha em qual turma este projeto do professor será organizado.</p>
+        <label className="form-label">Turma do projeto</label>
+        <BloquinSelect
+          label="Turma do projeto importado"
+          value={classroomId}
+          onChange={onClassroomChange}
+          disabled={importing}
+          required
+          placeholder="Selecione a turma…"
+          options={classrooms.map((classroom) => ({ value: classroom.id, label: `${classroom.nome} — ${classroom.ano_letivo}` }))}
+        />
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="btn-text" onClick={onCancel} disabled={importing}>Cancelar</button>
+          <button type="button" className="btn-primary" onClick={onConfirm} disabled={importing || !classroomId}>{importing ? 'Importando…' : 'Importar projeto'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspectStudentProject, onOpenLibrary }: TeacherDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('turmas');
 
   const [turmas, setTurmas] = useState<Turma[]>([]);
@@ -38,6 +81,11 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
   const [newProjectTurmaId, setNewProjectTurmaId] = useState('');
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [pendingImport, setPendingImport] = useState<BloquinProjectFile | null>(null);
+  const [importTurmaId, setImportTurmaId] = useState('');
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
 
   const [projectToDelete, setProjectToDelete] = useState<{ projeto: Projeto; origin: 'own' | 'student' } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -91,12 +139,16 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
     setAdminLoading(true);
     setAdminError('');
     try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error || !session) { setAdminError('Sessão não encontrada. Faça login novamente.'); return; }
-      await invoke('open_admin_panel', { accessToken: session.access_token, refreshToken: session.refresh_token });
+      await openAdminPanel(userId);
     } catch (err) {
-      console.error('Erro ao abrir o painel administrativo:', err);
-      setAdminError('Não consegui abrir o painel administrativo. Tente novamente.');
+      const code = err instanceof AdminPanelAccessError ? err.code : '';
+      setAdminError(
+        code === 'SESSION_MISSING' || code === 'SESSION_REPLACED'
+          ? 'Sua sessão mudou ou expirou. Entre novamente antes de abrir o painel.'
+          : code === 'NOT_AUTHORIZED'
+            ? 'O painel administrativo está disponível somente para professores autorizados.'
+            : 'Não consegui abrir o painel administrativo. Tente novamente.',
+      );
     } finally {
       setAdminLoading(false);
     }
@@ -233,6 +285,47 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
     }
   };
 
+  const prepareProjectImport = (file: BloquinProjectFile) => {
+    if (turmas.length === 0) {
+      setImportError('Você precisa estar vinculado a uma turma antes de importar um projeto.');
+      return;
+    }
+    setImportError('');
+    setImportSuccess('');
+    setImportTurmaId(turmas.length === 1 ? turmas[0].id : '');
+    setPendingImport(file);
+  };
+
+  const confirmProjectImport = async () => {
+    if (!pendingImport || !importTurmaId || isImporting) return;
+    const selectedTurma = turmas.find((turma) => turma.id === importTurmaId);
+    if (!selectedTurma) {
+      setImportError('Selecione uma das suas turmas.');
+      return;
+    }
+    setIsImporting(true);
+    setImportError('');
+    try {
+      const imported = await importProjectToAccount({
+        file: pendingImport,
+        userId,
+        classroomId: selectedTurma.id,
+        existingNames: ownProjects.map((project) => project.nome),
+        role: 'teacher',
+      });
+      setOwnProjects((current) => current.some((project) => project.id === imported.id)
+        ? current
+        : [imported, ...current]);
+      setPendingImport(null);
+      setImportTurmaId('');
+      setImportSuccess(`“${imported.nome}” foi importado para sua conta.`);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Não consegui importar o projeto.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const confirmDeleteProject = async () => {
     if (!projectToDelete || isDeleting) return;
     setIsDeleting(true);
@@ -291,13 +384,14 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
       )}
 
       {/* TOPBAR */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', backgroundColor: 'var(--white)', padding: '15px 25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+      <header className="dashboard-topbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', backgroundColor: 'var(--white)', padding: '15px 25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)' }}>
+        <div className="dashboard-topbar-brand" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <img src={logoSimples} alt="bloquin" style={{ height: '40px' }} />
           <h1 style={{ color: 'var(--dark)', fontSize: '1.5rem', fontWeight: 900 }}>Painel do Professor</h1>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div className="dashboard-topbar-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <button className="btn-secondary dashboard-library-button" onClick={onOpenLibrary}>📚 Biblioteca</button>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
             <button
               onClick={handleOpenAdminPanel}
@@ -432,11 +526,18 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
       {/* ABA: MEUS PROJETOS */}
       {activeTab === 'projetos' && (
         <main>
-          <div style={{ marginBottom: '20px' }}>
+          <div className="dashboard-project-actions">
             <button className="btn-primary" style={{ padding: '12px 25px', fontSize: '1.1rem' }} onClick={openCreateModal} disabled={loadingTurmas}>
               {loadingTurmas ? 'Carregando turmas…' : '+ Novo Projeto'}
             </button>
+            <ProjectImportButton
+              onSelected={prepareProjectImport}
+              onError={(message) => { setImportError(message); if (message) setImportSuccess(''); }}
+              disabled={loadingTurmas || loadingProjects || isImporting}
+            />
           </div>
+          {importError && !pendingImport && <div className="dashboard-feedback dashboard-feedback-error" role="alert"><span>{importError}</span><button type="button" aria-label="Fechar mensagem" onClick={() => setImportError('')}>×</button></div>}
+          {importSuccess && <div className="dashboard-feedback dashboard-feedback-success" role="status"><span>{importSuccess}</span><button type="button" aria-label="Fechar mensagem" onClick={() => setImportSuccess('')}>×</button></div>}
           {loadingProjects ? <p style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Carregando projetos...</p> : ownProjects.length === 0 ? (
             <div style={{ backgroundColor: 'var(--white)', padding: '40px', borderRadius: '16px', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: '1.2rem', fontWeight: 700 }}>Você ainda não tem projetos. Crie um para começar a programar!</p>
@@ -475,16 +576,13 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
 
             <div>
               <label style={{ display: 'block', fontWeight: 700, color: 'var(--dark)', marginBottom: '6px', fontSize: '0.9rem' }}>Qual projeto você quer enviar?</label>
-              <select
-                style={{ width: '100%', padding: '13px', borderRadius: '12px', border: '2px solid var(--border)', fontSize: '1rem', fontWeight: 600, boxSizing: 'border-box' }}
+              <BloquinSelect
+                label="Qual projeto você quer enviar?"
                 value={projectToShare?.id ?? ""}
-                onChange={(e) => setProjectToShare(ownProjects.find((p) => p.id === e.target.value) ?? null)}
-              >
-                <option value="">Selecione um dos seus projetos…</option>
-                {ownProjects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nome}</option>
-                ))}
-              </select>
+                onChange={(value) => setProjectToShare(ownProjects.find((project) => project.id === value) ?? null)}
+                placeholder="Selecione um dos seus projetos…"
+                options={ownProjects.map((project) => ({ value: project.id, label: project.nome }))}
+              />
             </div>
 
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
@@ -535,19 +633,17 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
             <label htmlFor="teacher-project-class" style={{ display: 'block', textAlign: 'left', color: 'var(--dark)', fontWeight: 800, marginBottom: '6px' }}>
               Turma do projeto
             </label>
-            <select
+            <BloquinSelect
               id="teacher-project-class"
+              label="Turma do projeto"
               value={newProjectTurmaId}
-              onChange={(event) => setNewProjectTurmaId(event.target.value)}
+              onChange={setNewProjectTurmaId}
               disabled={isCreating}
               required
-              style={{ width: '100%', padding: '13px', borderRadius: '12px', border: '2px solid var(--border)', fontSize: '1rem', marginBottom: '12px', fontWeight: 700, background: 'var(--white)' }}
-            >
-              <option value="">Selecione a turma…</option>
-              {turmas.map((turma) => (
-                <option key={turma.id} value={turma.id}>{turma.nome} — {turma.ano_letivo}</option>
-              ))}
-            </select>
+              placeholder="Selecione a turma…"
+              className="dashboard-modal-select"
+              options={turmas.map((turma) => ({ value: turma.id, label: `${turma.nome} — ${turma.ano_letivo}` }))}
+            />
             {createError && <p role="alert" style={{ color: 'var(--danger)', fontSize: '0.95rem', marginBottom: '12px', textAlign: 'left', fontWeight: 700 }}>Erro: {createError}</p>}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button type="button" className="btn-text" style={{ flex: 1 }} onClick={closeCreateModal} disabled={isCreating}>Cancelar</button>
@@ -555,6 +651,19 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
             </div>
           </form>
         </div>
+      )}
+
+      {pendingImport && (
+        <ProjectImportDialog
+          file={pendingImport}
+          classrooms={turmas}
+          classroomId={importTurmaId}
+          importing={isImporting}
+          error={importError}
+          onClassroomChange={(value) => { setImportTurmaId(value); setImportError(''); }}
+          onCancel={() => { if (!isImporting) { setPendingImport(null); setImportTurmaId(''); setImportError(''); } }}
+          onConfirm={() => void confirmProjectImport()}
+        />
       )}
 
       {/* MODAL: EXCLUIR PROJETO */}

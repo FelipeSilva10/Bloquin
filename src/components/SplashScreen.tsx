@@ -5,10 +5,9 @@ const LOGO_WIDTH = 2172;
 const SPLASH_DURATION_MS = 2400;
 const REDUCED_SPLASH_DURATION_MS = 220;
 
-// Cortes em pixels da imagem original. Cada fatia continua apontando para a
-// mesma imagem inteira; os containers apenas deixam uma letra por vez visível.
-// Assim, quando os transforms terminam, a composição é pixel a pixel a logo
-// original, sem gerar ou editar outro asset.
+// Cortes horizontais da marca. Cada fatia continua apontando para a mesma
+// imagem; o CSS centraliza o canvas verticalmente e recorta somente a margem
+// transparente, deixando uma letra por vez visível durante a animação.
 const LETTER_CUTS = [0, 346, 656, 963, 1276, 1553, 1855, LOGO_WIDTH] as const;
 const LETTER_ROTATIONS = [-5, 4, -4, 3, -3, 4, -4] as const;
 const LETTER_NAMES = ['b', 'l', 'o', 'q', 'u', 'i', 'n'] as const;

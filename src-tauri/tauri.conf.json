@@ -1,6 +1,6 @@
 {
   "productName": "bloquin",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "identifier": "com.bloquin.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -13,11 +13,13 @@
       {
         "title": "Bloquin",
         "width": 1000,
-        "height": 800
+        "height": 800,
+        "minWidth": 360,
+        "minHeight": 480
       }
     ],
     "security": {
-        "csp": "default-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; img-src 'self' data: asset: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; font-src 'self' data: https://fonts.gstatic.com"
+        "csp": "default-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com; img-src 'self' data: blob: asset: https://*.supabase.co https://i.ytimg.com; frame-src 'self' https://www.youtube-nocookie.com https://*.supabase.co; media-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; font-src 'self' data: https://fonts.gstatic.com"
     }
   },
   "bundle": {

@@ -108,16 +108,16 @@ jobs:
         shell: bash
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
-          if [[ -z "$VITE_SUPABASE_URL" || -z "$VITE_SUPABASE_ANON_KEY" ]]; then
-            echo "::error::Os secrets VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY são obrigatórios para o build da release."
+          if [[ -z "$VITE_SUPABASE_URL" || -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]]; then
+            echo "::error::Os secrets VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY são obrigatórios para o build da release."
             exit 1
           fi
 
           {
             printf 'VITE_SUPABASE_URL=%s\n' "$VITE_SUPABASE_URL"
-            printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$VITE_SUPABASE_ANON_KEY"
+            printf 'VITE_SUPABASE_PUBLISHABLE_KEY=%s\n' "$VITE_SUPABASE_PUBLISHABLE_KEY"
           } > .env
 
           echo "Arquivo .env de build criado sem expor os valores nos logs."

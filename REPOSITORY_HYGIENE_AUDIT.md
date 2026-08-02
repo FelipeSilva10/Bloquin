@@ -4,6 +4,11 @@
 **Escopo:** árvore do projeto, Git, segredos, artefatos, dependências, assets, scripts, workflows, releases, documentação e migrations.
 **Estado auditado:** worktree local do Bloquin, incluindo alterações existentes de tarefas anteriores.
 
+> Atualização de 31/07/2026: o cliente foi migrado para a publishable key,
+> os componentes server-side foram migrados para a secret key e as chaves JWT
+> antigas foram desativadas após validação. As referências abaixo a `anon` e
+> `service_role` descrevem somente o estado histórico desta auditoria.
+
 ## Resumo executivo
 
 A árvore rastreada tem 136 arquivos antes das alterações desta auditoria. Os problemas objetivos encontrados foram:
@@ -64,17 +69,19 @@ A busca atual e histórica procurou chaves privadas, service_role, tokens GitHub
 
 Resultado:
 
-- nenhum service_role encontrado;
+- nenhuma chave privilegiada do Supabase encontrada;
 - nenhuma chave privada ou certificado encontrado;
 - nenhum token GitHub/Slack encontrado;
 - nenhum dump SQL com dados reais encontrado;
 - nenhum usuário, aluno ou professor identificado em arquivos versionados;
-- o .env contém apenas VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY; o payload da chave informa role anon;
-- a chave anon do Supabase é publicável por desenho, mas .env ainda é configuração local e foi removido do índice;
+- o .env contém apenas VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY;
+- a chave publishable do Supabase é pública por desenho, mas .env ainda é configuração local e foi removido do índice;
 - src/lib/supabase.ts contém somente o cliente com variáveis Vite, sem segredo hardcoded;
 - workflows usam secrets do GitHub para certificado, senha do certificado e GITHUB_TOKEN, sem valores embutidos.
 
-Remover .env do commit atual não remove seu conteúdo dos commits antigos. Como a chave encontrada é anon, não há evidência de vazamento de service_role que exija rotação imediata. Ainda assim, se o projeto tiver qualquer dúvida sobre a validade histórica da chave, ela deve ser revisada no dashboard; a rotação deve ser coordenada com o deploy.
+Remover .env do commit atual não remove seu conteúdo dos commits antigos.
+Credenciais privilegiadas devem permanecer somente nos backends e ser
+rotacionadas antes de qualquer rollout quando houver suspeita de exposição.
 
 ## Histórico Git e blobs grandes
 
@@ -181,7 +188,9 @@ O build apresentou apenas o aviso conhecido de chunks acima de 500 kB, sem falha
 ## Riscos residuais e recomendações não aplicadas
 
 - Reescrita do histórico para retirar blobs grandes e .env: requer backup, comunicação e force push.
-- Rotação da chave anon: não indicada como obrigatória pela evidência atual; revisar se houver dúvida sobre políticas públicas.
+- Chaves JWT antigas: desativadas em 31/07/2026 após migração e validação das
+  chaves atuais; os valores históricos permanecem inutilizáveis nos commits
+  antigos até eventual limpeza coordenada do histórico.
 - Remoção de ícones Android/iOS e cópias -1: aguardar decisão de targets móveis.
 - Remoção de supabaseHelper e métodos de serviço sem consumidores locais: confirmar painel/integradores externos.
 - Ajuste da etapa lint da CI: decidir entre adicionar ESLint ou remover a etapa no-op.

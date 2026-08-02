@@ -1,6 +1,10 @@
 // src/services/sessionService.ts
 import { supabase } from '../lib/supabase';
 import { v4 as uuidv4 } from "uuid";
+import {
+  getSessionCutoffIso,
+  isSessionHeartbeatFresh,
+} from "./sessionPolicy";
 
 const SESSION_TOKEN_KEY    = "bloquin_session_token";
 const INTERVENTION_CHANNEL = "intervention";
@@ -15,14 +19,9 @@ const SUPABASE_AUTH_STORAGE_KEY = (() => {
 
 export type SessionProbeStatus = "valid" | "invalid" | "unreachable";
 
-// Sessão considerada expirada se não houver heartbeat nos últimos 12 minutos.
-// O timer de inatividade no cliente dispara com 10 min, então os 12 min
-// aqui servem de margem para o servidor reconhecer o logout.
-const SESSION_TTL_MS = 12 * 60 * 1000;
-
 // ─── Token local ──────────────────────────────────────────────────────────────
 
-function getLocalToken(): string | null {
+export function getCurrentSessionToken(): string | null {
   try {
     return localStorage.getItem(SESSION_TOKEN_KEY);
   } catch {
@@ -104,8 +103,7 @@ export async function isSessionActive(userId: string): Promise<boolean> {
     .single();
 
   if (!data) return false;
-  const lastSeen = new Date(data.updated_at).getTime();
-  return Date.now() - lastSeen < SESSION_TTL_MS;
+  return isSessionHeartbeatFresh(data.updated_at);
 }
 
 // ─── Heartbeat ────────────────────────────────────────────────────────────────
@@ -116,7 +114,7 @@ export async function isSessionActive(userId: string): Promise<boolean> {
  * Se o usuário sair sem logout explícito, a sessão expira após SESSION_TTL_MS.
  */
 export async function heartbeat(userId: string): Promise<SessionProbeStatus> {
-  const localToken = getLocalToken();
+  const localToken = getCurrentSessionToken();
   if (!localToken) return "invalid";
 
   try {
@@ -125,13 +123,19 @@ export async function heartbeat(userId: string): Promise<SessionProbeStatus> {
       .update({ updated_at: new Date().toISOString() })
       .eq("user_id", userId)
       .eq("session_token", localToken)
-      .select("session_token")
+      // Uma sessão já expirada não pode ser "ressuscitada" por um heartbeat
+      // atrasado após suspensão do sistema ou reconexão.
+      .gte("updated_at", getSessionCutoffIso())
+      .select("session_token, updated_at")
       .maybeSingle();
 
     // Erros de rede, indisponibilidade e falhas do backend nunca devem ser
     // interpretados como uma sessão substituída.
     if (error) return "unreachable";
-    return data?.session_token === localToken ? "valid" : "invalid";
+    return data?.session_token === localToken
+      && isSessionHeartbeatFresh(data.updated_at)
+      ? "valid"
+      : "invalid";
   } catch {
     return "unreachable";
   }
@@ -140,25 +144,28 @@ export async function heartbeat(userId: string): Promise<SessionProbeStatus> {
 // ─── Validação e limpeza ──────────────────────────────────────────────────────
 
 export async function isSessionValid(userId: string): Promise<SessionProbeStatus> {
-  const localToken = getLocalToken();
+  const localToken = getCurrentSessionToken();
   if (!localToken) return "invalid";
 
   try {
     const { data, error } = await supabase
       .from("user_sessions")
-      .select("session_token")
+      .select("session_token, updated_at")
       .eq("user_id", userId)
       .maybeSingle();
 
     if (error) return "unreachable";
-    return data?.session_token === localToken ? "valid" : "invalid";
+    return data?.session_token === localToken
+      && isSessionHeartbeatFresh(data.updated_at)
+      ? "valid"
+      : "invalid";
   } catch {
     return "unreachable";
   }
 }
 
 export async function clearSession(userId: string): Promise<void> {
-  const localToken = getLocalToken();
+  const localToken = getCurrentSessionToken();
   clearLocalToken();
   if (!localToken) return;
 
@@ -184,14 +191,21 @@ export function watchSession(userId: string, onKilled: SessionKilledCallback) {
     .on(
       "postgres_changes",
       {
-        event: "UPDATE",
+        event: "*",
         schema: "public",
         table: "user_sessions",
         filter: `user_id=eq.${userId}`,
       },
       (payload) => {
-        const remoteToken = (payload.new as { session_token: string }).session_token;
-        if (remoteToken !== getLocalToken()) onKilled();
+        if (payload.eventType === "DELETE") {
+          onKilled();
+          return;
+        }
+
+        const remoteToken = (
+          payload.new as { session_token?: string } | null
+        )?.session_token;
+        if (!remoteToken || remoteToken !== getCurrentSessionToken()) onKilled();
       }
     )
     .subscribe();

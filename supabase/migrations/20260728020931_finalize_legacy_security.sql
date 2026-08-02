@@ -1,0 +1,4 @@
+-- Marcador histórico: esta versão consta como aplicada no projeto remoto.
+-- O SQL original foi preservado em ../migration-history/original/20260728020931_finalize_legacy_security.sql.
+-- O estado consolidado de public/private é restaurado pela migration
+-- 20260727144628_add_audit_query_indexes.sql.

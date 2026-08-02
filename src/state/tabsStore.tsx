@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { BoardKey } from '../blockly/boards';
+import type { LibraryPost } from '../types/library';
 
-export type TabType = 'dashboard' | 'project';
+export type TabType = 'dashboard' | 'library' | 'library-resource' | 'project';
 export type ProjectSource = 'remote' | 'memory' | 'local-file';
+export type LibraryResourceKind = 'post' | 'image' | 'pdf';
 export const MAX_OPEN_TABS = 8;
 
 export interface ProjectTab {
@@ -15,13 +17,27 @@ export interface ProjectTab {
   board?: BoardKey | null;
   workspaceData?: Record<string, unknown>;
   readOnly?: boolean;
+  libraryPost?: LibraryPost;
+  libraryAttachmentId?: string;
+  libraryResourceKind?: LibraryResourceKind;
+  libraryViewState?: {
+    page?: number;
+    zoom?: number;
+  };
   dirty: boolean;
+}
+
+interface OpenLibraryResourceInput {
+  post: LibraryPost;
+  attachmentId?: string;
 }
 
 interface TabsContextValue {
   tabs: ProjectTab[];
   activeTabId: string;
   activeTab: ProjectTab;
+  openLibrary: () => string | null;
+  openLibraryResource: (input: OpenLibraryResourceInput) => string | null;
   openProject: (tab: Omit<ProjectTab, 'id' | 'type' | 'dirty'> & { dirty?: boolean }) => string | null;
   activateTab: (id: string) => void;
   closeTab: (id: string) => void;
@@ -30,6 +46,7 @@ interface TabsContextValue {
 }
 
 const dashboardTab: ProjectTab = { id: 'dashboard', type: 'dashboard', title: 'Início', dirty: false };
+const libraryTab: ProjectTab = { id: 'library', type: 'library', title: 'Biblioteca', dirty: false };
 const TabsContext = createContext<TabsContextValue | null>(null);
 
 function makeId() {
@@ -58,10 +75,76 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     if (current.length >= MAX_OPEN_TABS) return null;
 
     const openedId = makeId();
-    setTabs([
+    const next: ProjectTab[] = [
       ...current,
       { ...input, id: openedId, type: 'project', dirty: input.dirty ?? false },
-    ]);
+    ];
+    tabsRef.current = next;
+    setTabs(next);
+    setActiveTabId(openedId);
+    return openedId;
+  }, []);
+
+  const openLibrary = useCallback(() => {
+    const current = tabsRef.current;
+    const existing = current.find((tab) => tab.id === libraryTab.id);
+    if (existing) {
+      setActiveTabId(existing.id);
+      return existing.id;
+    }
+
+    if (current.length >= MAX_OPEN_TABS) return null;
+
+    const next = [...current, libraryTab];
+    tabsRef.current = next;
+    setTabs(next);
+    setActiveTabId(libraryTab.id);
+    return libraryTab.id;
+  }, []);
+
+  const openLibraryResource = useCallback(({ post, attachmentId }: OpenLibraryResourceInput) => {
+    const attachment = attachmentId
+      ? post.anexos.find((item) => item.id === attachmentId)
+      : undefined;
+    const kind: LibraryResourceKind = attachment?.tipo === 'image' || attachment?.tipo === 'pdf'
+      ? attachment.tipo
+      : 'post';
+    const openedId = attachment
+      ? `library-${kind}-${attachment.id}`
+      : `library-post-${post.id}`;
+    const current = tabsRef.current;
+    const existing = current.find((tab) => tab.id === openedId);
+    const title = attachment?.titulo?.trim() || (kind === 'pdf'
+      ? 'Documento PDF'
+      : kind === 'image'
+        ? 'Imagem'
+        : post.titulo);
+
+    if (existing) {
+      const next = current.map((tab) => tab.id === openedId ? { ...tab, libraryPost: post, title } : tab);
+      tabsRef.current = next;
+      setTabs(next);
+      setActiveTabId(openedId);
+      return openedId;
+    }
+
+    if (current.length >= MAX_OPEN_TABS) return null;
+
+    const next: ProjectTab[] = [
+      ...current,
+      {
+        id: openedId,
+        type: 'library-resource',
+        title,
+        libraryPost: post,
+        libraryAttachmentId: attachment?.id,
+        libraryResourceKind: kind,
+        libraryViewState: { page: 1, zoom: 1 },
+        dirty: false,
+      },
+    ];
+    tabsRef.current = next;
+    setTabs(next);
     setActiveTabId(openedId);
     return openedId;
   }, []);
@@ -76,15 +159,19 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     const index = current.findIndex((tab) => tab.id === id);
     if (index < 0) return;
     const next = current.filter((tab) => tab.id !== id);
+    tabsRef.current = next;
     setTabs(next);
     if (activeTabId === id) setActiveTabId(next[Math.max(0, index - 1)]?.id ?? 'dashboard');
   }, [activeTabId]);
 
   const updateTab = useCallback((id: string, patch: Partial<ProjectTab>) => {
-    setTabs((current) => current.map((tab) => tab.id === id ? { ...tab, ...patch } : tab));
+    const next = tabsRef.current.map((tab) => tab.id === id ? { ...tab, ...patch } : tab);
+    tabsRef.current = next;
+    setTabs(next);
   }, []);
 
   const resetTabs = useCallback(() => {
+    tabsRef.current = [dashboardTab];
     setTabs([dashboardTab]);
     setActiveTabId('dashboard');
   }, []);
@@ -93,12 +180,14 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     tabs,
     activeTabId,
     activeTab: tabs.find((tab) => tab.id === activeTabId) ?? dashboardTab,
+    openLibrary,
+    openLibraryResource,
     openProject,
     activateTab,
     closeTab,
     updateTab,
     resetTabs,
-  }), [tabs, activeTabId, openProject, activateTab, closeTab, updateTab, resetTabs]);
+  }), [tabs, activeTabId, openLibrary, openLibraryResource, openProject, activateTab, closeTab, updateTab, resetTabs]);
 
   return <TabsContext.Provider value={value}>{children}</TabsContext.Provider>;
 }

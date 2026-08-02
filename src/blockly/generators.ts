@@ -1,6 +1,8 @@
 import * as Blockly from 'blockly/core';
 import type { BoardKey } from './boards';
+import { LOOP_TYPES, SETUP_ONLY_TYPES, type VariableCppType } from './contracts';
 import { toCppIdentifier } from './identifiers';
+import { synchronizeVariableTypes } from './variableTypes';
 
 export const cppGenerator = new Blockly.Generator('CPP');
 let targetBoard: BoardKey = 'uno';
@@ -23,12 +25,130 @@ function floatLiteral(value: unknown, fallback = 0): string {
 function isInsideLoop(block: Blockly.Block): boolean {
   let parent = block.getSurroundParent();
   while (parent) {
-    if (parent.type === 'repetir_vezes' || parent.type === 'enquanto_verdadeiro') {
+    if (LOOP_TYPES.has(parent.type)) {
       return true;
     }
     parent = parent.getSurroundParent();
   }
   return false;
+}
+
+function distinctName(base: string): string {
+  if (!cppGenerator.nameDB_) {
+    cppGenerator.nameDB_ = new Blockly.Names((cppGenerator as Blockly.Generator & {
+      RESERVED_WORDS_?: string;
+    }).RESERVED_WORDS_ ?? '');
+  }
+  return cppGenerator.nameDB_.getDistinctName(base, Blockly.Names.NameType.VARIABLE);
+}
+
+function variableCppType(block: Blockly.Block): VariableCppType {
+  const type = block.getFieldValue('TIPO');
+  return type === 'float' || type === 'bool' ? type : 'int';
+}
+
+function defaultVariableValue(type: VariableCppType): string {
+  if (type === 'float') return '0.0f';
+  if (type === 'bool') return 'false';
+  return '0';
+}
+
+const GLOBAL_INITIALIZER_VALUE_TYPES = new Set([
+  'numero_fixo',
+  'valor_booleano_fixo',
+  'operacao_matematica',
+  'potencia',
+  'minimo_maximo',
+  'funcao_matematica',
+  'valor_absoluto',
+  'mapear_valor',
+  'constrain_valor',
+  'util_map_float',
+  'util_fabsf',
+  'numero_para_booleano',
+  'booleano_para_numero',
+]);
+
+function isSafeGlobalInitializer(block: Blockly.Block | null): boolean {
+  if (!block || !GLOBAL_INITIALIZER_VALUE_TYPES.has(block.type)) return false;
+  return block.getChildren(false).every((child) => isSafeGlobalInitializer(child));
+}
+
+interface DeferredInitializer {
+  name: string;
+  code: string;
+  dependencies: string[];
+}
+
+function initializerVariableDependencies(block: Blockly.Block): string[] {
+  return [...new Set(
+    block.getDescendants(false)
+      .filter((descendant) => descendant.type === 'ler_variavel')
+      .map((descendant) => toCppIdentifier(
+        descendant.getFieldValue('NOME'),
+        'minha_var',
+        'var',
+      )),
+  )];
+}
+
+function orderDeferredInitializers(
+  initializers: DeferredInitializer[],
+): DeferredInitializer[] {
+  const byName = new Map<string, DeferredInitializer>();
+  for (const initializer of initializers) {
+    if (!byName.has(initializer.name)) byName.set(initializer.name, initializer);
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const ordered: DeferredInitializer[] = [];
+
+  const visit = (initializer: DeferredInitializer) => {
+    if (visited.has(initializer.name) || visiting.has(initializer.name)) return;
+    visiting.add(initializer.name);
+    for (const dependency of initializer.dependencies) {
+      const dependencyInitializer = byName.get(dependency);
+      if (dependencyInitializer) visit(dependencyInitializer);
+    }
+    visiting.delete(initializer.name);
+    visited.add(initializer.name);
+    ordered.push(initializer);
+  };
+
+  for (const initializer of initializers) visit(initializer);
+  return ordered;
+}
+
+function directStatementChain(root: Blockly.Block, inputName: string): Blockly.Block[] {
+  const statements: Blockly.Block[] = [];
+  let current = root.getInputTargetBlock(inputName);
+  while (current) {
+    statements.push(current);
+    current = current.nextConnection?.targetBlock() ?? null;
+  }
+  return statements;
+}
+
+function statementCodeOnly(block: Blockly.Block): string {
+  const code = cppGenerator.blockToCode(block, true);
+  return Array.isArray(code) ? code[0] : code;
+}
+
+function buildSetupCode(
+  setupRoot: Blockly.Block | null,
+  automaticLines: string[],
+  deferredLines: string[],
+): string {
+  const directStatements = setupRoot ? directStatementChain(setupRoot, 'DO') : [];
+  const configurations = directStatements.filter((block) => SETUP_ONLY_TYPES.has(block.type));
+  const actions = directStatements.filter((block) => !SETUP_ONLY_TYPES.has(block.type));
+  const body = [
+    ...automaticLines.map((line) => `  ${line}\n`),
+    ...configurations.map(statementCodeOnly),
+    ...deferredLines.map((line) => `  ${line}\n`),
+    ...actions.map(statementCodeOnly),
+  ].join('');
+  return `void setup() {\n  Serial.begin(115200);\n${body || '  // Suas configurações entrarão aqui...\n'}}\n\n`;
 }
 
 export function initGenerators() {
@@ -39,26 +159,42 @@ export function initGenerators() {
   };
 
   // Estrutura
-  cppGenerator.forBlock['bloco_setup'] = (b: Blockly.Block) => `void setup() {\n  Serial.begin(115200);\n${cppGenerator.statementToCode(b, 'DO') || '  // Suas configurações entrarão aqui...\n'}}\n\n`;
+  cppGenerator.forBlock['bloco_setup'] = (b: Blockly.Block) => buildSetupCode(b, [], []);
   cppGenerator.forBlock['bloco_loop'] = (b: Blockly.Block) => `void loop() {\n${cppGenerator.statementToCode(b, 'DO') || '  // Suas ações principais entrarão aqui...\n'}}\n\n`;
 
   // Pinos
   cppGenerator.forBlock['configurar_pino'] = (b: Blockly.Block) => `  pinMode(${b.getFieldValue('PIN')}, ${b.getFieldValue('MODE')});\n`;
   cppGenerator.forBlock['escrever_pino'] = (b: Blockly.Block) => `  digitalWrite(${b.getFieldValue('PIN')}, ${b.getFieldValue('STATE')});\n`;
+  cppGenerator.forBlock['escrever_pino_booleano'] = (b: Blockly.Block) => {
+    const state = cppGenerator.valueToCode(b, 'STATE', 0) || 'false';
+    return `  digitalWrite(${b.getFieldValue('PIN')}, (${state}) ? HIGH : LOW);\n`;
+  };
   cppGenerator.forBlock['ler_pino_digital'] = (b: Blockly.Block) => [`digitalRead(${b.getFieldValue('PIN')})`, 0];
-  cppGenerator.forBlock['escrever_pino_pwm'] = (b: Blockly.Block) => `  analogWrite(${b.getFieldValue('PIN')}, ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
+  cppGenerator.forBlock['escrever_pino_pwm'] = (b: Blockly.Block) => {
+    const value = cppGenerator.valueToCode(b, 'VALOR', 99) || '0';
+    return `  analogWrite(${b.getFieldValue('PIN')}, (int)_bloquin_limitar((float)(${value}), 0.0f, 255.0f));\n`;
+  };
   cppGenerator.forBlock['ler_pino_analogico'] = (b: Blockly.Block) => [`analogRead(${b.getFieldValue('PIN')})`, 0];
 
   // Controle e Temporizadores
   cppGenerator.forBlock['esperar'] = (b: Blockly.Block) => `  delay(${b.getFieldValue('TIME')});\n`;
+  cppGenerator.forBlock['esperar_duracao'] = (b: Blockly.Block) => {
+    const waitVar = distinctName('tempoEspera');
+    const duration = cppGenerator.valueToCode(b, 'TIME', 99) || '0';
+    return `  float ${waitVar} = (float)(${duration});\n  if (${waitVar} > 0.0f) delay((unsigned long)${waitVar});\n`;
+  };
   cppGenerator.forBlock['repetir_vezes'] = (b: Blockly.Block) => {
-    if (!cppGenerator.nameDB_) cppGenerator.nameDB_ = new Blockly.Names((cppGenerator as any).RESERVED_WORDS_);
-    const loopVar = cppGenerator.nameDB_.getDistinctName('i', Blockly.Names.NameType.VARIABLE);
+    const loopVar = distinctName('i');
     return `  for (int ${loopVar} = 0; ${loopVar} < ${b.getFieldValue('TIMES')}; ${loopVar}++) {\n${cppGenerator.statementToCode(b, 'DO') || ''}  }\n`;
   };
+  cppGenerator.forBlock['repetir_quantidade'] = (b: Blockly.Block) => {
+    const countVar = distinctName('quantidade');
+    const loopVar = distinctName('i');
+    const amount = cppGenerator.valueToCode(b, 'TIMES', 99) || '0';
+    return `  long ${countVar} = (long)(${amount});\n  if (${countVar} < 0) ${countVar} = 0;\n  for (long ${loopVar} = 0; ${loopVar} < ${countVar}; ${loopVar}++) {\n${cppGenerator.statementToCode(b, 'DO') || ''}  }\n`;
+  };
   cppGenerator.forBlock['a_cada_x_ms'] = (b: Blockly.Block) => {
-    if (!cppGenerator.nameDB_) cppGenerator.nameDB_ = new Blockly.Names((cppGenerator as any).RESERVED_WORDS_);
-    const timerVar = cppGenerator.nameDB_.getDistinctName('timer', Blockly.Names.NameType.VARIABLE);
+    const timerVar = distinctName('timer');
     const ms = b.getFieldValue('MS');
     const doCode = cppGenerator.statementToCode(b, 'DO') || '';
     return `  static unsigned long ${timerVar} = 0;\n  if (millis() - ${timerVar} >= ${ms}) {\n    ${timerVar} = millis();\n${doCode}  }\n`;
@@ -76,27 +212,56 @@ export function initGenerators() {
   cppGenerator.forBlock['numero_fixo'] = (b: Blockly.Block) => [b.getFieldValue('VALOR'), 0];
   cppGenerator.forBlock['e_ou_logico'] = (b: Blockly.Block) => [`(${cppGenerator.valueToCode(b, 'A', 0) || 'false'} ${b.getFieldValue('OP')} ${cppGenerator.valueToCode(b, 'B', 0) || 'false'})`, 0];
   cppGenerator.forBlock['nao_logico'] = (b: Blockly.Block) => [`!(${cppGenerator.valueToCode(b, 'VALOR', 0) || 'false'})`, 0];
-  cppGenerator.forBlock['mapear_valor'] = (b: Blockly.Block) => [`map(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}, ${b.getFieldValue('DE_MIN')}, ${b.getFieldValue('DE_MAX')}, ${b.getFieldValue('PARA_MIN')}, ${b.getFieldValue('PARA_MAX')})`, 0];
+  cppGenerator.forBlock['numero_para_booleano'] = (b: Blockly.Block) => [`((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}) != 0.0f)`, 0];
+  cppGenerator.forBlock['booleano_para_numero'] = (b: Blockly.Block) => [`((${cppGenerator.valueToCode(b, 'VALOR', 0) || 'false'}) ? 1 : 0)`, 0];
+  cppGenerator.forBlock['mapear_valor'] = (b: Blockly.Block) => [`_bloquin_mapFloat((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}), ${floatLiteral(b.getFieldValue('DE_MIN'))}, ${floatLiteral(b.getFieldValue('DE_MAX'))}, ${floatLiteral(b.getFieldValue('PARA_MIN'))}, ${floatLiteral(b.getFieldValue('PARA_MAX'))})`, 0];
   cppGenerator.forBlock['operacao_matematica'] = (b: Blockly.Block) => {
     const a = cppGenerator.valueToCode(b, 'A', 99) || '0';
     const bv = cppGenerator.valueToCode(b, 'B', 99) || '0';
-    if (b.getFieldValue('OP') === '%') return [`fmod(${a}, ${bv})`, 0];
+    if (b.getFieldValue('OP') === '/') return [`_bloquin_dividir((float)(${a}), (float)(${bv}))`, 0];
+    if (b.getFieldValue('OP') === '%') return [`_bloquin_resto((float)(${a}), (float)(${bv}))`, 0];
     return [`(${a} ${b.getFieldValue('OP')} ${bv})`, 0];
   };
-  cppGenerator.forBlock['valor_absoluto'] = (b: Blockly.Block) => [`abs(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'})`, 0];
-  cppGenerator.forBlock['constrain_valor'] = (b: Blockly.Block) => [`constrain(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}, ${b.getFieldValue('MIN')}, ${b.getFieldValue('MAX')})`, 0];
+  cppGenerator.forBlock['potencia'] = (b: Blockly.Block) => [`powf((float)(${cppGenerator.valueToCode(b, 'BASE', 99) || '0'}), (float)(${cppGenerator.valueToCode(b, 'EXPOENTE', 99) || '0'}))`, 0];
+  cppGenerator.forBlock['minimo_maximo'] = (b: Blockly.Block) => {
+    const fn = b.getFieldValue('OP') === 'MAX' ? 'fmaxf' : 'fminf';
+    return [`${fn}((float)(${cppGenerator.valueToCode(b, 'A', 99) || '0'}), (float)(${cppGenerator.valueToCode(b, 'B', 99) || '0'}))`, 0];
+  };
+  cppGenerator.forBlock['funcao_matematica'] = (b: Blockly.Block) => {
+    const value = cppGenerator.valueToCode(b, 'VALOR', 99) || '0';
+    const operation = b.getFieldValue('OP');
+    if (operation === 'FLOOR') return [`floorf((float)(${value}))`, 0];
+    if (operation === 'CEIL') return [`ceilf((float)(${value}))`, 0];
+    if (operation === 'SQRT') return [`sqrtf(fmaxf(0.0f, (float)(${value})))`, 0];
+    return [`roundf((float)(${value}))`, 0];
+  };
+  cppGenerator.forBlock['valor_absoluto'] = (b: Blockly.Block) => [`fabsf((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}))`, 0];
+  cppGenerator.forBlock['constrain_valor'] = (b: Blockly.Block) => {
+    const first = Number(b.getFieldValue('MIN'));
+    const second = Number(b.getFieldValue('MAX'));
+    const minimum = Number.isFinite(first) && Number.isFinite(second) ? Math.min(first, second) : 0;
+    const maximum = Number.isFinite(first) && Number.isFinite(second) ? Math.max(first, second) : 255;
+    return [`_bloquin_limitar((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}), ${floatLiteral(minimum)}, ${floatLiteral(maximum)})`, 0];
+  };
   cppGenerator.forBlock['random_valor'] = (b: Blockly.Block) => {
+    const first = Number(b.getFieldValue('MIN'));
     const maximum = Number(b.getFieldValue('MAX'));
-    return [`random(${b.getFieldValue('MIN')}, ${Number.isFinite(maximum) ? maximum + 1 : 101})`, 0];
+    const minimum = Number.isFinite(first) && Number.isFinite(maximum) ? Math.min(first, maximum) : 0;
+    const inclusiveMaximum = Number.isFinite(first) && Number.isFinite(maximum) ? Math.max(first, maximum) + 1 : 101;
+    return [`random(${minimum}, ${inclusiveMaximum})`, 0];
   };
   cppGenerator.forBlock['millis_atual'] = (_b: Blockly.Block) => [`millis()`, 0];
 
   // Variáveis
-  cppGenerator.forBlock['declarar_variavel_global'] = (b: Blockly.Block) => `${b.getFieldValue('TIPO')} ${toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'};\n`;
+  cppGenerator.forBlock['declarar_variavel_global'] = (b: Blockly.Block) => {
+    const type = variableCppType(b);
+    return `${type} ${toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || defaultVariableValue(type)};\n`;
+  };
   cppGenerator.forBlock['atribuir_variavel'] = (b: Blockly.Block) => `  ${toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'};\n`;
   cppGenerator.forBlock['ler_variavel'] = (b: Blockly.Block) => [toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var'), 0];
   cppGenerator.forBlock['incrementar_variavel'] = (b: Blockly.Block) => `  ${toCppIdentifier(b.getFieldValue('NOME'), 'contador', 'var')} += ${cppGenerator.valueToCode(b, 'VALOR', 99) || '1'};\n`;
   cppGenerator.forBlock['valor_booleano_fixo'] = (b: Blockly.Block) => [b.getFieldValue('VALOR'), 0];
+  cppGenerator.forBlock['texto_fixo'] = (b: Blockly.Block) => [cppStringLiteral(b.getFieldValue('TEXT')), 0];
 
   // Funções
   cppGenerator.forBlock['definir_funcao'] = (b: Blockly.Block) => {
@@ -159,7 +324,7 @@ export function initGenerators() {
   cppGenerator.forBlock['escrever_serial'] = (b: Blockly.Block) => `  Serial.println(${cppStringLiteral(b.getFieldValue('TEXT'))});\n`;
   cppGenerator.forBlock['escrever_serial_valor'] = (b: Blockly.Block) => `  Serial.println(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
   cppGenerator.forBlock['servo_configurar'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.attach(${b.getFieldValue('PIN')});\n`;
-  cppGenerator.forBlock['servo_mover'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.write(${cppGenerator.valueToCode(b, 'ANGULO', 99) || '90'});\n`;
+  cppGenerator.forBlock['servo_mover'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.write((int)_bloquin_limitar((float)(${cppGenerator.valueToCode(b, 'ANGULO', 99) || '90'}), 0.0f, 180.0f));\n`;
   cppGenerator.forBlock['servo_ler'] = (b: Blockly.Block) => [`_servoObj_${b.getFieldValue('PIN')}.read()`, 0];
   cppGenerator.forBlock['buzzer_tocar'] = (b: Blockly.Block) => `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')});\n`;
   cppGenerator.forBlock['buzzer_tocar_tempo'] = (b: Blockly.Block) => `  tone(${b.getFieldValue('PIN')}, ${b.getFieldValue('FREQ')}, ${b.getFieldValue('DUR')});\n`;
@@ -174,7 +339,11 @@ export function initGenerators() {
       ? `  Wire.begin(${b.getFieldValue('SDA')}, ${b.getFieldValue('SCL')});\n`
       : '  Wire.begin(); // SDA=A4, SCL=A5 no Arduino Uno/Nano\n') +
     `  Wire.beginTransmission(0x68);\n  Wire.write(0x6B);\n  Wire.write(0);\n` +
-    `  Wire.endTransmission(true);\n  Serial.println("[OK] MPU-6050 iniciado");\n`;
+    `  if (Wire.endTransmission(true) == 0) {\n` +
+    `    Serial.println("[OK] MPU-6050 iniciado");\n` +
+    `  } else {\n` +
+    `    Serial.println("[ERRO] MPU-6050 não respondeu");\n` +
+    `  }\n`;
   cppGenerator.forBlock['mpu_ler_pitch'] = (_b: Blockly.Block) => [`_bloquin_lerPitch()`, 0];
   cppGenerator.forBlock['mpu_ler_roll'] = (_b: Blockly.Block) => [`_bloquin_lerRoll()`, 0];
 
@@ -225,28 +394,46 @@ export const generateCode = (
   board: BoardKey = 'uno',
 ): string => {
   targetBoard = board;
+  synchronizeVariableTypes(ws);
   cppGenerator.nameDB_?.reset();
   if (cppGenerator.nameDB_) {
     cppGenerator.nameDB_.setVariableMap(ws.getVariableMap());
   }
 
+  const allBlocks = ws.getAllBlocks(false);
   const topBlocks = ws.getTopBlocks(true);
-  const blockTypes = new Set(ws.getAllBlocks(false).map((block) => block.type));
+  const blockTypes = new Set(allBlocks.map((block) => block.type));
   const hasBlock = (...types: string[]) => types.some((type) => blockTypes.has(type));
 
   const globalVarLines: string[] = [];
+  const deferredGlobalInitializers: DeferredInitializer[] = [];
   const functionPrototypes: string[] = [];
   const funcDefLines: string[] = [];
-  let setupCode = '';
+  let setupRoot: Blockly.Block | null = null;
   let loopCode = '';
 
   for (const block of topBlocks) {
     if (block.type === 'bloco_setup') {
-      if (!setupCode) setupCode = cppGenerator.blockToCode(block) as string;
+      setupRoot ??= block;
     } else if (block.type === 'bloco_loop') {
       if (!loopCode) loopCode = cppGenerator.blockToCode(block) as string;
     } else if (block.type === 'declarar_variavel_global') {
-      globalVarLines.push(cppGenerator.blockToCode(block) as string);
+      const type = variableCppType(block);
+      const name = toCppIdentifier(block.getFieldValue('NOME'), 'minha_var', 'var');
+      const valueBlock = block.getInputTargetBlock('VALOR');
+      const valueCode = cppGenerator.valueToCode(block, 'VALOR', 99);
+      if (valueBlock && valueCode && isSafeGlobalInitializer(valueBlock)) {
+        globalVarLines.push(`${type} ${name} = ${valueCode};\n`);
+      } else {
+        globalVarLines.push(`${type} ${name} = ${defaultVariableValue(type)};\n`);
+        if (valueBlock && valueCode) {
+          deferredGlobalInitializers.push({
+            name,
+            code: `${name} = ${valueCode};`,
+            dependencies: initializerVariableDependencies(valueBlock),
+          });
+        }
+      }
     } else if (block.type === 'definir_funcao' || block.type === 'definir_funcao_retorno') {
       const returnType = block.type === 'definir_funcao_retorno' ? 'float' : 'void';
       functionPrototypes.push(
@@ -256,12 +443,39 @@ export const generateCode = (
     }
   }
 
+  loopCode ||= 'void loop() {\n}\n\n';
+
+  const explicitlyConfiguredPins = new Set(
+    allBlocks
+      .filter((block) => block.type === 'configurar_pino')
+      .map((block) => String(block.getFieldValue('PIN'))),
+  );
+  const outputPinsUsedDirectly = new Set(
+    allBlocks
+      .filter((block) => [
+        'escrever_pino',
+        'escrever_pino_booleano',
+        'escrever_pino_pwm',
+      ].includes(block.type))
+      .map((block) => String(block.getFieldValue('PIN'))),
+  );
+  const automaticPinSetup = [...outputPinsUsedDirectly]
+    .filter((pin) => !explicitlyConfiguredPins.has(pin))
+    .sort((first, second) => first.localeCompare(second, undefined, { numeric: true }))
+    .map((pin) => `pinMode(${pin}, OUTPUT); // configuração automática da saída`);
+
+  const setupCode = buildSetupCode(
+    setupRoot,
+    automaticPinSetup,
+    orderDeferredInitializers(deferredGlobalInitializers).map((initializer) => initializer.code),
+  );
+
   const mainCode = [
     ...functionPrototypes, functionPrototypes.length > 0 ? '\n' : '',
     ...globalVarLines, globalVarLines.length > 0 ? '\n' : '',
     ...funcDefLines,
-    setupCode || 'void setup() {\n  Serial.begin(115200);\n}\n\n',
-    loopCode || 'void loop() {\n}\n\n',
+    setupCode,
+    loopCode,
   ].filter(Boolean).join('');
 
   // ── Servo ─────────────────────────────────────────────────────────────────
@@ -269,7 +483,7 @@ export const generateCode = (
   let servoHeader = '';
   if (needsServo) {
     const pins = new Set(
-      ws.getAllBlocks(false)
+      allBlocks
         .filter((block) => block.type.startsWith('servo_'))
         .map((block) => String(block.getFieldValue('PIN'))),
     );
@@ -392,7 +606,7 @@ export const generateCode = (
         '  bool recebeu = _espnow_primeiroRx;\n' +
         '  unsigned long ultimo = _espnow_ultimoRx;\n' +
         '  portEXIT_CRITICAL(&_espnow_mux);\n' +
-        '  return recebeu && (millis() - ultimo > limite);\n' +
+        '  return recebeu ? (millis() - ultimo > limite) : (millis() > limite);\n' +
         '}\n';
     }
     if (targetBoard !== 'esp32') {
@@ -416,8 +630,9 @@ export const generateCode = (
       '  _mpu_lastRead = millis();\n' +
       '  Wire.beginTransmission(_MPU_ADDR);\n' +
       '  Wire.write(0x3B);\n' +
-      '  Wire.endTransmission(false);\n' +
-      '  Wire.requestFrom(_MPU_ADDR, 6, true);\n' +
+      '  if (Wire.endTransmission(false) != 0) return;\n' +
+      '  if (Wire.requestFrom(_MPU_ADDR, 6, true) != 6) return;\n' +
+      '  if (Wire.available() < 6) return;\n' +
       '  int16_t ax = Wire.read() << 8 | Wire.read();\n' +
       '  int16_t ay = Wire.read() << 8 | Wire.read();\n' +
       '  int16_t az = Wire.read() << 8 | Wire.read();\n' +
@@ -445,7 +660,46 @@ export const generateCode = (
     'l298n_velocidade_por_pitch_roll',
   );
   const needsAplicarControle = hasBlock('l298n_velocidade_por_pitch_roll');
-  const needsMapFloat = hasBlock('util_map_float') || needsAplicarControle;
+  const needsMapFloat = hasBlock('mapear_valor', 'util_map_float') || needsAplicarControle;
+  const mathOperations = allBlocks.filter((block) => block.type === 'operacao_matematica');
+  const needsSafeDivision = mathOperations.some((block) => block.getFieldValue('OP') === '/');
+  const needsSafeRemainder = mathOperations.some((block) => block.getFieldValue('OP') === '%');
+  const needsSafeLimit = hasBlock('constrain_valor', 'escrever_pino_pwm', 'servo_mover');
+  const needsMathLibrary = needsMapFloat
+    || needsSafeDivision
+    || needsSafeRemainder
+    || needsAplicarControle
+    || needsMPU
+    || hasBlock(
+      'potencia',
+      'minimo_maximo',
+      'funcao_matematica',
+      'valor_absoluto',
+      'util_fabsf',
+    );
+
+  let mathHeader = needsMathLibrary ? '#include <math.h>\n\n' : '';
+  if (needsSafeLimit) {
+    mathHeader +=
+      'float _bloquin_limitar(float valor, float minimo, float maximo) {\n' +
+      '  if (minimo > maximo) { float troca = minimo; minimo = maximo; maximo = troca; }\n' +
+      '  if (valor < minimo) return minimo;\n' +
+      '  if (valor > maximo) return maximo;\n' +
+      '  return valor;\n' +
+      '}\n\n';
+  }
+  if (needsSafeDivision) {
+    mathHeader +=
+      'float _bloquin_dividir(float a, float b) {\n' +
+      '  return fabsf(b) < 0.000001f ? 0.0f : a / b;\n' +
+      '}\n\n';
+  }
+  if (needsSafeRemainder) {
+    mathHeader +=
+      'float _bloquin_resto(float a, float b) {\n' +
+      '  return fabsf(b) < 0.000001f ? 0.0f : fmodf(a, b);\n' +
+      '}\n\n';
+  }
 
   let l298nHeader = '';
 
@@ -468,6 +722,7 @@ export const generateCode = (
     if (needsMapFloat || needsAplicarControle) {
       l298nHeader +=
         'float _bloquin_mapFloat(float x, float iMin, float iMax, float oMin, float oMax) {\n' +
+        '  if (fabsf(iMax - iMin) < 0.000001f) return oMin;\n' +
         '  return (x - iMin) * (oMax - oMin) / (iMax - iMin) + oMin;\n' +
         '}\n\n';
     }
@@ -511,12 +766,13 @@ export const generateCode = (
   } else if (needsMapFloat) {
     l298nHeader =
       'float _bloquin_mapFloat(float x, float iMin, float iMax, float oMin, float oMax) {\n' +
+      '  if (fabsf(iMax - iMin) < 0.000001f) return oMin;\n' +
       '  return (x - iMin) * (oMax - oMin) / (iMax - iMin) + oMin;\n' +
       '}\n\n';
   }
 
   // ── Músicas prontas (Buzzer) ──────────────────────────────────────────────
-  const musicBlocks = ws.getAllBlocks(false).filter(
+  const musicBlocks = allBlocks.filter(
     (block) => block.type === 'buzzer_tocar_musica',
   );
   const needsMusica = musicBlocks.length > 0;
@@ -676,7 +932,7 @@ export const generateCode = (
     }
   }
 
-  const prefix = musicaHeader + espNowHeader + mpuHeader + l298nHeader
+  const prefix = musicaHeader + mathHeader + espNowHeader + mpuHeader + l298nHeader
     + servoHeader + helperLer + helperEntre + helperPerto
     + (needsUltrass ? '\n' : '');
   return prefix + mainCode;

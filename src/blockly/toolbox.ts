@@ -1,51 +1,42 @@
-import type { BoardKey } from './boards';
+import { BOARDS, type BoardKey } from './boards';
 
 export const toolboxConfig = {
   kind: 'categoryToolbox',
   contents: [
     {
-      kind: 'category', name: 'Pinos', colour: '165',
+      kind: 'category', name: 'Lógica', colour: '210',
       contents: [
-        { kind: 'block', type: 'configurar_pino' },
-        { kind: 'block', type: 'escrever_pino' },
-        { kind: 'block', type: 'ler_pino_digital' },
-        { kind: 'block', type: 'escrever_pino_pwm', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 128 } } } } },
-        { kind: 'block', type: 'ler_pino_analogico' },
+        { kind: 'block', type: 'se_entao' },
+        { kind: 'block', type: 'se_entao_senao' },
+        { kind: 'block', type: 'comparar_valores', inputs: { A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, B: { block: { type: 'numero_fixo', fields: { VALOR: 10 } } } } },
+        { kind: 'block', type: 'valor_booleano_fixo' },
+        { kind: 'block', type: 'e_ou_logico' },
+        { kind: 'block', type: 'nao_logico' },
+        { kind: 'block', type: 'numero_para_booleano', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 1 } } } } },
+        { kind: 'block', type: 'booleano_para_numero', inputs: { VALOR: { block: { type: 'valor_booleano_fixo', fields: { VALOR: 'true' } } } } },
       ],
     },
     {
       kind: 'category', name: 'Controle', colour: '120',
       contents: [
-        { kind: 'block', type: 'esperar' },
-        { kind: 'block', type: 'a_cada_x_ms' }, // Eixo 6
         { kind: 'block', type: 'repetir_vezes' },
+        { kind: 'block', type: 'repetir_quantidade', inputs: { TIMES: { block: { type: 'numero_fixo', fields: { VALOR: 5 } } } } },
         { kind: 'block', type: 'enquanto_verdadeiro' },
         { kind: 'block', type: 'parar_repeticao' },
       ],
     },
     {
-      kind: 'category', name: 'Condições', colour: '210',
-      contents: [
-        { kind: 'block', type: 'se_entao' },
-        { kind: 'block', type: 'se_entao_senao' },
-        { kind: 'block', type: 'comparar_valores', inputs: { A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, B: { block: { type: 'numero_fixo', fields: { VALOR: 10 } } } } },
-        { kind: 'block', type: 'valor_booleano_fixo' }, // MM2 (Movido de Variáveis)
-        { kind: 'block', type: 'e_ou_logico' },
-        { kind: 'block', type: 'nao_logico' },
-      ],
-    },
-    {
       kind: 'category', name: 'Matemática', colour: '255',
       contents: [
-        { kind: 'block', type: 'numero_fixo' }, // MM2 (Movido de Condições)
+        { kind: 'block', type: 'numero_fixo' },
         { kind: 'block', type: 'operacao_matematica', inputs: { A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, B: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
-        { kind: 'block', type: 'mapear_valor', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 512 } } } } }, // MM2 (Movido de Condições)
+        { kind: 'block', type: 'potencia', inputs: { BASE: { block: { type: 'numero_fixo', fields: { VALOR: 2 } } }, EXPOENTE: { block: { type: 'numero_fixo', fields: { VALOR: 3 } } } } },
+        { kind: 'block', type: 'minimo_maximo', inputs: { A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, B: { block: { type: 'numero_fixo', fields: { VALOR: 100 } } } } },
+        { kind: 'block', type: 'funcao_matematica', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
+        { kind: 'block', type: 'mapear_valor', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 512 } } } } },
         { kind: 'block', type: 'valor_absoluto', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
         { kind: 'block', type: 'constrain_valor', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
         { kind: 'block', type: 'random_valor' },
-        { kind: 'block', type: 'millis_atual' },
-        { kind: 'block', type: 'util_map_float', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
-        { kind: 'block', type: 'util_fabsf', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
       ],
     },
     {
@@ -62,18 +53,46 @@ export const toolboxConfig = {
       contents: [
         { kind: 'block', type: 'definir_funcao' },
         { kind: 'block', type: 'chamar_funcao' },
-        { kind: 'block', type: 'definir_funcao_retorno', inputs: { RETURN: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } }, // Eixo 6
-        { kind: 'block', type: 'chamar_funcao_retorno' }, // Eixo 6
+        { kind: 'block', type: 'definir_funcao_retorno', inputs: { RETURN: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
+        { kind: 'block', type: 'chamar_funcao_retorno' },
       ],
     },
     {
-      kind: 'category', name: 'Ultrassônico', colour: '30',
+      kind: 'category', name: 'Tempo', colour: '120',
+      contents: [
+        { kind: 'block', type: 'esperar' },
+        { kind: 'block', type: 'esperar_duracao', inputs: { TIME: { block: { type: 'numero_fixo', fields: { VALOR: 1000 } } } } },
+        { kind: 'block', type: 'a_cada_x_ms' },
+        { kind: 'block', type: 'millis_atual' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Entradas e Saídas', colour: '165',
+      contents: [
+        { kind: 'block', type: 'configurar_pino' },
+        { kind: 'block', type: 'escrever_pino' },
+        { kind: 'block', type: 'escrever_pino_booleano', inputs: { STATE: { block: { type: 'valor_booleano_fixo', fields: { VALOR: 'true' } } } } },
+        { kind: 'block', type: 'ler_pino_digital' },
+        { kind: 'block', type: 'escrever_pino_pwm', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 128 } } } } },
+        { kind: 'block', type: 'ler_pino_analogico' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Sensor de Distância', colour: '30',
       contents: [
         { kind: 'block', type: 'configurar_ultrassonico' },
         { kind: 'block', type: 'ler_distancia_cm' },
         { kind: 'block', type: 'mostrar_distancia' },
         { kind: 'block', type: 'objeto_esta_perto' },
         { kind: 'block', type: 'distancia_entre' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Acelerômetro', colour: '310',
+      contents: [
+        { kind: 'block', type: 'mpu_iniciar' },
+        { kind: 'block', type: 'mpu_ler_pitch' },
+        { kind: 'block', type: 'mpu_ler_roll' },
       ],
     },
     {
@@ -94,8 +113,25 @@ export const toolboxConfig = {
       ],
     },
     {
+      kind: 'category', name: 'Motor DC', colour: '120',
+      contents: [
+        { kind: 'block', type: 'l298n_configurar_simples' },
+        { kind: 'block', type: 'l298n_mover_robo', inputs: { FORCA: { block: { type: 'numero_fixo', fields: { VALOR: 200 } } } } },
+        { kind: 'block', type: 'l298n_parar' },
+        { kind: 'block', type: 'l298n_mover_motor', inputs: { FORCA: { block: { type: 'numero_fixo', fields: { VALOR: 200 } } } } },
+        {
+          kind: 'block', type: 'l298n_velocidade_por_pitch_roll',
+          inputs: {
+            PITCH: { block: { type: 'espnow_ler_pitch' } },
+            ROLL:  { block: { type: 'espnow_ler_roll'  } },
+          },
+        },
+      ],
+    },
+    {
       kind: 'category', name: 'Comunicação', colour: '160',
       contents: [
+        { kind: 'block', type: 'texto_fixo' },
         { kind: 'block', type: 'escrever_serial' },
         { kind: 'block', type: 'escrever_serial_valor' },
       ],
@@ -126,30 +162,6 @@ export const toolboxConfig = {
         { kind: 'block', type: 'espnow_marcar_lido' }
       ],
     },
-    {
-      kind: 'category', name: 'Acelerômetro', colour: '310',
-      contents: [
-        { kind: 'block', type: 'mpu_iniciar' },
-        { kind: 'block', type: 'mpu_ler_pitch' },
-        { kind: 'block', type: 'mpu_ler_roll' },
-      ],
-    },
-    {
-      kind: 'category', name: 'Motor DC', colour: '120',
-      contents: [
-        { kind: 'block', type: 'l298n_configurar_simples' },
-        { kind: 'block', type: 'l298n_mover_robo', inputs: { FORCA: { block: { type: 'numero_fixo', fields: { VALOR: 200 } } } } },
-        { kind: 'block', type: 'l298n_parar' },
-        { kind: 'block', type: 'l298n_mover_motor', inputs: { FORCA: { block: { type: 'numero_fixo', fields: { VALOR: 200 } } } } },
-        {
-          kind: 'block', type: 'l298n_velocidade_por_pitch_roll',
-          inputs: {
-            PITCH: { block: { type: 'espnow_ler_pitch' } },
-            ROLL:  { block: { type: 'espnow_ler_roll'  } },
-          },
-        },
-      ],
-    },
   ],
 };
 
@@ -159,11 +171,19 @@ export function getToolboxConfig(board: BoardKey) {
         ultrasonic: { TRIG: '18', ECHO: '19' },
         l298n: { ENA: '25', IN1: '26', IN2: '27', ENB: '33', IN3: '32', IN4: '14' },
         servo: { PIN: '13' },
+        io: { PIN: '2' },
+        pwm: { PIN: '2' },
+        analog: { PIN: '32' },
+        analogMaximum: BOARDS[board].analogReadMaximum,
       }
     : {
         ultrasonic: { TRIG: '12', ECHO: '13' },
         l298n: { ENA: '3', IN1: '2', IN2: '4', ENB: '5', IN3: '7', IN4: '8' },
         servo: { PIN: '9' },
+        io: { PIN: '13' },
+        pwm: { PIN: '3' },
+        analog: { PIN: 'A0' },
+        analogMaximum: BOARDS[board].analogReadMaximum,
       };
 
   return {
@@ -192,6 +212,34 @@ export function getToolboxConfig(board: BoardKey) {
             if (['servo_configurar', 'servo_mover', 'servo_ler'].includes(type)) {
               return { ...item, fields: defaults.servo };
             }
+            if ([
+              'configurar_pino',
+              'escrever_pino',
+              'escrever_pino_booleano',
+              'ler_pino_digital',
+            ].includes(type)) {
+              return { ...item, fields: defaults.io };
+            }
+            if (type === 'escrever_pino_pwm') {
+              return { ...item, fields: defaults.pwm };
+            }
+            if (type === 'ler_pino_analogico') {
+              return { ...item, fields: defaults.analog };
+            }
+            if (type === 'mapear_valor') {
+              return {
+                ...item,
+                fields: { DE_MAX: defaults.analogMaximum },
+                inputs: {
+                  VALOR: {
+                    block: {
+                      type: 'numero_fixo',
+                      fields: { VALOR: Math.round(defaults.analogMaximum / 2) },
+                    },
+                  },
+                },
+              };
+            }
             if (
               board !== 'esp32'
               && item.type === 'l298n_velocidade_por_pitch_roll'
@@ -218,21 +266,29 @@ export const BLOCK_NAMES: Record<string, string> = {
   chamar_funcao_retorno: 'Executar e Pegar Resposta',
   configurar_pino: 'Configurar Pino',
   escrever_pino: 'Ligar/Desligar Pino',
+  escrever_pino_booleano: 'Controlar Pino com Condição',
   ler_pino_digital: 'Ler Pino Digital',
   escrever_pino_pwm: 'Força do Pino (PWM)',
   ler_pino_analogico: 'Ler Sensor Analógico',
   esperar: 'Esperar',
+  esperar_duracao: 'Esperar Tempo Calculado',
   repetir_vezes: 'Repetir Vezes',
+  repetir_quantidade: 'Repetir Quantidade Calculada',
   enquanto_verdadeiro: 'Enquanto... Fizer',
   parar_repeticao: 'Parar Repetição',
   se_entao: 'Se... Então',
   se_entao_senao: 'Se... Então... Senão',
   comparar_valores: 'Comparar Valores',
   numero_fixo: 'Número',
+  numero_para_booleano: 'Número é Diferente de Zero?',
+  booleano_para_numero: 'Verdadeiro/Falso para Número',
   e_ou_logico: 'E / Ou',
   nao_logico: 'NÃO',
   mapear_valor: 'Converter Escala',
   operacao_matematica: 'Operação Matemática',
+  potencia: 'Potência',
+  minimo_maximo: 'Menor / Maior Valor',
+  funcao_matematica: 'Arredondar / Raiz Quadrada',
   valor_absoluto: 'Valor Positivo',
   constrain_valor: 'Limitar Valor',
   random_valor: 'Número Aleatório',
@@ -260,6 +316,7 @@ export const BLOCK_NAMES: Record<string, string> = {
   buzzer_tocar_musica: 'Tocar Música Pronta',
   escrever_serial: 'O Robô Diz (texto)',
   escrever_serial_valor: 'O Robô Diz (valor)',
+  texto_fixo: 'Texto',
   espnow_iniciar_wifi: 'Preparar Comunicação Sem Fio',
   espnow_mac_serial: 'Mostrar Código deste Dispositivo',
   espnow_transmissor_init: 'Preparar como Transmissor',

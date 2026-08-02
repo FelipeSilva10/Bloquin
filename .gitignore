@@ -11,6 +11,9 @@ dist/
 coverage/
 .eslintcache
 .bloquin-block-audit-*/
+supabase/.branches/
+supabase/.temp/
+supabase/.env
 
 # ── Rust / Tauri ─────────────────────────────────────────────────────────────
 src-tauri/target/
@@ -31,6 +34,7 @@ yarn-error.log*
 *.tmp
 *.temp
 *.bak
+*~
 *.swp
 *.swo
 
