@@ -1,9 +1,13 @@
 import * as Blockly from 'blockly/core';
-import { initBlocks, syncBoardPins } from '../src/blockly/blocks';
+import {
+  initBlocks,
+  syncBoardPins,
+} from '../src/blockly/blocks';
 import { cppGenerator, generateCode, initGenerators } from '../src/blockly/generators';
 import { BOARDS, type BoardKey } from '../src/blockly/boards';
 import { auditSerializedWorkspace, auditWorkspace } from '../src/blockly/audit';
 import { BLOCK_NAMES, getToolboxConfig, toolboxConfig } from '../src/blockly/toolbox';
+import { synchronizeVariableTypes } from '../src/blockly/variableTypes';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -68,10 +72,19 @@ export async function runBlockAudit() {
   initGenerators();
 
   const customTypes = Object.keys(Blockly.Blocks);
-  assert(customTypes.length === 69, `Esperava 69 blocos; encontrei ${customTypes.length}.`);
+  assert(customTypes.length === 78, `Esperava 78 blocos; encontrei ${customTypes.length}.`);
 
   const toolboxTypes = toolboxBlockTypes();
-  assert(new Set(toolboxTypes).size === 67, 'A toolbox deve expor 67 blocos sem duplicatas.');
+  assert(new Set(toolboxTypes).size === 74, 'A toolbox deve expor 74 blocos sem duplicatas.');
+  assert(
+    !toolboxTypes.includes('util_map_float') && !toolboxTypes.includes('util_fabsf'),
+    'Aliases decimais legados devem continuar definidos, mas não duplicar opções na toolbox.',
+  );
+  assert(
+    toolboxConfig.contents.map((category) => category.name).join('|')
+      === 'Lógica|Controle|Matemática|Variáveis|Funções|Tempo|Entradas e Saídas|Sensor de Distância|Acelerômetro|Servo|Buzzer|Motor DC|Comunicação|Comunicação Sem Fio',
+    'A ordem da toolbox deve priorizar fundamentos antes de hardware e comunicação.',
+  );
   for (const type of toolboxTypes) {
     assert(customTypes.includes(type), `Bloco ${type} está na toolbox, mas não foi definido.`);
     assert(Boolean(cppGenerator.forBlock[type]), `Bloco ${type} não possui gerador C++.`);
@@ -142,6 +155,13 @@ export async function runBlockAudit() {
       );
     }
   }
+  const unoToolboxJson = JSON.stringify(getToolboxConfig('uno'));
+  const esp32ToolboxJson = JSON.stringify(getToolboxConfig('esp32'));
+  assert(
+    unoToolboxJson.includes('"type":"mapear_valor","inputs":{"VALOR":{"block":{"type":"numero_fixo","fields":{"VALOR":512}}}},"fields":{"DE_MAX":1023}')
+      && esp32ToolboxJson.includes('"type":"mapear_valor","inputs":{"VALOR":{"block":{"type":"numero_fixo","fields":{"VALOR":2048}}}},"fields":{"DE_MAX":4095}'),
+    'A escala analógica inicial deve respeitar 0–1023 no AVR e 0–4095 no ESP32.',
+  );
 
   for (const board of Object.keys(BOARDS) as BoardKey[]) {
     syncBoardPins(board);
@@ -171,6 +191,21 @@ export async function runBlockAudit() {
   assert(firstCode === secondCode, 'A geração C++ não é determinística entre execuções.');
   deterministicWorkspace.dispose();
 
+  const dynamicBreakWorkspace = new Blockly.Workspace();
+  const dynamicBreakRoots = makeRoots(dynamicBreakWorkspace);
+  const dynamicBreakRepeat = dynamicBreakWorkspace.newBlock('repetir_quantidade');
+  connectValue(dynamicBreakRepeat, 'TIMES', dynamicBreakWorkspace.newBlock('numero_fixo'));
+  const dynamicBreak = dynamicBreakWorkspace.newBlock('parar_repeticao');
+  connectStatement(dynamicBreakRepeat, 'DO', dynamicBreak);
+  connectStatement(dynamicBreakRoots.loop, 'DO', dynamicBreakRepeat);
+  assert(
+    !auditWorkspace(dynamicBreakWorkspace, 'uno')
+      .some((issue) => issue.blockId === dynamicBreak.id)
+      && generateCode(dynamicBreakWorkspace as Blockly.WorkspaceSvg, 'uno').includes('break;'),
+    '“Parar repetição” não reconheceu a repetição com quantidade calculada.',
+  );
+  dynamicBreakWorkspace.dispose();
+
   const decimalWorkspace = new Blockly.Workspace();
   const decimal = decimalWorkspace.newBlock('distancia_entre');
   decimal.setFieldValue(1.5, 'MIN');
@@ -188,11 +223,300 @@ export async function runBlockAudit() {
   assert(typeof serialCode === 'string' && serialCode.includes('\\"robô\\"\\\\linha\\nnova'), 'Texto serial não foi escapado.');
   serialWorkspace.dispose();
 
+  const connectionWorkspace = new Blockly.Workspace();
+  const numberValue = connectionWorkspace.newBlock('numero_fixo');
+  const booleanValue = connectionWorkspace.newBlock('valor_booleano_fixo');
+  const math = connectionWorkspace.newBlock('operacao_matematica');
+  const logical = connectionWorkspace.newBlock('e_ou_logico');
+  const digitalRead = connectionWorkspace.newBlock('ler_pino_digital');
+  assert(
+    !connectionWorkspace.connectionChecker.canConnect(
+      booleanValue.outputConnection,
+      math.getInput('A')?.connection ?? null,
+      false,
+    ),
+    'Uma expressão booleana não pode encaixar em uma entrada matemática.',
+  );
+  assert(
+    !connectionWorkspace.connectionChecker.canConnect(
+      numberValue.outputConnection,
+      logical.getInput('A')?.connection ?? null,
+      false,
+    ),
+    'Um número não pode encaixar diretamente em uma entrada lógica.',
+  );
+  assert(
+    connectionWorkspace.connectionChecker.canConnect(
+      digitalRead.outputConnection,
+      math.getInput('A')?.connection ?? null,
+      false,
+    ) && connectionWorkspace.connectionChecker.canConnect(
+      digitalRead.outputConnection,
+      logical.getInput('A')?.connection ?? null,
+      false,
+    ),
+    'A leitura digital deve poder representar 0/1 e falso/verdadeiro.',
+  );
+  connectionWorkspace.dispose();
+
+  const typedVariableWorkspace = new Blockly.Workspace();
+  const boolDeclaration = typedVariableWorkspace.newBlock('declarar_variavel_global');
+  boolDeclaration.setFieldValue('bool', 'TIPO');
+  boolDeclaration.setFieldValue('ativo', 'NOME');
+  const boolReader = typedVariableWorkspace.newBlock('ler_variavel');
+  boolReader.setFieldValue('ativo', 'NOME');
+  const boolAssignment = typedVariableWorkspace.newBlock('atribuir_variavel');
+  boolAssignment.setFieldValue('ativo', 'NOME');
+  const boolIncrement = typedVariableWorkspace.newBlock('incrementar_variavel');
+  boolIncrement.setFieldValue('ativo', 'NOME');
+  synchronizeVariableTypes(typedVariableWorkspace);
+  assert(
+    boolDeclaration.getInput('VALOR')?.connection?.getCheck()?.includes('Boolean')
+      && boolReader.outputConnection?.getCheck()?.includes('Boolean')
+      && boolAssignment.getInput('VALOR')?.connection?.getCheck()?.includes('Boolean'),
+    'Declaração, leitura e atribuição não herdaram o tipo lógico da variável.',
+  );
+  assert(
+    auditWorkspace(typedVariableWorkspace, 'uno')
+      .some((issue) => issue.blockId === boolIncrement.id && issue.message.includes('não pode ser aumentada')),
+    'A auditoria aceitou incremento numérico em uma variável lógica.',
+  );
+  typedVariableWorkspace.dispose();
+
+  // Compatibilidade: antes desta revisão, o input de variável não tinha tipo.
+  const legacyVariableWorkspace = new Blockly.Workspace();
+  const legacyDeclaration = legacyVariableWorkspace.newBlock('declarar_variavel_global');
+  legacyDeclaration.setFieldValue('bool', 'TIPO');
+  legacyDeclaration.setFieldValue('legado', 'NOME');
+  const legacyNumber = legacyVariableWorkspace.newBlock('numero_fixo');
+  legacyDeclaration.getInput('VALOR')?.connection?.setCheck(null);
+  connectValue(legacyDeclaration, 'VALOR', legacyNumber);
+  synchronizeVariableTypes(legacyVariableWorkspace);
+  assert(
+    legacyDeclaration.getInputTargetBlock('VALOR')?.id === legacyNumber.id,
+    'A sincronização removeu uma conexão de variável criada por projeto legado.',
+  );
+  assert(
+    auditWorkspace(legacyVariableWorkspace, 'uno')
+      .some((issue) => issue.blockId === legacyDeclaration.id && issue.message.includes('valor lógico')),
+    'Uma conexão legada incompatível foi preservada sem orientação de correção.',
+  );
+  const legacyState = Blockly.serialization.workspaces.save(legacyVariableWorkspace);
+  const restoredLegacyWorkspace = new Blockly.Workspace();
+  Blockly.serialization.workspaces.load(legacyState, restoredLegacyWorkspace);
+  synchronizeVariableTypes(restoredLegacyWorkspace);
+  assert(
+    restoredLegacyWorkspace.getBlocksByType('declarar_variavel_global', false)[0]
+      ?.getInputTargetBlock('VALOR')?.type === 'numero_fixo',
+    'O round-trip de um projeto legado desconectou seu valor incompatível.',
+  );
+  restoredLegacyWorkspace.dispose();
+  legacyVariableWorkspace.dispose();
+
+  const mathWorkspace = new Blockly.Workspace();
+  const mathRoots = makeRoots(mathWorkspace);
+  const mathPrint = mathWorkspace.newBlock('escrever_serial_valor');
+  const mapValue = mathWorkspace.newBlock('mapear_valor');
+  const division = mathWorkspace.newBlock('operacao_matematica');
+  division.setFieldValue('/', 'OP');
+  connectValue(division, 'A', mathWorkspace.newBlock('numero_fixo'));
+  const divisor = mathWorkspace.newBlock('numero_fixo');
+  divisor.setFieldValue(2, 'VALOR');
+  connectValue(division, 'B', divisor);
+  connectValue(mapValue, 'VALOR', division);
+  connectValue(mathPrint, 'VALOR', mapValue);
+  connectStatement(mathRoots.loop, 'DO', mathPrint);
+  const generatedMath = generateCode(mathWorkspace as Blockly.WorkspaceSvg, 'uno');
+  assert(
+    generatedMath.includes('_bloquin_dividir((float)')
+      && generatedMath.includes('_bloquin_mapFloat((float)')
+      && !generatedMath.includes('map('),
+    'Divisão/mapeamento ainda estão sujeitos a truncamento inteiro.',
+  );
+  assert(
+    (generatedMath.match(/float _bloquin_mapFloat\(/g) ?? []).length === 1
+      && (generatedMath.match(/#include <math\.h>/g) ?? []).length === 1,
+    'Helpers matemáticos compartilhados não foram deduplicados.',
+  );
+  mathWorkspace.dispose();
+
+  syncBoardPins('uno');
+  const runtimeInitializerWorkspace = new Blockly.Workspace();
+  const runtimeRoots = makeRoots(runtimeInitializerWorkspace);
+  const outputConfiguration = runtimeInitializerWorkspace.newBlock('configurar_pino');
+  outputConfiguration.setFieldValue('13', 'PIN');
+  outputConfiguration.setFieldValue('OUTPUT', 'MODE');
+  connectStatement(runtimeRoots.setup, 'DO', outputConfiguration);
+  const runtimeDeclaration = runtimeInitializerWorkspace.newBlock('declarar_variavel_global');
+  runtimeDeclaration.setFieldValue('leitura', 'NOME');
+  const analogRead = runtimeInitializerWorkspace.newBlock('ler_pino_analogico');
+  analogRead.setFieldValue('A0', 'PIN');
+  connectValue(runtimeDeclaration, 'VALOR', analogRead);
+  const runtimePrint = runtimeInitializerWorkspace.newBlock('escrever_serial_valor');
+  const runtimeReader = runtimeInitializerWorkspace.newBlock('ler_variavel');
+  runtimeReader.setFieldValue('leitura', 'NOME');
+  connectValue(runtimePrint, 'VALOR', runtimeReader);
+  outputConfiguration.nextConnection?.connect(runtimePrint.previousConnection);
+  const runtimeCode = generateCode(runtimeInitializerWorkspace as Blockly.WorkspaceSvg, 'uno');
+  assert(
+    runtimeCode.includes('int bloquin_user_var_leitura = 0;')
+      && runtimeCode.indexOf('pinMode(13, OUTPUT);')
+        < runtimeCode.indexOf('bloquin_user_var_leitura = analogRead(A0);')
+      && runtimeCode.indexOf('bloquin_user_var_leitura = analogRead(A0);')
+        < runtimeCode.indexOf('Serial.println(bloquin_user_var_leitura);'),
+    'Uma leitura de hardware foi executada fora da fase correta do setup do Arduino.',
+  );
+  runtimeInitializerWorkspace.dispose();
+
+  const dependencyWorkspace = new Blockly.Workspace();
+  makeRoots(dependencyWorkspace);
+  const dependentDeclaration = dependencyWorkspace.newBlock('declarar_variavel_global');
+  dependentDeclaration.setFieldValue('resultado', 'NOME');
+  const sourceReader = dependencyWorkspace.newBlock('ler_variavel');
+  sourceReader.setFieldValue('origem', 'NOME');
+  connectValue(dependentDeclaration, 'VALOR', sourceReader);
+  const sourceDeclaration = dependencyWorkspace.newBlock('declarar_variavel_global');
+  sourceDeclaration.setFieldValue('origem', 'NOME');
+  const dependencyAnalogRead = dependencyWorkspace.newBlock('ler_pino_analogico');
+  dependencyAnalogRead.setFieldValue('A0', 'PIN');
+  connectValue(sourceDeclaration, 'VALOR', dependencyAnalogRead);
+  const dependencyCode = generateCode(dependencyWorkspace as Blockly.WorkspaceSvg, 'uno');
+  assert(
+    dependencyCode.indexOf('bloquin_user_var_origem = analogRead(A0);')
+      < dependencyCode.indexOf('bloquin_user_var_resultado = bloquin_user_var_origem;'),
+    'Inicializadores dependentes não foram ordenados antes da execução do setup.',
+  );
+  dependencyWorkspace.dispose();
+
+  const cyclicVariableWorkspace = new Blockly.Workspace();
+  const cyclicA = cyclicVariableWorkspace.newBlock('declarar_variavel_global');
+  cyclicA.setFieldValue('a', 'NOME');
+  const readB = cyclicVariableWorkspace.newBlock('ler_variavel');
+  readB.setFieldValue('b', 'NOME');
+  connectValue(cyclicA, 'VALOR', readB);
+  const cyclicB = cyclicVariableWorkspace.newBlock('declarar_variavel_global');
+  cyclicB.setFieldValue('b', 'NOME');
+  const readA = cyclicVariableWorkspace.newBlock('ler_variavel');
+  readA.setFieldValue('a', 'NOME');
+  connectValue(cyclicB, 'VALOR', readA);
+  synchronizeVariableTypes(cyclicVariableWorkspace);
+  assert(
+    auditWorkspace(cyclicVariableWorkspace, 'uno')
+      .filter((issue) => issue.message.includes('dependência circular')).length === 2,
+    'A auditoria não detectou um ciclo entre inicializadores de variáveis.',
+  );
+  cyclicVariableWorkspace.dispose();
+
+  const safeOutputWorkspace = new Blockly.Workspace();
+  const safeRoots = makeRoots(safeOutputWorkspace);
+  const pwm = safeOutputWorkspace.newBlock('escrever_pino_pwm');
+  pwm.setFieldValue('3', 'PIN');
+  connectValue(pwm, 'VALOR', safeOutputWorkspace.newBlock('numero_fixo'));
+  const servoSetup = safeOutputWorkspace.newBlock('servo_configurar');
+  servoSetup.setFieldValue('9', 'PIN');
+  connectStatement(safeRoots.setup, 'DO', servoSetup);
+  const servoMove = safeOutputWorkspace.newBlock('servo_mover');
+  servoMove.setFieldValue('9', 'PIN');
+  connectValue(servoMove, 'ANGULO', safeOutputWorkspace.newBlock('numero_fixo'));
+  connectChain(safeRoots.loop, 'DO', [pwm, servoMove]);
+  const safeOutputCode = generateCode(safeOutputWorkspace as Blockly.WorkspaceSvg, 'uno');
+  assert(
+    safeOutputCode.includes('analogWrite(3, (int)_bloquin_limitar((float)')
+      && safeOutputCode.includes('.write((int)_bloquin_limitar((float)')
+      && (safeOutputCode.match(/float _bloquin_limitar\(/g) ?? []).length === 1
+      && (safeOutputCode.match(/pinMode\(3, OUTPUT\)/g) ?? []).length === 1,
+    'PWM/servo não foram limitados ou a saída genérica não recebeu configuração automática.',
+  );
+  safeOutputWorkspace.dispose();
+
+  syncBoardPins('uno');
+  const setupOrderWorkspace = new Blockly.Workspace();
+  const setupOrderRoots = makeRoots(setupOrderWorkspace);
+  const earlyWrite = setupOrderWorkspace.newBlock('escrever_pino');
+  earlyWrite.setFieldValue('13', 'PIN');
+  const lateConfiguration = setupOrderWorkspace.newBlock('configurar_pino');
+  lateConfiguration.setFieldValue('13', 'PIN');
+  lateConfiguration.setFieldValue('OUTPUT', 'MODE');
+  connectChain(setupOrderRoots.setup, 'DO', [earlyWrite, lateConfiguration]);
+  assert(
+    auditWorkspace(setupOrderWorkspace, 'uno')
+      .some((issue) => issue.blockId === earlyWrite.id && issue.message.includes('antes de escrever')),
+    'A auditoria não detectou configuração de pino executada tarde demais no setup.',
+  );
+  setupOrderWorkspace.dispose();
+
+  const nestedSetupWorkspace = new Blockly.Workspace();
+  const nestedSetupRoots = makeRoots(nestedSetupWorkspace);
+  const setupCondition = nestedSetupWorkspace.newBlock('se_entao');
+  connectValue(setupCondition, 'CONDICAO', nestedSetupWorkspace.newBlock('valor_booleano_fixo'));
+  const nestedConfiguration = nestedSetupWorkspace.newBlock('configurar_pino');
+  connectStatement(setupCondition, 'ENTAO', nestedConfiguration);
+  connectStatement(nestedSetupRoots.setup, 'DO', setupCondition);
+  assert(
+    auditWorkspace(nestedSetupWorkspace, 'uno')
+      .some((issue) => issue.blockId === nestedConfiguration.id && issue.message.includes('diretamente')),
+    'A auditoria aceitou uma configuração condicional dentro de PREPARAR.',
+  );
+  nestedSetupWorkspace.dispose();
+
+  const singletonWorkspace = new Blockly.Workspace();
+  const singletonRoots = makeRoots(singletonWorkspace);
+  const firstMotorSetup = singletonWorkspace.newBlock('l298n_configurar_simples');
+  const duplicateMotorSetup = singletonWorkspace.newBlock('l298n_configurar_simples');
+  connectChain(singletonRoots.setup, 'DO', [firstMotorSetup, duplicateMotorSetup]);
+  assert(
+    auditWorkspace(singletonWorkspace, 'uno')
+      .some((issue) => issue.blockId === duplicateMotorSetup.id && issue.message.includes('apenas uma configuração')),
+    'A auditoria aceitou duas configurações para o singleton L298N.',
+  );
+  singletonWorkspace.dispose();
+
+  syncBoardPins('esp32');
+  const conflictWorkspace = new Blockly.Workspace();
+  const conflictRoots = makeRoots(conflictWorkspace);
+  const conflictWifi = conflictWorkspace.newBlock('espnow_iniciar_wifi');
+  const conflictServo = conflictWorkspace.newBlock('servo_configurar');
+  conflictServo.setFieldValue('13', 'PIN');
+  connectChain(conflictRoots.setup, 'DO', [conflictWifi, conflictServo]);
+  const conflictAnalog = conflictWorkspace.newBlock('ler_pino_analogico');
+  conflictAnalog.setFieldValue('25', 'PIN');
+  const conflictPrint = conflictWorkspace.newBlock('escrever_serial_valor');
+  connectValue(conflictPrint, 'VALOR', conflictAnalog);
+  const conflictBuzzer = conflictWorkspace.newBlock('buzzer_tocar');
+  conflictBuzzer.setFieldValue('13', 'PIN');
+  connectChain(conflictRoots.loop, 'DO', [conflictPrint, conflictBuzzer]);
+  const conflictIssues = auditWorkspace(conflictWorkspace, 'esp32');
+  assert(
+    conflictIssues.some((issue) => issue.message.includes('ADC2'))
+      && conflictIssues.some((issue) => issue.message.includes('compartilhado')),
+    'A auditoria não detectou ADC2 com Wi-Fi ou colisão entre componentes.',
+  );
+  conflictWorkspace.dispose();
+
+  const espRoleWorkspace = new Blockly.Workspace();
+  const espRoleRoots = makeRoots(espRoleWorkspace);
+  connectChain(espRoleRoots.setup, 'DO', [
+    espRoleWorkspace.newBlock('espnow_iniciar_wifi'),
+    espRoleWorkspace.newBlock('espnow_transmissor_init'),
+    espRoleWorkspace.newBlock('espnow_receptor_init'),
+  ]);
+  assert(
+    auditWorkspace(espRoleWorkspace, 'esp32')
+      .some((issue) => issue.message.includes('transmissor ou receptor')),
+    'A auditoria aceitou dois papéis ESP-NOW incompatíveis no mesmo projeto.',
+  );
+  espRoleWorkspace.dispose();
+
   testIsolatedDependency('esp32', 'espnow_mac_serial', '#include <WiFi.h>');
   testIsolatedDependency('esp32', 'espnow_tem_dados_novos', '_bloquin_OnDataRecv', true);
   testIsolatedDependency('esp32', 'espnow_ler_pitch', '_bloquin_lerEspnowPitch()', true);
   testIsolatedDependency('esp32', 'espnow_ler_roll', '_bloquin_obterSnapshotEspnow()', true);
-  testIsolatedDependency('esp32', 'espnow_timeout_ms', '_bloquin_espnowTimeout', true);
+  testIsolatedDependency(
+    'esp32',
+    'espnow_timeout_ms',
+    'return recebeu ? (millis() - ultimo > limite) : (millis() > limite);',
+    true,
+  );
   testIsolatedDependency('uno', 'mpu_iniciar', '#include <Wire.h>');
   testIsolatedDependency('esp32', 'l298n_velocidade_por_pitch_roll', '_bloquin_aplicarControle');
   testIsolatedDependency('uno', 'servo_configurar', '#include <Servo.h>');
@@ -367,94 +691,266 @@ export async function runBlockAudit() {
     workspace.dispose();
   }
 
-  console.log('Auditoria Blockly: 69/69 blocos, 3 placas, presets e geradores críticos validados.');
+  const fixtureNames = Object.keys(createCompilationFixtures());
+  assert(
+    fixtureNames.join('|')
+      === 'uno-fundamentals|uno-hardware|nano-io|esp32-io|esp32-transmitter|esp32-receiver',
+    'A matriz de compilação representativa está incompleta.',
+  );
+
+  console.log('Auditoria Blockly: 78/78 blocos, 3 placas e 6 cenários de compilação validados.');
 }
 
-export function createCompilationFixtures(): Record<'uno' | 'nano' | 'esp32', string> {
-  const fixtures = {} as Record<'uno' | 'nano' | 'esp32', string>;
+export interface CompilationFixture {
+  board: BoardKey;
+  fqbn: string;
+  code: string;
+}
 
+const COMPILATION_FQBNS: Record<BoardKey, string> = {
+  uno: 'arduino:avr:uno',
+  nano: 'arduino:avr:nano',
+  esp32: 'esp32:esp32:esp32',
+};
+
+function finishFixture(
+  name: string,
+  workspace: Blockly.Workspace,
+  board: BoardKey,
+): CompilationFixture {
+  const issues = auditWorkspace(workspace, board);
+  assert(
+    issues.length === 0,
+    `A fixture ${name} viola contratos: ${issues.map((issue) => issue.message).join(' | ')}`,
+  );
+  const code = generateCode(workspace as Blockly.WorkspaceSvg, board);
+  workspace.dispose();
+  return { board, fqbn: COMPILATION_FQBNS[board], code };
+}
+
+export function createCompilationFixtures(): Record<string, CompilationFixture> {
+  const fixtures: Record<string, CompilationFixture> = {};
+
+  // Fundamentos: variáveis tipadas, inicialização em runtime, composição
+  // matemática/lógica, repetição dinâmica e I/O genérico.
   syncBoardPins('uno');
-  const uno = new Blockly.Workspace();
-  const unoRoots = makeRoots(uno);
-  const unoUltrasonic = uno.newBlock('configurar_ultrassonico');
+  const unoFundamentals = new Blockly.Workspace();
+  const unoFundamentalRoots = makeRoots(unoFundamentals);
+  const sensorDeclaration = unoFundamentals.newBlock('declarar_variavel_global');
+  sensorDeclaration.setFieldValue('float', 'TIPO');
+  sensorDeclaration.setFieldValue('sensor', 'NOME');
+  const initialSensorRead = unoFundamentals.newBlock('ler_pino_analogico');
+  initialSensorRead.setFieldValue('A0', 'PIN');
+  connectValue(sensorDeclaration, 'VALOR', initialSensorRead);
+
+  const sensorAssignment = unoFundamentals.newBlock('atribuir_variavel');
+  sensorAssignment.setFieldValue('sensor', 'NOME');
+  const loopSensorRead = unoFundamentals.newBlock('ler_pino_analogico');
+  loopSensorRead.setFieldValue('A0', 'PIN');
+  connectValue(sensorAssignment, 'VALOR', loopSensorRead);
+
+  const ledByCondition = unoFundamentals.newBlock('escrever_pino_booleano');
+  ledByCondition.setFieldValue('13', 'PIN');
+  const threshold = unoFundamentals.newBlock('comparar_valores');
+  threshold.setFieldValue('>', 'OP');
+  const sensorReaderForCondition = unoFundamentals.newBlock('ler_variavel');
+  sensorReaderForCondition.setFieldValue('sensor', 'NOME');
+  connectValue(threshold, 'A', sensorReaderForCondition);
+  const thresholdValue = unoFundamentals.newBlock('numero_fixo');
+  thresholdValue.setFieldValue(500, 'VALOR');
+  connectValue(threshold, 'B', thresholdValue);
+  const combinedCondition = unoFundamentals.newBlock('e_ou_logico');
+  combinedCondition.setFieldValue('&&', 'OP');
+  connectValue(combinedCondition, 'A', threshold);
+  const numberToBoolean = unoFundamentals.newBlock('numero_para_booleano');
+  const booleanToNumber = unoFundamentals.newBlock('booleano_para_numero');
+  connectValue(booleanToNumber, 'VALOR', unoFundamentals.newBlock('valor_booleano_fixo'));
+  connectValue(numberToBoolean, 'VALOR', booleanToNumber);
+  connectValue(combinedCondition, 'B', numberToBoolean);
+  connectValue(ledByCondition, 'STATE', combinedCondition);
+  const ledFunction = unoFundamentals.newBlock('definir_funcao');
+  ledFunction.setFieldValue('atualizarLed', 'NOME');
+  connectStatement(ledFunction, 'DO', ledByCondition);
+  const ledFunctionCall = unoFundamentals.newBlock('chamar_funcao');
+  ledFunctionCall.setFieldValue('atualizarLed', 'NOME');
+
+  const pwmBySensor = unoFundamentals.newBlock('escrever_pino_pwm');
+  pwmBySensor.setFieldValue('3', 'PIN');
+  const mappedSensor = unoFundamentals.newBlock('mapear_valor');
+  const sensorReaderForPwm = unoFundamentals.newBlock('ler_variavel');
+  sensorReaderForPwm.setFieldValue('sensor', 'NOME');
+  connectValue(mappedSensor, 'VALOR', sensorReaderForPwm);
+  connectValue(pwmBySensor, 'VALOR', mappedSensor);
+
+  const dynamicRepeat = unoFundamentals.newBlock('repetir_quantidade');
+  const repeatCount = unoFundamentals.newBlock('numero_fixo');
+  repeatCount.setFieldValue(2, 'VALOR');
+  connectValue(dynamicRepeat, 'TIMES', repeatCount);
+  const textPrint = unoFundamentals.newBlock('escrever_serial_valor');
+  const text = unoFundamentals.newBlock('texto_fixo');
+  text.setFieldValue('Bloquin pronto', 'TEXT');
+  connectValue(textPrint, 'VALOR', text);
+  const calculatedPrint = unoFundamentals.newBlock('escrever_serial_valor');
+  const roundedPower = unoFundamentals.newBlock('funcao_matematica');
+  roundedPower.setFieldValue('ROUND', 'OP');
+  const power = unoFundamentals.newBlock('potencia');
+  const powerBase = unoFundamentals.newBlock('numero_fixo');
+  powerBase.setFieldValue(2, 'VALOR');
+  const powerExponent = unoFundamentals.newBlock('numero_fixo');
+  powerExponent.setFieldValue(3, 'VALOR');
+  connectValue(power, 'BASE', powerBase);
+  connectValue(power, 'EXPOENTE', powerExponent);
+  connectValue(roundedPower, 'VALOR', power);
+  connectValue(calculatedPrint, 'VALOR', roundedPower);
+  connectChain(dynamicRepeat, 'DO', [textPrint, calculatedPrint]);
+
+  const dynamicWait = unoFundamentals.newBlock('esperar_duracao');
+  const waitDuration = unoFundamentals.newBlock('numero_fixo');
+  waitDuration.setFieldValue(20, 'VALOR');
+  connectValue(dynamicWait, 'TIME', waitDuration);
+  connectChain(unoFundamentalRoots.loop, 'DO', [
+    sensorAssignment,
+    ledFunctionCall,
+    pwmBySensor,
+    dynamicRepeat,
+    dynamicWait,
+  ]);
+  fixtures['uno-fundamentals'] = finishFixture(
+    'uno-fundamentals',
+    unoFundamentals,
+    'uno',
+  );
+
+  // Hardware combinado no AVR: bibliotecas, helpers, múltiplos componentes e
+  // seis pinos do L298N sem colisões.
+  syncBoardPins('uno');
+  const unoHardware = new Blockly.Workspace();
+  const unoHardwareRoots = makeRoots(unoHardware);
+  const unoUltrasonic = unoHardware.newBlock('configurar_ultrassonico');
   unoUltrasonic.setFieldValue('12', 'TRIG');
   unoUltrasonic.setFieldValue('13', 'ECHO');
-  const unoMotorConfig = uno.newBlock('l298n_configurar_simples');
+  const unoMotorConfig = unoHardware.newBlock('l298n_configurar_simples');
   for (const [field, pin] of Object.entries({
     ENA: '3', IN1: '2', IN2: '4', ENB: '5', IN3: '7', IN4: '8',
   })) {
     unoMotorConfig.setFieldValue(pin, field);
   }
-  const unoServoConfig = uno.newBlock('servo_configurar');
+  const unoServoConfig = unoHardware.newBlock('servo_configurar');
   unoServoConfig.setFieldValue('9', 'PIN');
-  connectChain(unoRoots.setup, 'DO', [
+  connectChain(unoHardwareRoots.setup, 'DO', [
     unoUltrasonic,
-    uno.newBlock('mpu_iniciar'),
+    unoHardware.newBlock('mpu_iniciar'),
     unoMotorConfig,
     unoServoConfig,
   ]);
-  const unoMove = uno.newBlock('l298n_mover_robo');
-  const unoPower = uno.newBlock('numero_fixo');
+  const unoMove = unoHardware.newBlock('l298n_mover_robo');
+  const unoPower = unoHardware.newBlock('numero_fixo');
   unoPower.setFieldValue(180, 'VALOR');
   connectValue(unoMove, 'FORCA', unoPower);
-  const unoDistance = uno.newBlock('mostrar_distancia');
+  const unoDistance = unoHardware.newBlock('mostrar_distancia');
   unoDistance.setFieldValue('12', 'TRIG');
   unoDistance.setFieldValue('13', 'ECHO');
-  const unoServoMove = uno.newBlock('servo_mover');
+  const unoServoMove = unoHardware.newBlock('servo_mover');
   unoServoMove.setFieldValue('9', 'PIN');
-  connectValue(unoServoMove, 'ANGULO', uno.newBlock('numero_fixo'));
-  connectChain(unoRoots.loop, 'DO', [unoMove, unoDistance, unoServoMove]);
-  fixtures.uno = generateCode(uno as Blockly.WorkspaceSvg, 'uno');
-  uno.dispose();
+  connectValue(unoServoMove, 'ANGULO', unoHardware.newBlock('numero_fixo'));
+  const unoBuzzer = unoHardware.newBlock('buzzer_tocar_tempo');
+  unoBuzzer.setFieldValue('6', 'PIN');
+  connectChain(unoHardwareRoots.loop, 'DO', [
+    unoMove,
+    unoDistance,
+    unoServoMove,
+    unoBuzzer,
+  ]);
+  fixtures['uno-hardware'] = finishFixture('uno-hardware', unoHardware, 'uno');
 
   syncBoardPins('nano');
-  const nano = new Blockly.Workspace();
-  const nanoRoots = makeRoots(nano);
-  const nanoPrint = nano.newBlock('escrever_serial_valor');
-  const nanoAnalogRead = nano.newBlock('ler_pino_analogico');
+  const nanoIo = new Blockly.Workspace();
+  const nanoRoots = makeRoots(nanoIo);
+  const nanoPrint = nanoIo.newBlock('escrever_serial_valor');
+  const nanoAnalogRead = nanoIo.newBlock('ler_pino_analogico');
   nanoAnalogRead.setFieldValue('A7', 'PIN');
   connectValue(nanoPrint, 'VALOR', nanoAnalogRead);
-  connectStatement(nanoRoots.loop, 'DO', nanoPrint);
-  fixtures.nano = generateCode(nano as Blockly.WorkspaceSvg, 'nano');
-  nano.dispose();
+  const nanoPwm = nanoIo.newBlock('escrever_pino_pwm');
+  nanoPwm.setFieldValue('3', 'PIN');
+  const nanoPwmValue = nanoIo.newBlock('numero_fixo');
+  nanoPwmValue.setFieldValue(128, 'VALOR');
+  connectValue(nanoPwm, 'VALOR', nanoPwmValue);
+  connectChain(nanoRoots.loop, 'DO', [nanoPrint, nanoPwm]);
+  fixtures['nano-io'] = finishFixture('nano-io', nanoIo, 'nano');
 
   syncBoardPins('esp32');
-  const esp32 = new Blockly.Workspace();
-  const espRoots = makeRoots(esp32);
-  const espMotorConfig = esp32.newBlock('l298n_configurar_simples');
+  const esp32Io = new Blockly.Workspace();
+  const esp32IoRoots = makeRoots(esp32Io);
+  const espServoConfig = esp32Io.newBlock('servo_configurar');
+  espServoConfig.setFieldValue('13', 'PIN');
+  connectStatement(esp32IoRoots.setup, 'DO', espServoConfig);
+  const espLed = esp32Io.newBlock('escrever_pino_booleano');
+  espLed.setFieldValue('2', 'PIN');
+  connectValue(espLed, 'STATE', esp32Io.newBlock('valor_booleano_fixo'));
+  const espPwm = esp32Io.newBlock('escrever_pino_pwm');
+  espPwm.setFieldValue('4', 'PIN');
+  const espMap = esp32Io.newBlock('mapear_valor');
+  espMap.setFieldValue(4095, 'DE_MAX');
+  const espAnalogRead = esp32Io.newBlock('ler_pino_analogico');
+  espAnalogRead.setFieldValue('32', 'PIN');
+  connectValue(espMap, 'VALOR', espAnalogRead);
+  connectValue(espPwm, 'VALOR', espMap);
+  const espServoMove = esp32Io.newBlock('servo_mover');
+  espServoMove.setFieldValue('13', 'PIN');
+  const espServoAngle = esp32Io.newBlock('minimo_maximo');
+  connectValue(espServoAngle, 'A', esp32Io.newBlock('numero_fixo'));
+  connectValue(espServoAngle, 'B', esp32Io.newBlock('numero_fixo'));
+  connectValue(espServoMove, 'ANGULO', espServoAngle);
+  connectChain(esp32IoRoots.loop, 'DO', [espLed, espPwm, espServoMove]);
+  fixtures['esp32-io'] = finishFixture('esp32-io', esp32Io, 'esp32');
+
+  syncBoardPins('esp32');
+  const esp32Transmitter = new Blockly.Workspace();
+  const transmitterRoots = makeRoots(esp32Transmitter);
+  connectChain(transmitterRoots.setup, 'DO', [
+    esp32Transmitter.newBlock('espnow_iniciar_wifi'),
+    esp32Transmitter.newBlock('espnow_transmissor_init'),
+    esp32Transmitter.newBlock('espnow_adicionar_receptor'),
+    esp32Transmitter.newBlock('mpu_iniciar'),
+  ]);
+  const send = esp32Transmitter.newBlock('espnow_enviar_pacote');
+  connectValue(send, 'PITCH', esp32Transmitter.newBlock('mpu_ler_pitch'));
+  connectValue(send, 'ROLL', esp32Transmitter.newBlock('mpu_ler_roll'));
+  connectValue(send, 'PARAR', esp32Transmitter.newBlock('valor_booleano_fixo'));
+  connectStatement(transmitterRoots.loop, 'DO', send);
+  fixtures['esp32-transmitter'] = finishFixture(
+    'esp32-transmitter',
+    esp32Transmitter,
+    'esp32',
+  );
+
+  syncBoardPins('esp32');
+  const esp32Receiver = new Blockly.Workspace();
+  const receiverRoots = makeRoots(esp32Receiver);
+  const espMotorConfig = esp32Receiver.newBlock('l298n_configurar_simples');
   for (const [field, pin] of Object.entries({
     ENA: '25', IN1: '26', IN2: '27', ENB: '33', IN3: '32', IN4: '14',
   })) {
     espMotorConfig.setFieldValue(pin, field);
   }
-  const espServoConfig = esp32.newBlock('servo_configurar');
-  espServoConfig.setFieldValue('13', 'PIN');
-  connectChain(espRoots.setup, 'DO', [
-    esp32.newBlock('espnow_iniciar_wifi'),
-    esp32.newBlock('espnow_transmissor_init'),
-    esp32.newBlock('espnow_adicionar_receptor'),
-    esp32.newBlock('espnow_receptor_init'),
-    esp32.newBlock('mpu_iniciar'),
+  connectChain(receiverRoots.setup, 'DO', [
+    esp32Receiver.newBlock('espnow_iniciar_wifi'),
+    esp32Receiver.newBlock('espnow_receptor_init'),
     espMotorConfig,
-    espServoConfig,
   ]);
-
-  const hasData = esp32.newBlock('se_entao');
-  connectValue(hasData, 'CONDICAO', esp32.newBlock('espnow_tem_dados_novos'));
-  connectStatement(hasData, 'ENTAO', esp32.newBlock('espnow_marcar_lido'));
-  const tiltMotor = esp32.newBlock('l298n_velocidade_por_pitch_roll');
-  connectValue(tiltMotor, 'PITCH', esp32.newBlock('espnow_ler_pitch'));
-  connectValue(tiltMotor, 'ROLL', esp32.newBlock('espnow_ler_roll'));
-  const send = esp32.newBlock('espnow_enviar_pacote');
-  connectValue(send, 'PITCH', esp32.newBlock('mpu_ler_pitch'));
-  connectValue(send, 'ROLL', esp32.newBlock('mpu_ler_roll'));
-  connectValue(send, 'PARAR', esp32.newBlock('valor_booleano_fixo'));
-  const espServoMove = esp32.newBlock('servo_mover');
-  espServoMove.setFieldValue('13', 'PIN');
-  connectValue(espServoMove, 'ANGULO', esp32.newBlock('numero_fixo'));
-  connectChain(espRoots.loop, 'DO', [hasData, tiltMotor, send, espServoMove]);
-  fixtures.esp32 = generateCode(esp32 as Blockly.WorkspaceSvg, 'esp32');
-  esp32.dispose();
+  const hasData = esp32Receiver.newBlock('se_entao');
+  connectValue(hasData, 'CONDICAO', esp32Receiver.newBlock('espnow_tem_dados_novos'));
+  const markRead = esp32Receiver.newBlock('espnow_marcar_lido');
+  const tiltMotor = esp32Receiver.newBlock('l298n_velocidade_por_pitch_roll');
+  connectValue(tiltMotor, 'PITCH', esp32Receiver.newBlock('espnow_ler_pitch'));
+  connectValue(tiltMotor, 'ROLL', esp32Receiver.newBlock('espnow_ler_roll'));
+  connectChain(hasData, 'ENTAO', [markRead, tiltMotor]);
+  connectStatement(receiverRoots.loop, 'DO', hasData);
+  fixtures['esp32-receiver'] = finishFixture(
+    'esp32-receiver',
+    esp32Receiver,
+    'esp32',
+  );
 
   return fixtures;
 }

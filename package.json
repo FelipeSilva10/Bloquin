@@ -6,10 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test:library": "node --experimental-strip-types --test scripts/library-validation.test.mjs",
+    "test:projects": "node --experimental-strip-types --test scripts/project-validation.test.mjs",
     "test:sessions": "node --experimental-strip-types --test scripts/session-policy.test.mjs",
+    "test:welcome": "node --test scripts/welcome-screen-validation.test.mjs",
+    "test:layout": "node --test scripts/ide-layout-validation.test.mjs",
+    "test:blocks": "node scripts/run-blockly-audit.mjs",
+    "test:blocks:compile": "node scripts/run-blockly-audit.mjs --compile",
     "audit:blocks": "node scripts/run-blockly-audit.mjs",
     "audit:supabase-baseline": "node scripts/supabase-baseline-audit.mjs",
     "test:supabase-db": "supabase test db --local supabase/tests/database",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "supabase": "supabase",
     "tauri": "tauri"
@@ -21,10 +28,12 @@
     "@tauri-apps/plugin-fs": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "blockly": "^12.4.1",
+    "lucide-react": "^1.28.0",
     "lz-string": "^1.5.0",
+    "pdfjs-dist": "6.1.200",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-router-dom": "^7.14.0",
+    "react-router-dom": "7.18.2",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
@@ -34,6 +43,7 @@
     "@types/react-dom": "^19.1.6",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.6.0",
+    "jsdom": "26.1.0",
     "supabase": "2.110.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"

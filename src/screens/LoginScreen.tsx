@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import logoCompleta from '../assets/LogoCompleta.png';
 import TutorialModal from "../components/modals/TutorialModal";
-import GuestInfoModal from "../components/modals/GuestInfoModal";
+import { EntryBackButton } from '../components/EntryBackButton';
 import {
   clearSession,
   registerSession,
@@ -11,19 +11,19 @@ import {
 } from "../services/sessionService";
 
 interface LoginScreenProps {
-  onLogin: (role: 'student' | 'teacher' | 'visitor', userId?: string) => void;
+  onLogin: (role: 'student' | 'teacher', userId?: string) => void;
+  onBack: () => void;
   beforeLogin?: () => Promise<void>;
   version: string;
 }
 
-export function LoginScreen({ onLogin, beforeLogin, version }: LoginScreenProps) {
+export function LoginScreen({ onLogin, onBack, beforeLogin, version }: LoginScreenProps) {
   const [email, setEmail]             = useState('');
   const [password, setPassword]       = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError]             = useState('');
   const [loading, setLoading]         = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
-  const [showGuestInfo, setShowGuestInfo] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,16 +105,19 @@ export function LoginScreen({ onLogin, beforeLogin, version }: LoginScreenProps)
     }
   };
 
-  const handleEnterAsGuest = () => setShowGuestInfo(true);
-  const handleGuestConfirmed = () => { setShowGuestInfo(false); onLogin('visitor'); };
-
   return (
     <div className="login-container">
+      <EntryBackButton
+        className="entry-back-button--overlay login-entry-back"
+        onClick={onBack}
+        disabled={loading}
+      />
+
       <div className="login-card">
         <img
+          className="login-logo"
           src={logoCompleta}
           alt="bloquin"
-          style={{ height: '50px', marginBottom: '24px' }}
         />
 
         <form className="login-form" onSubmit={handleLogin}>
@@ -158,25 +161,14 @@ export function LoginScreen({ onLogin, beforeLogin, version }: LoginScreenProps)
 
           <button
             type="submit"
-            className="btn-primary"
+            className="btn-primary login-submit"
             disabled={loading}
             aria-busy={loading}
-            style={{ marginTop: '16px' }}
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
 
-        <div className="login-divider" />
-
-        <button
-          type="button"
-          className="btn-text"
-          onClick={handleEnterAsGuest}
-          disabled={loading}
-        >
-          Entrar como Visitante
-        </button>
       </div>
 
       {/* Botão de tutorial fixo no canto inferior direito */}
@@ -194,7 +186,6 @@ export function LoginScreen({ onLogin, beforeLogin, version }: LoginScreenProps)
       </span>
 
       {showTutorial  && <TutorialModal  onClose={() => setShowTutorial(false)} />}
-      {showGuestInfo && <GuestInfoModal onClose={handleGuestConfirmed} />}
     </div>
   );
 }

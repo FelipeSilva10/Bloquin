@@ -12,9 +12,13 @@
     "dialog:default",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://bloquin.online/" }]
+      "allow": [
+        { "url": "https://*" },
+        { "url": "http://*" }
+      ]
     },
     "fs:allow-read-text-file",
-    "fs:allow-write-text-file"
+    "fs:allow-write-text-file",
+    "fs:allow-write-file"
   ]
 }

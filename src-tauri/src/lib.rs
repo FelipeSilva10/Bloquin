@@ -468,7 +468,10 @@ impl Drop for TemporarySketchDir {
     fn drop(&mut self) {
         if let Err(error) = fs::remove_dir_all(&self.0) {
             if error.kind() != std::io::ErrorKind::NotFound {
-                eprintln!(">>> [UPLOAD] Não consegui limpar o sketch temporário: {}", error);
+                eprintln!(
+                    ">>> [UPLOAD] Não consegui limpar o sketch temporário: {}",
+                    error
+                );
             }
         }
     }
@@ -698,10 +701,7 @@ fn get_available_ports() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-async fn open_admin_panel(
-    app: tauri::AppHandle,
-    handoff_code: String,
-) -> Result<String, String> {
+async fn open_admin_panel(app: tauri::AppHandle, handoff_code: String) -> Result<String, String> {
     use tauri::Manager;
 
     if !is_valid_admin_handoff_code(&handoff_code) {

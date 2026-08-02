@@ -31,6 +31,10 @@ export function useModalA11y<T extends HTMLElement>(onClose: () => void) {
     first?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const activeElement = document.activeElement as HTMLElement | null;
+      const nestedDialog = activeElement?.closest<HTMLElement>('[role="dialog"]');
+      if (nestedDialog && nestedDialog !== modal) return;
+
       if (event.key === 'Escape') {
         event.preventDefault();
         onCloseRef.current();

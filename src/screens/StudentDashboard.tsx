@@ -4,12 +4,16 @@ import { supabase } from '../lib/supabase';
 import logoSimples from '../icons/LogoSimples.png';
 import { BOARD_UNSET } from '../blockly/boards';
 import { ProjectService } from '../services/projectService';
+import { importProjectToAccount } from '../services/projectImportService';
+import type { BloquinProjectFile } from '../types/project';
+import { ProjectImportButton } from '../components/forms/ProjectImportButton';
 import ProjectModal from "../components/modals/ProjectModal";
 
 interface StudentDashboardProps {
   userId: string;
   onLogout: () => void;
   onOpenIde: (projectId: string) => void;
+  onOpenLibrary: () => void;
 }
 
 export interface Projeto {
@@ -20,7 +24,7 @@ export interface Projeto {
   updated_at: string;
 }
 
-export function StudentDashboard({ userId, onLogout, onOpenIde }: StudentDashboardProps) {
+export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary }: StudentDashboardProps) {
   const [projects, setProjects] = useState<Projeto[]>([]);
   const [loading, setLoading]   = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -31,6 +35,9 @@ export function StudentDashboard({ userId, onLogout, onOpenIde }: StudentDashboa
   const [newProjectName, setNewProjectName] = useState('');
   const [createError, setCreateError]     = useState('');
   const [isCreating, setIsCreating]       = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
 
   // Modal de exclusão
   const [projectToDelete, setProjectToDelete] = useState<Projeto | null>(null);
@@ -157,6 +164,38 @@ export function StudentDashboard({ userId, onLogout, onOpenIde }: StudentDashboa
     }
   };
 
+  const handleImportProject = async (file: BloquinProjectFile) => {
+    if (isImporting) return;
+    setIsImporting(true);
+    setImportError('');
+    setImportSuccess('');
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from('perfis')
+        .select('turma_id')
+        .eq('id', userId)
+        .single();
+      if (profileError) throw profileError;
+      if (!profile?.turma_id) throw new Error('Seu perfil não está vinculado a uma turma. Fale com o professor.');
+
+      const imported = await importProjectToAccount({
+        file,
+        userId,
+        classroomId: profile.turma_id,
+        existingNames: projects.map((project) => project.nome),
+        role: 'student',
+      });
+      setProjects((current) => current.some((project) => project.id === imported.id)
+        ? current
+        : [imported, ...current]);
+      setImportSuccess(`“${imported.nome}” foi importado para sua conta.`);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Não consegui importar o projeto.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const closeCreateModal = () => {
     setShowModal(false);
     setNewProjectName('');
@@ -168,28 +207,25 @@ export function StudentDashboard({ userId, onLogout, onOpenIde }: StudentDashboa
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--background)', padding: '20px' }}>
 
       {/* TOPBAR */}
-      <header style={{
+      <header className="dashboard-topbar" style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         marginBottom: '30px', backgroundColor: 'var(--white)',
         padding: '15px 25px', borderRadius: '16px', boxShadow: 'var(--shadow-sm)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+        <div className="dashboard-topbar-brand" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <img src={logoSimples} alt="bloquin" style={{ height: '40px' }} />
           <h1 style={{ color: 'var(--dark)', fontSize: '1.5rem', fontWeight: 900 }}>
             Meus Projetos
           </h1>
         </div>
-        <button
-          className="btn-outline"
-          onClick={onLogout}
-          style={{ padding: '10px 20px' }}
-        >
-          Sair
-        </button>
+        <div className="dashboard-topbar-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button className="btn-secondary dashboard-library-button" onClick={onOpenLibrary}>📚 Biblioteca</button>
+          <button className="btn-outline" onClick={onLogout} style={{ padding: '10px 20px' }}>Sair</button>
+        </div>
       </header>
 
       {/* CONTROLES */}
-      <div style={{ marginBottom: '20px' }}>
+      <div className="dashboard-project-actions">
         <button
           className="btn-primary"
           style={{ padding: '12px 25px', fontSize: '1.1rem' }}
@@ -197,7 +233,15 @@ export function StudentDashboard({ userId, onLogout, onOpenIde }: StudentDashboa
         >
           + Novo Projeto
         </button>
+        <ProjectImportButton
+          onSelected={handleImportProject}
+          onError={(message) => { setImportError(message); if (message) setImportSuccess(''); }}
+          disabled={isImporting || loading || Boolean(loadError)}
+        />
       </div>
+
+      {importError && <div className="dashboard-feedback dashboard-feedback-error" role="alert"><span>{importError}</span><button type="button" aria-label="Fechar mensagem" onClick={() => setImportError('')}>×</button></div>}
+      {importSuccess && <div className="dashboard-feedback dashboard-feedback-success" role="status"><span>{importSuccess}</span><button type="button" aria-label="Fechar mensagem" onClick={() => setImportSuccess('')}>×</button></div>}
 
       {/* LISTA DE PROJETOS */}
       {loading ? (

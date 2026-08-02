@@ -1,5 +1,10 @@
 import * as Blockly from 'blockly/core';
 import { BOARDS, type BoardKey } from './boards';
+import {
+  ESP32_INPUT_ONLY_PINS,
+  LOOP_TYPES,
+} from './contracts';
+import { synchronizeVariableTypes } from './variableTypes';
 export { BOARDS, BOARD_UNSET } from './boards';
 export type { BoardKey } from './boards';
 
@@ -10,6 +15,7 @@ let currentAnalogPins: [string, string][] = [...BOARDS.uno.analogPins] as [strin
 let currentI2cSdaPins: [string, string][] = [...BOARDS.uno.i2cSdaPins] as [string, string][];
 let currentI2cSclPins: [string, string][] = [...BOARDS.uno.i2cSclPins] as [string, string][];
 let currentBoardKey: BoardKey = 'uno';
+const synchronizedVariableEvents = new WeakSet<Blockly.Events.Abstract>();
 
 export function syncBoardPins(boardKey: BoardKey) {
   currentBoardKey = boardKey;
@@ -45,7 +51,7 @@ export function initBlocks() {
         if (
           this.type === 'configurar_pino'
           && currentBoardKey === 'esp32'
-          && ['34', '35', '36', '39'].includes(this.getFieldValue('PIN'))
+          && ESP32_INPUT_ONLY_PINS.has(String(this.getFieldValue('PIN')))
           && this.getFieldValue('MODE') !== 'INPUT'
         ) {
           warnings.push('Os GPIO 34, 35, 36 e 39 do ESP32 aceitam somente entrada, sem pull-up interno.');
@@ -91,13 +97,29 @@ export function initBlocks() {
         if (!this.workspace || this.isInFlyout) return;
         let parent = this.getSurroundParent();
         while (parent) {
-          if (parent.type === 'repetir_vezes' || parent.type === 'enquanto_verdadeiro') {
+          if (LOOP_TYPES.has(parent.type)) {
             this.setWarningText(null);
             return;
           }
           parent = parent.getSurroundParent();
         }
         this.setWarningText('“Parar repetição” precisa ficar dentro de “Repetir” ou “Enquanto”.');
+      });
+    });
+  }
+
+  if (!Blockly.Extensions.isRegistered('tipagem_variavel_ext')) {
+    Blockly.Extensions.register('tipagem_variavel_ext', function (this: Blockly.Block) {
+      if (this.workspace) synchronizeVariableTypes(this.workspace);
+      this.setOnChange(function (this: Blockly.Block, event: Blockly.Events.Abstract) {
+        if (
+          !this.workspace
+          || this.isInFlyout
+          || event.isUiEvent
+          || synchronizedVariableEvents.has(event)
+        ) return;
+        synchronizedVariableEvents.add(event);
+        synchronizeVariableTypes(this.workspace);
       });
     });
   }
@@ -110,13 +132,16 @@ export function initBlocks() {
     // ── PINOS
     { type: 'configurar_pino', colour: 165, message0: '⚡ Configurar pino %1 como %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'MODE', options: [['Saída (Enviar sinal)', 'OUTPUT'], ['Entrada (Ler sensor)', 'INPUT'], ['Entrada com redutor de energia', 'INPUT_PULLUP']] }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
     { type: 'escrever_pino', colour: 165, message0: 'Colocar pino %1 em estado %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'STATE', options: [['Ligado (HIGH)', 'HIGH'], ['Desligado (LOW)', 'LOW']] }], previousStatement: null, nextStatement: null },
-    { type: 'ler_pino_digital', colour: 165, message0: 'Ler pino digital %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], output: 'Number' }, // C6
+    { type: 'escrever_pino_booleano', colour: 165, message0: 'Colocar pino %1 conforme %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }, { type: 'input_value', name: 'STATE', check: 'Boolean' }], inputsInline: true, previousStatement: null, nextStatement: null, tooltip: 'Liga o pino quando a condição for verdadeira e desliga quando for falsa.' },
+    { type: 'ler_pino_digital', colour: 165, message0: 'Ler pino digital %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], output: ['Number', 'Boolean'], tooltip: 'Retorna 1/verdadeiro para HIGH e 0/falso para LOW.' },
     { type: 'escrever_pino_pwm', colour: 165, message0: 'Força do pino %1 → %2 (0 a 255)', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentPwmPins }, { type: 'input_value', name: 'VALOR', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },
     { type: 'ler_pino_analogico', colour: 165, message0: 'Ler sensor analógico no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentAnalogPins }], output: 'Number' }, // C6
 
     // ── CONTROLE
-    { type: 'esperar', colour: 120, message0: 'Esperar %1 milissegundos', args0: [{ type: 'field_number', name: 'TIME', value: 1000, min: 0 }], previousStatement: null, nextStatement: null },
-    { type: 'repetir_vezes', colour: 120, message0: 'Repetir %1 vezes %2 %3', args0: [{ type: 'field_number', name: 'TIMES', value: 5, min: 1 }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null },
+    { type: 'esperar', colour: 120, message0: 'Esperar %1 milissegundos', args0: [{ type: 'field_number', name: 'TIME', value: 1000, min: 0, precision: 1 }], previousStatement: null, nextStatement: null },
+    { type: 'esperar_duracao', colour: 120, message0: 'Esperar %1 milissegundos', args0: [{ type: 'input_value', name: 'TIME', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null, tooltip: 'Espera pelo tempo calculado por outro bloco.' },
+    { type: 'repetir_vezes', colour: 120, message0: 'Repetir %1 vezes %2 %3', args0: [{ type: 'field_number', name: 'TIMES', value: 5, min: 1, precision: 1 }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null },
+    { type: 'repetir_quantidade', colour: 120, message0: 'Repetir %1 vezes %2 %3', args0: [{ type: 'input_value', name: 'TIMES', check: 'Number' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null, tooltip: 'Repete pela quantidade calculada por outro bloco.' },
     { type: 'a_cada_x_ms', colour: 120, message0: '⏳ A cada %1 ms fazer %2 %3', args0: [{ type: 'field_number', name: 'MS', value: 1000, min: 1 }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null, tooltip: 'Temporizador sem travar o robô (substitui delay).' }, // Eixo 6
     { type: 'enquanto_verdadeiro', colour: 120, message0: 'Enquanto %1 fizer %2 %3', args0: [{ type: 'input_value', name: 'CONDICAO', check: 'Boolean' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null },
     { type: 'parar_repeticao', colour: 120, message0: '⛔ Parar repetição', args0: [], previousStatement: null, nextStatement: null, extensions: ['validacao_repeticao_ext'] },
@@ -128,10 +153,15 @@ export function initBlocks() {
     { type: 'e_ou_logico', colour: 210, message0: '%1 %2 %3', args0: [{ type: 'input_value', name: 'A', check: 'Boolean' }, { type: 'field_dropdown', name: 'OP', options: [['E', '&&'], ['OU', '||']] }, { type: 'input_value', name: 'B', check: 'Boolean' }], inputsInline: true, output: 'Boolean' },
     { type: 'nao_logico', colour: 210, message0: 'NÃO %1', args0: [{ type: 'input_value', name: 'VALOR', check: 'Boolean' }], inputsInline: true, output: 'Boolean' },
     { type: 'valor_booleano_fixo', colour: 210, message0: '%1', args0: [{ type: 'field_dropdown', name: 'VALOR', options: [['verdadeiro', 'true'], ['falso', 'false']] }], output: 'Boolean' },
+    { type: 'numero_para_booleano', colour: 210, message0: '%1 é diferente de zero?', args0: [{ type: 'input_value', name: 'VALOR', check: 'Number' }], inputsInline: true, output: 'Boolean', tooltip: 'Converte zero em falso e qualquer outro número em verdadeiro.' },
+    { type: 'booleano_para_numero', colour: 210, message0: 'Converter %1 para número', args0: [{ type: 'input_value', name: 'VALOR', check: 'Boolean' }], inputsInline: true, output: 'Number', tooltip: 'Converte falso em 0 e verdadeiro em 1.' },
 
     // ── MATEMÁTICA
     { type: 'numero_fixo', colour: 255, message0: '%1', args0: [{ type: 'field_number', name: 'VALOR', value: 10 }], output: 'Number' }, // C6
     { type: 'operacao_matematica', colour: 255, message0: '%1 %2 %3', args0: [{ type: 'input_value', name: 'A', check: 'Number' }, { type: 'field_dropdown', name: 'OP', options: [['+ soma', '+'], ['− subtração', '-'], ['× multiplicação', '*'], ['÷ divisão', '/'], ['% resto', '%']] }, { type: 'input_value', name: 'B', check: 'Number' }], inputsInline: true, output: 'Number' }, // C6
+    { type: 'potencia', colour: 255, message0: '%1 elevado a %2', args0: [{ type: 'input_value', name: 'BASE', check: 'Number' }, { type: 'input_value', name: 'EXPOENTE', check: 'Number' }], inputsInline: true, output: 'Number' },
+    { type: 'minimo_maximo', colour: 255, message0: '%1 entre %2 e %3', args0: [{ type: 'field_dropdown', name: 'OP', options: [['Menor valor', 'MIN'], ['Maior valor', 'MAX']] }, { type: 'input_value', name: 'A', check: 'Number' }, { type: 'input_value', name: 'B', check: 'Number' }], inputsInline: true, output: 'Number' },
+    { type: 'funcao_matematica', colour: 255, message0: '%1 %2', args0: [{ type: 'field_dropdown', name: 'OP', options: [['Arredondar', 'ROUND'], ['Arredondar para baixo', 'FLOOR'], ['Arredondar para cima', 'CEIL'], ['Raiz quadrada', 'SQRT']] }, { type: 'input_value', name: 'VALOR', check: 'Number' }], inputsInline: true, output: 'Number' },
     { type: 'valor_absoluto', colour: 255, message0: '|%1| valor positivo', args0: [{ type: 'input_value', name: 'VALOR', check: 'Number' }], output: 'Number' }, // C6
     { type: 'mapear_valor', colour: 255, message0: 'Converter %1 de %2-%3 para %4-%5', args0: [{ type: 'input_value', name: 'VALOR', check: 'Number' }, { type: 'field_number', name: 'DE_MIN', value: 0 }, { type: 'field_number', name: 'DE_MAX', value: 1023 }, { type: 'field_number', name: 'PARA_MIN', value: 0 }, { type: 'field_number', name: 'PARA_MAX', value: 255 }], inputsInline: true, output: 'Number' },
     { type: 'constrain_valor', colour: 255, message0: 'Limitar %1 entre %2 e %3', args0: [{ type: 'input_value', name: 'VALOR', check: 'Number' }, { type: 'field_number', name: 'MIN', value: 0 }, { type: 'field_number', name: 'MAX', value: 255 }], inputsInline: true, output: 'Number' }, // C6
@@ -141,10 +171,10 @@ export function initBlocks() {
     { type: 'util_fabsf', colour: 255, message0: '|%1| valor positivo (Decimal)', args0: [{ type: 'input_value', name: 'VALOR', check: 'Number' }], output: 'Number' }, // C6
 
     // ── VARIÁVEIS
-    { type: 'declarar_variavel_global', colour: 330, message0: '📦 Variável %1 %2 = %3', args0: [{ type: 'field_dropdown', name: 'TIPO', options: [['Número Inteiro', 'int'], ['Número Decimal', 'float'], ['Verdadeiro/Falso', 'bool']] }, { type: 'field_input', name: 'NOME', text: 'minha_var' }, { type: 'input_value', name: 'VALOR' }] },
-    { type: 'atribuir_variavel', colour: 330, message0: 'Guardar em %1 o valor %2', args0: [{ type: 'field_input', name: 'NOME', text: 'minha_var' }, { type: 'input_value', name: 'VALOR' }], inputsInline: true, previousStatement: null, nextStatement: null },
-    { type: 'ler_variavel', colour: 330, message0: 'variável %1', args0: [{ type: 'field_input', name: 'NOME', text: 'minha_var' }], output: null },
-    { type: 'incrementar_variavel', colour: 330, message0: 'Aumentar %1 em %2', args0: [{ type: 'field_input', name: 'NOME', text: 'contador' }, { type: 'input_value', name: 'VALOR', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },
+    { type: 'declarar_variavel_global', colour: 330, message0: '📦 Variável %1 %2 = %3', args0: [{ type: 'field_dropdown', name: 'TIPO', options: [['Número Inteiro', 'int'], ['Número Decimal', 'float'], ['Verdadeiro/Falso', 'bool']] }, { type: 'field_input', name: 'NOME', text: 'minha_var' }, { type: 'input_value', name: 'VALOR', check: 'Number' }], extensions: ['tipagem_variavel_ext'] },
+    { type: 'atribuir_variavel', colour: 330, message0: 'Guardar em %1 o valor %2', args0: [{ type: 'field_input', name: 'NOME', text: 'minha_var' }, { type: 'input_value', name: 'VALOR' }], inputsInline: true, previousStatement: null, nextStatement: null, extensions: ['tipagem_variavel_ext'] },
+    { type: 'ler_variavel', colour: 330, message0: 'variável %1', args0: [{ type: 'field_input', name: 'NOME', text: 'minha_var' }], output: null, extensions: ['tipagem_variavel_ext'] },
+    { type: 'incrementar_variavel', colour: 330, message0: 'Aumentar %1 em %2', args0: [{ type: 'field_input', name: 'NOME', text: 'contador' }, { type: 'input_value', name: 'VALOR', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null, extensions: ['tipagem_variavel_ext'] },
 
     // ── FUNÇÕES
     { type: 'definir_funcao', colour: 270, message0: '⚡ Função %1 %2 %3', args0: [{ type: 'field_input', name: 'NOME', text: 'minhaFuncao' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }] },
@@ -160,8 +190,9 @@ export function initBlocks() {
     { type: 'distancia_entre', colour: 30, message0: 'Distância entre %1 e %2 cm? (Trigger %3 Echo %4)', args0: [{ type: 'field_number', name: 'MIN', value: 10, min: 0 }, { type: 'field_number', name: 'MAX', value: 20, min: 0 }, { type: 'field_dropdown', name: 'TRIG', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'ECHO', options: () => currentBoardPins }], output: 'Boolean' },
 
     // ── COMUNICAÇÃO
+    { type: 'texto_fixo', colour: 160, message0: 'texto %1', args0: [{ type: 'field_input', name: 'TEXT', text: 'Olá!' }], output: 'String' },
     { type: 'escrever_serial', colour: 160, message0: 'O robô diz o texto: %1', args0: [{ type: 'field_input', name: 'TEXT', text: 'Olá!' }], previousStatement: null, nextStatement: null },
-    { type: 'escrever_serial_valor', colour: 160, message0: 'O robô diz o valor: %1', args0: [{ type: 'input_value', name: 'VALOR' }], previousStatement: null, nextStatement: null },
+    { type: 'escrever_serial_valor', colour: 160, message0: 'O robô diz: %1', args0: [{ type: 'input_value', name: 'VALOR', check: ['Number', 'Boolean', 'String'] }], previousStatement: null, nextStatement: null },
 
     // ── SERVO MOTOR
     { type: 'servo_configurar', colour: 170, message0: 'Conectar servo no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },

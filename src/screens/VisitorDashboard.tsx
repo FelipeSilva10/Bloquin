@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { MAX_OPEN_TABS, useTabs } from '../state/tabsStore';
-import { parseProjectFile } from '../types/project';
+import { MAX_PROJECT_FILE_BYTES, parseProjectFileContents } from '../types/project';
 import { isTauriRuntime, openLocalProjectFile } from '../services/localProjectService';
+import { EntryBackButton } from '../components/EntryBackButton';
 
 interface VisitorDashboardProps {
   onExitVisitor: () => void;
-  onOpenProject: () => void;
+  onOpenProject: (tabId: string) => void;
 }
 
 export function VisitorDashboard({ onExitVisitor, onOpenProject }: VisitorDashboardProps) {
@@ -18,14 +19,14 @@ export function VisitorDashboard({ onExitVisitor, onOpenProject }: VisitorDashbo
     const id = openProject({ title: 'Projeto visitante', source: 'memory', board: null });
     if (id) {
       setError('');
-      onOpenProject();
+      onOpenProject(id);
     } else {
       setError(`Você atingiu o limite de ${MAX_OPEN_TABS} abas abertas. Feche uma aba para continuar.`);
     }
   };
 
   const openParsedProject = (contents: string, filePath: string) => {
-    const parsed = parseProjectFile(JSON.parse(contents));
+    const parsed = parseProjectFileContents(contents, filePath);
     const id = openProject({
       title: parsed.project.name,
       source: 'local-file',
@@ -35,7 +36,7 @@ export function VisitorDashboard({ onExitVisitor, onOpenProject }: VisitorDashbo
     });
     if (!id) throw new Error(`Você atingiu o limite de ${MAX_OPEN_TABS} abas abertas. Feche uma aba para continuar.`);
     setError('');
-    onOpenProject();
+    onOpenProject(id);
   };
 
   const openNativeFile = async () => {
@@ -53,6 +54,7 @@ export function VisitorDashboard({ onExitVisitor, onOpenProject }: VisitorDashbo
 
   const openFile = async (file: File) => {
     try {
+      if (file.size > MAX_PROJECT_FILE_BYTES) throw new Error('O arquivo é muito grande. O limite para importação é 8 MB.');
       openParsedProject(await file.text(), file.name);
     } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível abrir o arquivo.'); }
   };
@@ -61,19 +63,20 @@ export function VisitorDashboard({ onExitVisitor, onOpenProject }: VisitorDashbo
     <div className="dashboard-container">
       <div className="dashboard-header">
         <div><h1>Modo Visitante</h1><p>Crie e teste projetos sem fazer cadastro.</p></div>
-        <button type="button" className="btn-secondary" onClick={onExitVisitor}>Entrar ou criar conta</button>
+        <EntryBackButton onClick={onExitVisitor} disabled={isOpening} />
       </div>
       <div className="dashboard-content">
         <div className="project-grid">
           <button type="button" className="project-card new-project-card" onClick={createProject}>＋<span>Novo projeto</span></button>
           <button type="button" className="project-card new-project-card" onClick={openNativeFile} disabled={isOpening}>📂<span>{isOpening ? 'Abrindo…' : 'Abrir arquivo JSON'}</span></button>
-          {tabs.filter((tab) => tab.type === 'project').map((tab) => <button type="button" className="project-card" key={tab.id} onClick={() => { activateTab(tab.id); onOpenProject(); }}><strong>{tab.dirty ? '● ' : ''}{tab.title}</strong><small>Projeto local da sessão</small></button>)}
+          {tabs.filter((tab) => tab.type === 'project').map((tab) => <button type="button" className="project-card" key={tab.id} onClick={() => { activateTab(tab.id); onOpenProject(tab.id); }}><strong>{tab.dirty ? '● ' : ''}{tab.title}</strong><small>Projeto local da sessão</small></button>)}
         </div>
         {error && <p role="alert" style={{ color: 'var(--danger)', fontWeight: 700 }}>{error}</p>}
       </div>
       <input
         ref={inputRef}
-        hidden
+        className="visually-hidden-file"
+        tabIndex={-1}
         type="file"
         accept=".json,application/json"
         onChange={(e) => {

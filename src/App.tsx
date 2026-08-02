@@ -14,8 +14,11 @@ import { LoginScreen }      from './screens/LoginScreen';
 import { TeacherDashboard } from './screens/TeacherDashboard';
 import { StudentDashboard } from './screens/StudentDashboard';
 import { VisitorDashboard } from './screens/VisitorDashboard';
+import { WelcomeScreen } from './screens/WelcomeScreen';
+import { LibraryScreen } from './screens/LibraryScreen';
+import { LibraryResourceScreen } from './screens/LibraryResourceScreen';
 import { SetupProvider, useSetup } from './state/setupStore';
-import { MAX_OPEN_TABS, TabsProvider, useTabs } from './state/tabsStore';
+import { MAX_OPEN_TABS, TabsProvider, useTabs, type ProjectTab } from './state/tabsStore';
 import {
   clearSession,
   signOutLocalSafely,
@@ -136,33 +139,42 @@ function InactivityGuard({
 // Rotas do app
 // ─────────────────────────────────────────────────────────────────────────────
 function AppRoutes({ installedVersion }: { installedVersion: string }) {
-  // A entrada padrão deve passar pela tela de login; visitante é uma escolha explícita.
+  // A entrada padrão apresenta as opções de login e acesso local como visitante.
   const [role, setRole]     = useState<UserRole>('guest');
   const [userId, setUserId] = useState<string | null>(null);
+  const [lastLibraryResourceTabId, setLastLibraryResourceTabId] = useState<string | null>(null);
   const logoutInProgressRef = useRef(false);
   const logoutCleanupRef = useRef<Promise<void>>(Promise.resolve());
   const navigate = useNavigate();
-  const { openProject, activateTab, resetTabs } = useTabs();
+  const location = useLocation();
+  const { tabs, activeTab, openLibrary, openProject, activateTab, resetTabs } = useTabs();
+  const libraryTabIsOpen = tabs.some((tab) => tab.type === 'library');
+  const keptLibraryResourceTabId = activeTab.type === 'library-resource' ? activeTab.id : lastLibraryResourceTabId;
+  const requestedWorkspaceTabId = getRequestedWorkspaceTabId(location.state);
 
-  const handleLogin = (loggedRole: 'student' | 'teacher' | 'visitor', loggedUserId?: string) => {
+  const handleLogin = (loggedRole: 'student' | 'teacher', loggedUserId?: string) => {
     logoutInProgressRef.current = false;
     void closeAdminPanelWindow();
     resetTabs();
     setRole(loggedRole);
-    if (loggedRole === 'visitor') {
-      // O modo visitante é uma sessão local/offline e nunca deve herdar uma
-      // autenticação persistida nem os limites aplicados a contas online.
-      setUserId(null);
-      // A função limpa o storage de forma síncrona antes de qualquer await,
-      // portanto a entrada também funciona sem acesso ao Supabase.
-      void signOutLocalSafely();
-      navigate('/dashboard');
-      return;
-    }
     // O LoginScreen já recebeu o id da sessão criada. Reutilizá-lo evita uma
     // chamada redundante a /auth/v1/user durante cada login.
     setUserId(loggedUserId ?? null);
     navigate('/dashboard');
+  };
+
+  const handleVisitorEntry = () => {
+    logoutInProgressRef.current = false;
+    void closeAdminPanelWindow();
+    // A dashboard visitante começa sem projetos persistidos. A aba de projeto
+    // só é criada quando o usuário escolher criar, importar ou abrir um item.
+    resetTabs();
+    setRole('visitor');
+    setUserId(null);
+    // A sessão visitante é local/offline e nunca herda autenticação anterior.
+    // Guardar a promise também impede que um login iniciado logo depois passe
+    // à frente dessa limpeza assíncrona.
+    logoutCleanupRef.current = signOutLocalSafely();
   };
 
   const handleLogout = () => {
@@ -207,23 +219,119 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
     return stopWatchingSession;
   }, [role, userId]);
 
+  useEffect(() => {
+    if (activeTab.type === 'library-resource') {
+      setLastLibraryResourceTabId(activeTab.id);
+    } else if (lastLibraryResourceTabId && !tabs.some((tab) => tab.id === lastLibraryResourceTabId)) {
+      setLastLibraryResourceTabId(null);
+    }
+  }, [activeTab, lastLibraryResourceTabId, tabs]);
+
+  useEffect(() => {
+    if (role === 'guest') return;
+
+    const requestedTab = requestedWorkspaceTabId
+      ? tabs.find((tab) => tab.id === requestedWorkspaceTabId)
+      : undefined;
+    if (
+      requestedTab
+      && requestedTab.id !== activeTab.id
+      && workspacePathMatchesTab(location.pathname, requestedTab)
+    ) {
+      activateTab(requestedTab.id);
+      return;
+    }
+
+    if (location.pathname === '/biblioteca' && (role === 'teacher' || role === 'student')) {
+      const libraryId = openLibrary();
+      if (!libraryId) {
+        activateTab('dashboard');
+        navigate('/dashboard', { replace: true, state: { workspaceTabId: 'dashboard' } });
+      }
+      return;
+    }
+
+    if (location.pathname === '/biblioteca/leitura' && (role === 'teacher' || role === 'student')) {
+      // Uma entrada antiga do histórico pode apontar para uma mídia cuja aba
+      // já foi fechada. Nesse caso, voltar ao mural é mais previsível do que
+      // abrir silenciosamente outro material ainda existente.
+      if (requestedWorkspaceTabId && !requestedTab) {
+        const libraryId = openLibrary();
+        if (libraryId) {
+          navigate('/biblioteca', { replace: true, state: { workspaceTabId: libraryId } });
+        } else {
+          activateTab('dashboard');
+          navigate('/dashboard', { replace: true, state: { workspaceTabId: 'dashboard' } });
+        }
+        return;
+      }
+
+      if (activeTab.type === 'library-resource') return;
+      const fallbackResource = [...tabs].reverse().find((tab) => tab.type === 'library-resource');
+      if (fallbackResource) {
+        activateTab(fallbackResource.id);
+        return;
+      }
+
+      const libraryId = openLibrary();
+      if (libraryId) {
+        navigate('/biblioteca', { replace: true, state: { workspaceTabId: libraryId } });
+      } else {
+        activateTab('dashboard');
+        navigate('/dashboard', { replace: true, state: { workspaceTabId: 'dashboard' } });
+      }
+      return;
+    }
+
+    if (location.pathname.startsWith('/ide')) {
+      if (requestedWorkspaceTabId && !requestedTab) {
+        activateTab('dashboard');
+        navigate('/dashboard', { replace: true, state: { workspaceTabId: 'dashboard' } });
+        return;
+      }
+
+      if (activeTab.type === 'project') return;
+      const projectIdFromPath = location.pathname.split('/')[2];
+      const fallbackProject = projectIdFromPath
+        ? tabs.find((tab) => tab.type === 'project' && tab.projectId === projectIdFromPath)
+        : [...tabs].reverse().find((tab) => tab.type === 'project');
+      if (fallbackProject) {
+        activateTab(fallbackProject.id);
+      } else {
+        activateTab('dashboard');
+        navigate('/dashboard', { replace: true, state: { workspaceTabId: 'dashboard' } });
+      }
+      return;
+    }
+
+    if (location.pathname === '/dashboard') activateTab('dashboard');
+  }, [activeTab.id, activeTab.type, activateTab, location.pathname, navigate, openLibrary, requestedWorkspaceTabId, role, tabs]);
+
   const handleBackToDashboard = () => {
     activateTab('dashboard');
-    navigate('/dashboard');
+    navigate('/dashboard', { state: { workspaceTabId: 'dashboard' } });
   };
 
-  const openIde = (projectId: string | undefined, viewOnly: boolean) => {
+  const handleOpenLibrary = () => {
+    if (!openLibrary()) {
+      window.alert(`Você atingiu o limite de ${MAX_OPEN_TABS} abas abertas. Feche uma aba para continuar.`);
+      return;
+    }
+    navigate('/biblioteca', { state: { workspaceTabId: 'library' } });
+  };
+
+  const openIde = (projectId: string, viewOnly: boolean) => {
     const id = openProject({
       projectId,
-      source: projectId ? 'remote' : 'memory',
-      title: projectId ? 'Projeto' : 'Novo projeto',
+      source: 'remote',
+      title: 'Projeto',
       readOnly: viewOnly,
     });
     if (!id) {
       window.alert(`Você atingiu o limite de ${MAX_OPEN_TABS} abas abertas. Feche uma aba para continuar.`);
       return;
     }
-    navigate('/ide', { state: { readOnly: viewOnly } });
+    navigate('/ide', { state: { readOnly: viewOnly, workspaceTabId: id } });
   };
 
   return (
@@ -232,15 +340,43 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
       userId={role === 'student' || role === 'teacher' ? userId : null}
       onLogout={handleLogout}
     >
-      <WorkspaceTabs role={role} />
-      <Routes>
+      <div className="workspace-shell">
+        <WorkspaceTabs role={role} />
+        <div className={`workspace-viewport${location.pathname.startsWith('/ide') ? ' workspace-viewport--ide' : ''}${role === 'guest' && (location.pathname === '/' || location.pathname === '/login') ? ' workspace-viewport--entry' : ''}`}>
+          {(role === 'teacher' || role === 'student') && libraryTabIsOpen && (
+            <div className="workspace-keepalive" hidden={location.pathname !== '/biblioteca'}>
+              <LibraryScreen userId={userId ?? ''} mode={role} />
+            </div>
+          )}
+          {(role === 'teacher' || role === 'student') && keptLibraryResourceTabId && tabs.some((tab) => tab.id === keptLibraryResourceTabId) && (
+            <div className="workspace-keepalive" hidden={location.pathname !== '/biblioteca/leitura'}>
+              <LibraryResourceScreen key={keptLibraryResourceTabId} tabId={keptLibraryResourceTabId} />
+            </div>
+          )}
+          <Routes>
         <Route
           path="/"
           element={
             role === 'guest'
               ? (
+                <WelcomeScreen
+                  onEnter={() => navigate('/login')}
+                  onVisitor={handleVisitorEntry}
+                  version={installedVersion}
+                />
+              )
+              : <Navigate to="/dashboard" replace />
+          }
+        />
+
+        <Route
+          path="/login"
+          element={
+            role === 'guest'
+              ? (
                 <LoginScreen
                   onLogin={handleLogin}
+                  onBack={() => navigate('/', { replace: true })}
                   beforeLogin={() => logoutCleanupRef.current}
                   version={installedVersion}
                 />
@@ -258,21 +394,44 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
                 onLogout={handleLogout}
                 onOpenOwnProject={(id) => openIde(id, false)}
                 onInspectStudentProject={(id) => openIde(id, true)}
+                onOpenLibrary={handleOpenLibrary}
               />
             ) : role === 'student' ? (
               <StudentDashboard
                 userId={userId ?? ''}
                 onLogout={handleLogout}
                 onOpenIde={(id) => openIde(id, false)}
+                onOpenLibrary={handleOpenLibrary}
               />
             ) : role === 'visitor' ? (
               <VisitorDashboard
                 onExitVisitor={handleLogout}
-                onOpenProject={() => navigate('/ide')}
+                onOpenProject={(tabId) => {
+                  activateTab(tabId);
+                  navigate('/ide', { state: { readOnly: false, workspaceTabId: tabId } });
+                }}
               />
             ) : (
               <Navigate to="/" replace />
             )
+          }
+        />
+
+        <Route
+          path="/biblioteca"
+          element={
+            role === 'teacher' || role === 'student'
+              ? null
+              : <Navigate to="/dashboard" replace />
+          }
+        />
+
+        <Route
+          path="/biblioteca/leitura"
+          element={
+            role === 'teacher' || role === 'student'
+              ? null
+              : <Navigate to="/dashboard" replace />
           }
         />
 
@@ -284,7 +443,9 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
               : <Navigate to="/" replace />
           }
         />
-      </Routes>
+          </Routes>
+        </div>
+      </div>
     </InactivityGuard>
   );
 }
@@ -323,7 +484,9 @@ function IdeScreenWrapper({
   const { activeTab } = useTabs();
   const readOnly = activeTab.readOnly ?? location.state?.readOnly ?? false;
   const currentProjectId = activeTab.projectId ?? projectId;
-  if (activeTab.type === 'dashboard') return <Navigate to="/dashboard" replace />;
+  if (activeTab.type !== 'project') {
+    return <div className="screen-loading" role="status" aria-live="polite">Restaurando aba…</div>;
+  }
   return (
     <Suspense fallback={<div className="screen-loading" role="status" aria-live="polite">Carregando editor…</div>}>
       <IdeScreen
@@ -349,7 +512,8 @@ function WorkspaceTabs({ role }: { role: UserRole }) {
 
   const handleActivate = (id: string) => {
     activateTab(id);
-    navigate(id === 'dashboard' ? '/dashboard' : '/ide');
+    const tab = tabs.find((item) => item.id === id);
+    navigate(getWorkspaceTabPath(tab), { state: getWorkspaceTabState(tab) });
   };
 
   const handleClose = (id: string, dirty: boolean) => {
@@ -366,15 +530,18 @@ function WorkspaceTabs({ role }: { role: UserRole }) {
     const index = tabs.findIndex((tab) => tab.id === id);
     const fallbackId = tabs[Math.max(0, index - 1)]?.id ?? 'dashboard';
     closeTab(id);
-    if (wasActive) navigate(fallbackId === 'dashboard' ? '/dashboard' : '/ide');
+    if (wasActive) {
+      const fallbackTab = tabs.find((tab) => tab.id === fallbackId);
+      navigate(getWorkspaceTabPath(fallbackTab), { state: getWorkspaceTabState(fallbackTab) });
+    }
   };
 
   return (
-    <nav className="tab-bar" aria-label="Projetos abertos">
+    <nav className="tab-bar" aria-label="Abas abertas">
       {tabs.map((tab) => (
         <div className={`tab-item ${tab.id === activeTabId ? 'active' : ''}`} key={tab.id}>
-          <button type="button" className="tab-select" onClick={() => handleActivate(tab.id)}>
-            {tab.id === 'dashboard' ? '⌂ ' : tab.source === 'memory' ? '👤 ' : ''}
+          <button type="button" className="tab-select" onClick={() => handleActivate(tab.id)} title={tab.title} aria-current={tab.id === activeTabId ? 'page' : undefined}>
+            {tab.type === 'dashboard' ? '⌂ ' : tab.type === 'library' ? '▦ ' : tab.type === 'library-resource' ? `${tab.libraryResourceKind === 'pdf' ? 'PDF' : tab.libraryResourceKind === 'image' ? '▧' : '✦'} ` : tab.source === 'memory' ? '👤 ' : ''}
             {tab.dirty ? '● ' : ''}{tab.title}
           </button>
           {tab.id !== 'dashboard' && (
@@ -391,6 +558,32 @@ function WorkspaceTabs({ role }: { role: UserRole }) {
       )}
     </nav>
   );
+}
+
+function getWorkspaceTabPath(tab?: ProjectTab): string {
+  if (tab?.type === 'library') return '/biblioteca';
+  if (tab?.type === 'library-resource') return '/biblioteca/leitura';
+  if (tab?.type === 'dashboard' || !tab) return '/dashboard';
+  return '/ide';
+}
+
+function getWorkspaceTabState(tab?: ProjectTab): { workspaceTabId: string; readOnly?: boolean } | undefined {
+  if (!tab) return undefined;
+  return {
+    workspaceTabId: tab.id,
+    ...(tab.type === 'project' ? { readOnly: tab.readOnly } : {}),
+  };
+}
+
+function getRequestedWorkspaceTabId(state: unknown): string | null {
+  if (!state || typeof state !== 'object' || !('workspaceTabId' in state)) return null;
+  const id = (state as { workspaceTabId?: unknown }).workspaceTabId;
+  return typeof id === 'string' ? id : null;
+}
+
+function workspacePathMatchesTab(pathname: string, tab: ProjectTab): boolean {
+  if (tab.type === 'project') return pathname.startsWith('/ide');
+  return getWorkspaceTabPath(tab) === pathname;
 }
 
 function UnsavedTabDialog({ title, onCancel, onConfirm }: { title: string; onCancel: () => void; onConfirm: () => void }) {
