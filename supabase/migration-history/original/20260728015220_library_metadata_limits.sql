@@ -3,4 +3,3 @@ alter table public.biblioteca_anexos
     (titulo is null or char_length(titulo) <= 180)
     and (descricao is null or char_length(descricao) <= 500)
   );
-

@@ -32,7 +32,6 @@ as $$
       )
   );
 $$;
-
 create or replace function private.biblioteca_can_manage_publicacao(p_publicacao_id uuid)
 returns boolean
 language sql
@@ -49,4 +48,3 @@ as $$
       and profile.role = 'teacher'
   );
 $$;
-
