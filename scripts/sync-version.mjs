@@ -34,7 +34,7 @@ const replacements = [
   },
   {
     path: 'src-tauri/Cargo.lock',
-    pattern: /(name = "bloquin"\nversion = ")[^"]+(")/,
+    pattern: /(name = "bloquin"\r?\nversion = ")[^"]+(")/,
     replacement: `$1${version}$2`,
   },
 ];
