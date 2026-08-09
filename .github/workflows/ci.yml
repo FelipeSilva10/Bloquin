@@ -16,13 +16,23 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Mantidas fixas para que a matriz Blockly seja reproduzível no CI. O hash
+  # do binário oficial é verificado inclusive quando ele vem do cache.
+  ARDUINO_CLI_VERSION: "1.4.1"
+  ARDUINO_CLI_LINUX_SHA256: "683cf2a6b8953e3d632e7e4512c36667839d2073349c4b6d312e4c67592359bd"
+  ARDUINO_CLI_LINUX_BINARY_SHA256: "2e082731f7704672e9e0862e6d30af10fb93b2cd9e48f0e4e0076125ab10dae1"
+  ARDUINO_AVR_CORE_VERSION: "1.8.7"
+  ARDUINO_ESP32_CORE_VERSION: "3.3.7"
+  ARDUINO_SERVO_LIBRARY_VERSION: "1.3.0"
+  ARDUINO_ESP32_SERVO_LIBRARY_VERSION: "3.0.9"
+  ARDUINO_ESP32_INDEX_URL: "https://espressif.github.io/arduino-esp32/package_esp32_index.json"
 
 jobs:
   # ─────────────────────────────────────────────────────────
-  # Lint e verificação de tipos (falha rápido, sem compilar Rust)
+  # Tipos e testes do frontend (falha rápido, sem compilar Rust)
   # ─────────────────────────────────────────────────────────
   lint:
-    name: Lint e Tipos
+    name: Tipos e testes do frontend
     runs-on: ubuntu-22.04
 
     steps:
@@ -39,8 +49,102 @@ jobs:
       - name: TypeScript — verificação de tipos
         run: npx tsc --noEmit
 
-      - name: ESLint
-        run: npm run lint --if-present
+      - name: Testes automatizados do frontend
+        run: npm test
+
+  # ─────────────────────────────────────────────────────────
+  # Compilação real dos sketches Blockly. Não exige placa, porta serial ou
+  # upload: valida os seis cenários gerados contra os toolchains AVR e ESP32.
+  # ─────────────────────────────────────────────────────────
+  blockly-compile:
+    name: Blockly — compilação Arduino
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Instalar dependências npm
+        run: npm ci
+
+      # PRs só restauram este cache. Ele é salvo exclusivamente a partir de
+      # main e o SHA-256 do executável continua sendo conferido em toda execução.
+      - name: Restaurar cache do Arduino CLI e dos cores
+        id: arduino-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/bloquin/arduino-cli/${{ env.ARDUINO_CLI_VERSION }}
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: arduino-cli-${{ runner.os }}-${{ env.ARDUINO_CLI_VERSION }}-avr-${{ env.ARDUINO_AVR_CORE_VERSION }}-esp32-${{ env.ARDUINO_ESP32_CORE_VERSION }}-servo-${{ env.ARDUINO_SERVO_LIBRARY_VERSION }}-esp32servo-${{ env.ARDUINO_ESP32_SERVO_LIBRARY_VERSION }}
+
+      - name: Instalar Arduino CLI verificado
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLI_DIRECTORY="$HOME/.cache/bloquin/arduino-cli/$ARDUINO_CLI_VERSION"
+          CLI_PATH="$CLI_DIRECTORY/arduino-cli"
+          mkdir -p "$CLI_DIRECTORY"
+
+          if [ ! -f "$CLI_PATH" ]; then
+            archive="$RUNNER_TEMP/arduino-cli.tar.gz"
+            curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+              --output "$archive" \
+              "https://github.com/arduino/arduino-cli/releases/download/v${ARDUINO_CLI_VERSION}/arduino-cli_${ARDUINO_CLI_VERSION}_Linux_64bit.tar.gz"
+            printf '%s  %s\n' "$ARDUINO_CLI_LINUX_SHA256" "$archive" | sha256sum --check --strict
+            tar --extract --gzip --file "$archive" --directory "$CLI_DIRECTORY" arduino-cli
+          fi
+
+          printf '%s  %s\n' "$ARDUINO_CLI_LINUX_BINARY_SHA256" "$CLI_PATH" | sha256sum --check --strict
+          chmod 0755 "$CLI_PATH"
+          "$CLI_PATH" version
+          echo "$CLI_DIRECTORY" >> "$GITHUB_PATH"
+
+      - name: Configurar e instalar cores Arduino fixados
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.arduino15"
+          cat > "$HOME/.arduino15/arduino-cli.yaml" <<EOF
+          board_manager:
+            additional_urls:
+              - $ARDUINO_ESP32_INDEX_URL
+          EOF
+
+          arduino-cli core update-index
+          arduino-cli core install "arduino:avr@$ARDUINO_AVR_CORE_VERSION"
+          arduino-cli core install "esp32:esp32@$ARDUINO_ESP32_CORE_VERSION"
+          arduino-cli lib update-index
+          arduino-cli lib install "Servo@$ARDUINO_SERVO_LIBRARY_VERSION"
+          arduino-cli lib install "ESP32Servo@$ARDUINO_ESP32_SERVO_LIBRARY_VERSION"
+          arduino-cli core list
+          arduino-cli lib list
+
+          arduino-cli core list | grep -Eq "^arduino:avr[[:space:]]+$ARDUINO_AVR_CORE_VERSION[[:space:]]"
+          arduino-cli core list | grep -Eq "^esp32:esp32[[:space:]]+$ARDUINO_ESP32_CORE_VERSION[[:space:]]"
+          arduino-cli lib list | grep -Eq "^Servo[[:space:]]+$ARDUINO_SERVO_LIBRARY_VERSION[[:space:]]"
+          arduino-cli lib list | grep -Eq "^ESP32Servo[[:space:]]+$ARDUINO_ESP32_SERVO_LIBRARY_VERSION[[:space:]]"
+
+      - name: Compilar matriz Blockly sem hardware
+        run: npm run test:hardware
+
+      - name: Salvar cache Arduino de main
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          steps.arduino-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/bloquin/arduino-cli/${{ env.ARDUINO_CLI_VERSION }}
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: ${{ steps.arduino-cache.outputs.cache-primary-key }}
 
   # ─────────────────────────────────────────────────────────
   # Verificação de compilação Rust
@@ -83,3 +187,6 @@ jobs:
 
       - name: cargo clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: Testes Rust
+        run: cargo test --manifest-path src-tauri/Cargo.toml

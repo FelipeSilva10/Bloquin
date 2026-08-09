@@ -1,12 +1,13 @@
 // src/screens/StudentDashboard.tsx
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import logoSimples from '../icons/LogoSimples.png';
+import logoSimples from '../assets/LogoSimples.png';
 import { BOARD_UNSET } from '../blockly/boards';
 import { ProjectService } from '../services/projectService';
 import { importProjectToAccount } from '../services/projectImportService';
 import type { BloquinProjectFile } from '../types/project';
 import { ProjectImportButton } from '../components/forms/ProjectImportButton';
+import { ProjectBoardBadge } from '../components/ProjectBoardBadge';
 import ProjectModal from "../components/modals/ProjectModal";
 
 interface StudentDashboardProps {
@@ -14,17 +15,18 @@ interface StudentDashboardProps {
   onLogout: () => void;
   onOpenIde: (projectId: string) => void;
   onOpenLibrary: () => void;
+  onOpenComponents: () => void;
 }
 
 export interface Projeto {
   id: string;
   nome: string;
   descricao?: string;
-  target_board?: string;
+  target_board?: string | null;
   updated_at: string;
 }
 
-export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary }: StudentDashboardProps) {
+export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary, onOpenComponents }: StudentDashboardProps) {
   const [projects, setProjects] = useState<Projeto[]>([]);
   const [loading, setLoading]   = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -204,7 +206,7 @@ export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary }:
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: 'var(--background)', padding: '20px' }}>
+    <div style={{ minHeight: '100%', backgroundColor: 'var(--background)', padding: '20px' }}>
 
       {/* TOPBAR */}
       <header className="dashboard-topbar" style={{
@@ -220,6 +222,7 @@ export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary }:
         </div>
         <div className="dashboard-topbar-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button className="btn-secondary dashboard-library-button" onClick={onOpenLibrary}>📚 Biblioteca</button>
+          <button className="btn-secondary" onClick={onOpenComponents}>⚙️ Componentes</button>
           <button className="btn-outline" onClick={onLogout} style={{ padding: '10px 20px' }}>Sair</button>
         </div>
       </header>
@@ -300,11 +303,10 @@ export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary }:
                 </p>
               )}
 
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px', fontWeight: 600 }}>
-                Salvo em: {new Date(proj.updated_at).toLocaleDateString('pt-BR')}
-                {' • '}
-                {proj.target_board !== BOARD_UNSET ? proj.target_board : 'Sem placa'}
-              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '7px', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px', fontWeight: 600 }}>
+                <span>Salvo em: {new Date(proj.updated_at).toLocaleDateString('pt-BR')}</span>
+                <ProjectBoardBadge board={proj.target_board} />
+              </div>
 
               <div style={{ display: 'flex', gap: '10px', marginTop: 'auto' }}>
                 <button
@@ -416,7 +418,7 @@ export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary }:
             id: selectedProject.id,
             name: selectedProject.nome,
             description: selectedProject.descricao || '',
-            board: selectedProject.target_board || 'uno',
+            board: selectedProject.target_board,
           }}
           onSave={handleSaveProjectMeta}
           onOpen={(proj) => {

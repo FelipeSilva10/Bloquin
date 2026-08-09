@@ -1,0 +1,13 @@
+/* A marca atual tem proporção própria e transparência ao redor. Este seletor
+   mais específico substitui o enquadramento legado global sem recortar a arte. */
+.login-container .login-logo {
+  width: min(100%, 340px);
+  height: auto;
+  aspect-ratio: auto;
+  object-fit: contain;
+  object-position: center;
+}
+
+@media (max-width: 480px), (max-height: 560px) {
+  .login-container .login-logo { width: min(100%, 260px); }
+}

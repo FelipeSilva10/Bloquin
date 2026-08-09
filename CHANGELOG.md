@@ -33,6 +33,57 @@ BREAKING CHANGE: apenas Arduino Uno R3+ é suportado a partir desta versão.
 
 <!-- Histórico de versões -->
 
+## [2.1.0] — 08/08/2026
+
+### Novas funcionalidades
+
+- Adicionada a aba interna **Componentes**, com catálogo tipado, pesquisa, categorias, páginas de detalhe, orientações de conexão e vínculos com blocos do Bloquin.
+- Biblioteca consolidada como mural de aula com leitura de imagens/PDFs em abas, estados de mídia e confirmação própria para arquivar ou excluir publicações.
+
+### Melhorias de interface
+
+- Atualizado o uso das novas marcas do Bloquin em tela inicial, splash, login, dashboards, IDE, tutorial e favicon, removendo a cópia de logo antiga sem uso.
+- WelcomeScreen ampliada e responsiva; tutorial reformulado para ocupar toda a janela e refletir os controles atuais da IDE.
+- Projetos exibem uma identificação acessível e visual da placa, incluindo estados para placa ausente ou não reconhecida.
+- Biblioteca, Componentes e SAG usam a mesma abstração de páginas internas no sistema de abas.
+
+### Performance e confiabilidade
+
+- Removidas esperas artificiais do envio de código e adicionadas métricas reais para validação, preparo, compilação, upload e limpeza.
+- Cache de FQBN/core e build persistente por placa reduzem verificações repetidas do `arduino-cli`; o upload reutiliza explicitamente os artefatos compilados.
+- O cache de compilação agora tem lock entre processos e timeout orientativo, evitando que duas instâncias misturem artefatos da mesma placa.
+
+### Segurança
+
+- Substituído o painel administrativo por uma aba SAG sem handoff automático, tokens compartilhados, iframe ou segunda janela nativa. O SAG mantém seu próprio login em seu domínio.
+- Removidos cliente, comandos Tauri, capacidades e Edge Functions locais do fluxo de handoff legado; migrations já aplicadas foram preservadas.
+
+### Qualidade e release
+
+- CI passa a executar a suíte frontend, testes Rust e a compilação real da matriz Blockly com toolchains e bibliotecas Arduino fixados.
+- O workflow de release passa a publicar AppImage Linux x86_64 junto ao instalador Windows, ambos com checksums SHA-256 e gate de build por plataforma.
+- Sincronização de versão agora atualiza também os lockfiles, e a comparação de atualizações respeita pré-releases SemVer.
+
+## [2.0.0] — 02/08/2026
+
+### Novas funcionalidades e qualidade
+
+- Preparada a nova geração do Bloquin com contratos e auditoria Blockly ampliados, importação de projetos e validações automatizadas de interface, projetos e Biblioteca.
+- Biblioteca passou a oferecer composição, pré-visualização de imagens e PDFs, navegação de recursos e políticas de armazenamento mais protegidas.
+- Atualizadas as telas iniciais, dashboards, IDE e sistema de abas, além do suporte aos blocos e geradores Arduino/ESP32.
+
+## [1.2.2] — 31/07/2026
+
+### Segurança
+
+- Migrada a configuração local e de release para as chaves atuais do Supabase e mantido o upsert de sessão do próprio usuário sob regras seguras.
+
+## [1.2.1] — 27/07/2026
+
+### Correções
+
+- Configurado o Supabase durante builds de release e documentados os recursos Tauri necessários para clones limpos.
+
 ## [1.2.0] — 27/07/2026
 
 ### Novas funcionalidades

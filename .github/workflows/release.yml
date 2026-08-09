@@ -17,7 +17,9 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
 
 permissions:
-  contents: write
+  # Builds recebem somente leitura; a publicação eleva a permissão no job
+  # específico que cria a GitHub Release.
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,9 +30,13 @@ env:
   # Garante o link permanente /releases/latest/download/...
   # ─────────────────────────────────────────────────────────
   ASSET_WINDOWS: "Bloquin-Setup-Windows.exe"
+  ASSET_LINUX: "Bloquin-Linux-x86_64.AppImage"
 
-  # Versão do arduino-cli — altere conscientemente
+  # Versão e hashes do arduino-cli — altere conscientemente e em conjunto.
   ARDUINO_CLI_VERSION: "1.4.1"
+  ARDUINO_CLI_WINDOWS_SHA256: "44f506a29d134cb294898d5f729aea85e5498f5d81ff5fc63c549087c45a20a3"
+  ARDUINO_CLI_LINUX_SHA256: "683cf2a6b8953e3d632e7e4512c36667839d2073349c4b6d312e4c67592359bd"
+  ARDUINO_CLI_LINUX_BINARY_SHA256: "2e082731f7704672e9e0862e6d30af10fb93b2cd9e48f0e4e0076125ab10dae1"
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -141,9 +147,16 @@ jobs:
           $uri = "https://github.com/arduino/arduino-cli/releases/download/v${{ env.ARDUINO_CLI_VERSION }}/arduino-cli_${{ env.ARDUINO_CLI_VERSION }}_Windows_64bit.zip"
           Write-Host "Baixando arduino-cli ${{ env.ARDUINO_CLI_VERSION }}..."
           Invoke-WebRequest -Uri $uri -OutFile arduino-cli.zip
+          $actualHash = (Get-FileHash -Path arduino-cli.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:ARDUINO_CLI_WINDOWS_SHA256) {
+            throw "SHA-256 inesperado para arduino-cli.zip: $actualHash"
+          }
           Expand-Archive arduino-cli.zip -DestinationPath src-tauri/resources/ -Force
           Remove-Item arduino-cli.zip
-          Write-Host "OK: $(Test-Path src-tauri/resources/arduino-cli.exe)"
+          if (-not (Test-Path src-tauri/resources/arduino-cli.exe)) {
+            throw "arduino-cli.exe não foi encontrado após a extração."
+          }
+          Write-Host "OK: arduino-cli.exe extraído."
 
       - name: Importar certificado PFX
         shell: powershell
@@ -225,12 +238,138 @@ jobs:
           retention-days: 1
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # JOB 2 — Publicar GitHub Release
+  # JOB 2 — Build Linux (AppImage)
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-linux:
+    name: Build — Linux (AppImage)
+    needs: metadata
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Dependências do sistema (Tauri/AppImage)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            file \
+            libfuse2 \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libudev-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            pkg-config \
+            wget
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          key: linux-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Instalar dependências npm
+        run: npm ci
+
+      - name: Configurar ambiente do Supabase
+        shell: bash
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$VITE_SUPABASE_URL" || -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]]; then
+            echo "::error::Os secrets VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY são obrigatórios para o build da release."
+            exit 1
+          fi
+
+          umask 077
+          {
+            printf 'VITE_SUPABASE_URL=%s\n' "$VITE_SUPABASE_URL"
+            printf 'VITE_SUPABASE_PUBLISHABLE_KEY=%s\n' "$VITE_SUPABASE_PUBLISHABLE_KEY"
+          } > .env
+
+          echo "Arquivo .env de build criado sem expor os valores nos logs."
+
+      - name: Sincronizar versões com a tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.metadata.outputs.version }}"
+          node scripts/sync-version.mjs "$VERSION"
+          grep -m1 '"version"' package.json
+          grep -m1 '"version"' src-tauri/tauri.conf.json
+          grep -m1 '^version' src-tauri/Cargo.toml
+
+      - name: Baixar Arduino CLI verificado (Linux)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/resources/
+          archive="$RUNNER_TEMP/arduino-cli.tar.gz"
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+            --output "$archive" \
+            "https://github.com/arduino/arduino-cli/releases/download/v${ARDUINO_CLI_VERSION}/arduino-cli_${ARDUINO_CLI_VERSION}_Linux_64bit.tar.gz"
+          printf '%s  %s\n' "$ARDUINO_CLI_LINUX_SHA256" "$archive" | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" --directory src-tauri/resources/ arduino-cli
+          printf '%s  %s\n' "$ARDUINO_CLI_LINUX_BINARY_SHA256" "src-tauri/resources/arduino-cli" | sha256sum --check --strict
+          chmod 0755 src-tauri/resources/arduino-cli
+          src-tauri/resources/arduino-cli version
+
+      - name: Build Tauri (Linux — AppImage)
+        # Evita depender de um mount FUSE no runner ao executar linuxdeploy.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: npm run tauri build -- --bundles appimage
+
+      - name: Preparar AppImage para publicação
+        id: rename
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          if [[ -z "$appimage" ]]; then
+            echo "::error::AppImage não encontrada após o build."
+            exit 1
+          fi
+
+          destination="$RUNNER_TEMP/$ASSET_LINUX"
+          cp "$appimage" "$destination"
+          chmod 0755 "$destination"
+          sha256sum "$destination"
+          printf 'path=%s\n' "$destination" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact — Linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: ${{ steps.rename.outputs.path }}
+          retention-days: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 3 — Publicar GitHub Release
   # ═══════════════════════════════════════════════════════════════════════════
   publish-release:
     name: Publicar Release
-    needs: [metadata, build-windows]
+    needs: [metadata, build-windows, build-linux]
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -243,11 +382,18 @@ jobs:
           name: windows-installer
           path: ./dist
 
-      - name: Verificar asset
+      - name: Download — Linux AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-appimage
+          path: ./dist
+
+      - name: Verificar assets
         run: |
           echo "Assets prontos:"
           ls -lh ./dist/
           [ -f "dist/$ASSET_WINDOWS" ] || { echo "::error::$ASSET_WINDOWS ausente!"; exit 1; }
+          [ -f "dist/$ASSET_LINUX" ] || { echo "::error::$ASSET_LINUX ausente!"; exit 1; }
 
       # ─────────────────────────────────────────────────────
       # Changelog via git-cliff (binário direto, sem Docker)
@@ -273,7 +419,7 @@ jobs:
       - name: Montar corpo final da release
         run: |
           cd dist
-          sha256sum "$ASSET_WINDOWS" > SHA256SUMS.txt
+          sha256sum "$ASSET_WINDOWS" "$ASSET_LINUX" > SHA256SUMS.txt
           cd ..
 
           REPO="${{ github.repository }}"
@@ -287,10 +433,16 @@ jobs:
           | Plataforma | Arquivo |
           |---|---|
           | Windows 10/11 (64-bit) | \`$ASSET_WINDOWS\` |
+          | Linux x86_64 | \`$ASSET_LINUX\` |
 
           **Link permanente (última versão estável):**
           \`\`\`
           https://github.com/$REPO/releases/latest/download/$ASSET_WINDOWS
+          \`\`\`
+
+          **Linux x86_64:**
+          \`\`\`
+          https://github.com/$REPO/releases/latest/download/$ASSET_LINUX
           \`\`\`
 
           ## ⚠️ Windows SmartScreen
@@ -319,13 +471,14 @@ jobs:
           make_latest: ${{ needs.metadata.outputs.is_stable == 'true' }}
           files: |
             dist/${{ env.ASSET_WINDOWS }}
+            dist/${{ env.ASSET_LINUX }}
             dist/SHA256SUMS.txt
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # JOB 3 — Sumário final no GitHub Actions
+  # JOB 4 — Sumário final no GitHub Actions
   # ═══════════════════════════════════════════════════════════════════════════
   summary:
     name: Sumário
@@ -356,3 +509,4 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Link permanente:**" >> $GITHUB_STEP_SUMMARY
           echo "- [Bloquin-Setup-Windows.exe](https://github.com/$REPO/releases/latest/download/Bloquin-Setup-Windows.exe)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Bloquin-Linux-x86_64.AppImage](https://github.com/$REPO/releases/latest/download/Bloquin-Linux-x86_64.AppImage)" >> $GITHUB_STEP_SUMMARY

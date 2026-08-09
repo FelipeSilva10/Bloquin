@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import logoSimples from '../icons/LogoSimples.png';
+import logoSimples from '../assets/LogoSimples.png';
 import { BOARD_UNSET } from '../blockly/boards';
 import { ProjectService } from '../services/projectService';
 import { lockStudentScreen, unlockStudentScreen } from '../services/sessionService';
-import { AdminPanelAccessError, openAdminPanel } from '../services/adminPanelService';
 import { importProjectToAccount } from '../services/projectImportService';
 import type { BloquinProjectFile } from '../types/project';
 import { ProjectImportButton } from '../components/forms/ProjectImportButton';
 import { BloquinSelect } from '../components/forms/BloquinSelect';
+import { ProjectBoardBadge } from '../components/ProjectBoardBadge';
 import { useModalA11y } from '../hooks/useModalA11y';
 import ProjectModal from '../components/modals/ProjectModal';
 
@@ -18,11 +18,13 @@ interface TeacherDashboardProps {
   onOpenOwnProject: (projectId: string) => void;
   onInspectStudentProject: (projectId: string) => void;
   onOpenLibrary: () => void;
+  onOpenComponents: () => void;
+  onOpenSag: () => void;
 }
 
 interface Turma   { id: string; nome: string; ano_letivo: string; }
 interface Aluno   { id: string; nome: string; }
-interface Projeto { id: string; nome: string; descricao?: string; target_board?: string; updated_at: string; }
+interface Projeto { id: string; nome: string; descricao?: string; target_board?: string | null; updated_at: string; }
 
 type Tab = 'turmas' | 'projetos';
 
@@ -63,7 +65,7 @@ function ProjectImportDialog({ file, classrooms, classroomId, importing, error, 
   );
 }
 
-export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspectStudentProject, onOpenLibrary }: TeacherDashboardProps) {
+export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspectStudentProject, onOpenLibrary, onOpenComponents, onOpenSag }: TeacherDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('turmas');
 
   const [turmas, setTurmas] = useState<Turma[]>([]);
@@ -90,10 +92,6 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
   const [projectToDelete, setProjectToDelete] = useState<{ projeto: Projeto; origin: 'own' | 'student' } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-
-  // Estados do Admin
-  const [adminLoading, setAdminLoading] = useState(false);
-  const [adminError, setAdminError] = useState('');
 
   // ─── Novos Estados (Patch) ─────────────────────────────────────────────────
   const [lockedStudents, setLockedStudents] = useState<Set<string>>(new Set());
@@ -132,25 +130,6 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
       setPageError(error instanceof Error ? error.message : 'Não consegui carregar seus projetos.');
     } finally {
       setLoadingProjects(false);
-    }
-  };
-
-  const handleOpenAdminPanel = async () => {
-    setAdminLoading(true);
-    setAdminError('');
-    try {
-      await openAdminPanel(userId);
-    } catch (err) {
-      const code = err instanceof AdminPanelAccessError ? err.code : '';
-      setAdminError(
-        code === 'SESSION_MISSING' || code === 'SESSION_REPLACED'
-          ? 'Sua sessão mudou ou expirou. Entre novamente antes de abrir o painel.'
-          : code === 'NOT_AUTHORIZED'
-            ? 'O painel administrativo está disponível somente para professores autorizados.'
-            : 'Não consegui abrir o painel administrativo. Tente novamente.',
-      );
-    } finally {
-      setAdminLoading(false);
     }
   };
 
@@ -374,7 +353,7 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
   });
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: 'var(--background)', padding: '20px' }}>
+    <div style={{ minHeight: '100%', backgroundColor: 'var(--background)', padding: '20px' }}>
 
       {pageError && (
         <div className="dashboard-feedback dashboard-feedback-error" role="alert">
@@ -392,23 +371,15 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
 
         <div className="dashboard-topbar-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <button className="btn-secondary dashboard-library-button" onClick={onOpenLibrary}>📚 Biblioteca</button>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-            <button
-              onClick={handleOpenAdminPanel}
-              disabled={adminLoading}
-              style={{
-                padding: '10px 20px',
-                background: adminLoading ? '#b2bec3' : 'linear-gradient(135deg, #6c5ce7, #4b3fad)',
-                color: 'var(--white)', border: 'none', borderRadius: '12px',
-                fontWeight: 900, fontSize: '0.95rem', cursor: adminLoading ? 'not-allowed' : 'pointer',
-                boxShadow: adminLoading ? 'none' : '0 4px 0px #3c328a', transition: 'all 0.15s',
-                display: 'flex', alignItems: 'center', gap: '12px',
-              }}
-            >
-              {adminLoading ? 'Abrindo…' : 'Painel Admin'}
-            </button>
-            {adminError && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 700 }}>{adminError}</span>}
-          </div>
+          <button className="btn-secondary" onClick={onOpenComponents}>⚙️ Componentes</button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onOpenSag}
+            aria-label="Abrir SAG em uma aba interna"
+          >
+            SAG
+          </button>
           <button className="btn-outline" onClick={onLogout} style={{ padding: '10px 20px' }}>Sair</button>
         </div>
       </header>
@@ -508,7 +479,10 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
                       </div>
                       
                       {proj.descricao && <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>{proj.descricao}</p>}
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>Salvo em: {new Date(proj.updated_at).toLocaleDateString('pt-BR')} • {proj.target_board !== BOARD_UNSET ? proj.target_board : 'Sem placa'}</p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '7px', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
+                        <span>Salvo em: {new Date(proj.updated_at).toLocaleDateString('pt-BR')}</span>
+                        <ProjectBoardBadge board={proj.target_board} />
+                      </div>
                       
                       <div style={{ display: 'flex', gap: '10px', marginTop: 'auto' }}>
                         <button className="btn-secondary" style={{ flex: 1, padding: '10px' }} onClick={() => onInspectStudentProject(proj.id)}>Inspecionar Código</button>
@@ -552,7 +526,10 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
                   </div>
                   
                   {proj.descricao && <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '10px', fontStyle: 'italic' }}>{proj.descricao}</p>}
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px', fontWeight: 600 }}>Salvo em: {new Date(proj.updated_at).toLocaleDateString('pt-BR')} • {proj.target_board !== BOARD_UNSET ? proj.target_board : 'Sem placa'}</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '7px', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px', fontWeight: 600 }}>
+                    <span>Salvo em: {new Date(proj.updated_at).toLocaleDateString('pt-BR')}</span>
+                    <ProjectBoardBadge board={proj.target_board} />
+                  </div>
                   
                   <div style={{ display: 'flex', gap: '10px', marginTop: 'auto' }}>
                     <button className="btn-secondary" style={{ flex: 1, padding: '10px' }} onClick={() => onOpenOwnProject(proj.id)}>Abrir Código</button>
@@ -607,7 +584,7 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
             id: selectedProject.id,
             name: selectedProject.nome,
             description: selectedProject.descricao || '',
-            board: selectedProject.target_board || 'uno'
+            board: selectedProject.target_board
           }}
           onSave={handleSaveProjectMeta}
           onOpen={(proj) => {

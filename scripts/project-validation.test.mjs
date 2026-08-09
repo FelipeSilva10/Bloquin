@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   BLOQUIN_PROJECT_FORMAT,
@@ -7,6 +8,10 @@ import {
   makeUniqueProjectName,
   parseProjectFileContents,
 } from '../src/types/project.ts';
+
+const studentDashboardSource = readFileSync(new URL('../src/screens/StudentDashboard.tsx', import.meta.url), 'utf8');
+const teacherDashboardSource = readFileSync(new URL('../src/screens/TeacherDashboard.tsx', import.meta.url), 'utf8');
+const projectBoardSource = readFileSync(new URL('../src/lib/projectBoard.ts', import.meta.url), 'utf8');
 
 function validFile(overrides = {}) {
   return {
@@ -47,4 +52,29 @@ test('gera nomes alternativos sem substituir projetos existentes', () => {
   assert.equal(makeUniqueProjectName('Robô', ['Outro']), 'Robô');
   assert.equal(makeUniqueProjectName('Robô', ['robô']), 'Robô (importado)');
   assert.equal(makeUniqueProjectName('Robô', ['Robô', 'Robô (importado)']), 'Robô (importado 2)');
+});
+
+test('identifica placas salvas sem assumir Arduino Uno para projetos antigos', () => {
+  assert.match(projectBoardSource, /export function getProjectBoardStatus\(targetBoard\?: string \| null\)/);
+  assert.match(projectBoardSource, /!normalized \|\| normalized === BOARD_UNSET/);
+  assert.match(projectBoardSource, /label: 'Sem placa selecionada'/);
+  assert.match(projectBoardSource, /label: 'Placa não reconhecida'/);
+  assert.match(projectBoardSource, /const name = BOARDS\[normalized\]\.name/);
+  assert.doesNotMatch(projectBoardSource, /['"]uno['"]\s*;/);
+});
+
+test('dashboards exibem o estado de placa e não aplicam um fallback enganoso', () => {
+  for (const source of [studentDashboardSource, teacherDashboardSource]) {
+    assert.match(source, /import logoSimples from '\.\.\/assets\/LogoSimples\.png';/);
+    assert.match(source, /import \{ ProjectBoardBadge \} from '\.\.\/components\/ProjectBoardBadge';/);
+    assert.match(source, /<ProjectBoardBadge board=\{proj\.target_board\} \/>/);
+    assert.doesNotMatch(source, /target_board \|\| 'uno'/);
+  }
+});
+
+test('dashboards usam a altura do workspace, sem criar overflow da aba', () => {
+  for (const source of [studentDashboardSource, teacherDashboardSource]) {
+    assert.match(source, /minHeight:\s*'100%'/);
+    assert.doesNotMatch(source, /minHeight:\s*'100vh'/);
+  }
 });

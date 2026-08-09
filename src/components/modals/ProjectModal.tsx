@@ -4,12 +4,13 @@
 
 import { useState, useEffect } from "react";
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { ProjectBoardBadge } from '../ProjectBoardBadge';
 
 export interface Project {
   id: string;
   name: string;
   description?: string;
-  board?: string;
+  board?: string | null;
   created_at?: string;
   updated_at?: string;
   owner_name?: string; // preenchido pelo professor ao ver projetos de alunos
@@ -134,9 +135,7 @@ export default function ProjectModal({
 
         {/* Metadados */}
         <div className="project-meta">
-          {project.board && (
-            <span className="meta-chip">🔌 {project.board}</span>
-          )}
+          <ProjectBoardBadge board={project.board} />
           {project.created_at && (
             <span className="meta-chip">
               Criado em {formatDate(project.created_at)}

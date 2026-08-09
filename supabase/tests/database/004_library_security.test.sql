@@ -4,7 +4,7 @@ create extension if not exists pgtap with schema extensions;
 
 set local search_path = extensions, public, pg_catalog;
 
-select plan(24);
+select plan(25);
 
 select has_table('public', 'biblioteca_publicacoes', 'o mural possui publicações');
 select has_table('public', 'biblioteca_anexos', 'o mural possui anexos');
@@ -138,6 +138,26 @@ select ok(
        and privilege.grantee in ('PUBLIC', 'anon')
   ),
   'PUBLIC e anon não recebem grants nas tabelas do mural'
+);
+select ok(
+  not exists (
+    select 1
+      from information_schema.table_privileges privilege
+     where privilege.table_schema = 'public'
+       and privilege.table_name in (
+         'biblioteca_publicacoes',
+         'biblioteca_publicacao_turmas',
+         'biblioteca_anexos'
+       )
+       and privilege.grantee = 'authenticated'
+       and (
+         (privilege.table_name = 'biblioteca_publicacao_turmas'
+          and privilege.privilege_type not in ('SELECT', 'INSERT', 'DELETE'))
+         or (privilege.table_name in ('biblioteca_publicacoes', 'biblioteca_anexos')
+             and privilege.privilege_type not in ('SELECT', 'INSERT', 'UPDATE', 'DELETE'))
+       )
+  ),
+  'authenticated recebe somente os privilégios de CRUD necessários ao mural'
 );
 
 insert into auth.users (

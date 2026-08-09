@@ -1,6 +1,16 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
+export type UploadProgressStage = 'checking-core' | 'preparing' | 'compiling' | 'sending' | 'cleaning';
+export type UploadProgressStatus = 'started' | 'completed' | 'failed';
+
+export interface UploadProgress {
+  stage: UploadProgressStage;
+  status: UploadProgressStatus;
+  elapsedMs: number;
+  totalElapsedMs: number;
+}
+
 export const HardwareService = {
   // Listar portas USB
   async getAvailablePorts(): Promise<string[]> {
@@ -36,5 +46,11 @@ export const HardwareService = {
 
   async listenUploadResult(callback: (payload: string) => void): Promise<UnlistenFn> {
     return await listen<string>('upload-result', (event) => callback(event.payload));
-  }
+  },
+
+  // Progresso real do backend. O frontend usa esses eventos para refletir as
+  // etapas do arduino-cli sem impor tempos artificiais ao usuário.
+  async listenUploadProgress(callback: (payload: UploadProgress) => void): Promise<UnlistenFn> {
+    return await listen<UploadProgress>('upload-progress', (event) => callback(event.payload));
+  },
 };

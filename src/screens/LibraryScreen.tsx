@@ -6,6 +6,8 @@ import type { LibraryAttachmentType, LibraryClass, LibraryPost, LibraryPostStatu
 import { LibraryComposer } from '../components/library/LibraryComposer';
 import { BloquinSelect } from '../components/forms/BloquinSelect';
 import { MAX_OPEN_TABS, useTabs } from '../state/tabsStore';
+import { useModalA11y } from '../hooks/useModalA11y';
+import { Plus, RefreshCw } from 'lucide-react';
 
 interface LibraryScreenProps {
   userId: string;
@@ -20,6 +22,11 @@ const MATERIAL_FILTERS: Array<{ value: LibraryAttachmentType | 'all'; label: str
   { value: 'youtube', label: 'Vídeos', icon: '▶' },
   { value: 'link', label: 'Links', icon: '↗' },
 ];
+
+interface LibraryDeletionIntent {
+  post: LibraryPost;
+  kind: 'archive' | 'permanent';
+}
 
 export function LibraryScreen({ userId, mode }: LibraryScreenProps) {
   const navigate = useNavigate();
@@ -42,7 +49,10 @@ export function LibraryScreen({ userId, mode }: LibraryScreenProps) {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [deletionError, setDeletionError] = useState('');
   const [editingPost, setEditingPost] = useState<LibraryPost | null | undefined>(undefined);
+  const [pendingDeletion, setPendingDeletion] = useState<LibraryDeletionIntent | null>(null);
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [restoringPostId, setRestoringPostId] = useState<string | null>(null);
   const [purgingPostId, setPurgingPostId] = useState<string | null>(null);
@@ -228,18 +238,9 @@ export function LibraryScreen({ userId, mode }: LibraryScreenProps) {
     void load(0, false);
   };
 
-  const handleDelete = async (post: LibraryPost) => {
-    if (!window.confirm(`Arquivar a publicação “${post.titulo}”?`)) return;
-    setDeletingPostId(post.id);
-    setError('');
-    try {
-      await archiveLibraryPost(post.id);
-      await load(0, false);
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'Não consegui excluir a publicação.');
-    } finally {
-      setDeletingPostId(null);
-    }
+  const requestArchive = (post: LibraryPost) => {
+    setDeletionError('');
+    setPendingDeletion({ post, kind: 'archive' });
   };
 
   const handleRestore = async (post: LibraryPost) => {
@@ -255,24 +256,52 @@ export function LibraryScreen({ userId, mode }: LibraryScreenProps) {
     }
   };
 
-  const handlePermanentlyDelete = async (post: LibraryPost) => {
-    if (!window.confirm(`Excluir definitivamente “${post.titulo}”? Esta ação não pode ser desfeita.`)) return;
-    setPurgingPostId(post.id);
+  const requestPermanentDelete = (post: LibraryPost) => {
+    setDeletionError('');
+    setPendingDeletion({ post, kind: 'permanent' });
+  };
+
+  const cancelDeletion = () => {
+    setDeletionError('');
+    setPendingDeletion(null);
+  };
+
+  const confirmDeletion = async () => {
+    const intent = pendingDeletion;
+    if (!intent) return;
     setError('');
+    setDeletionError('');
+    setNotice('');
+    if (intent.kind === 'archive') setDeletingPostId(intent.post.id);
+    else setPurgingPostId(intent.post.id);
     try {
-      await permanentlyDeleteLibraryPost(post.id);
-      tabs.filter((tab) => tab.type === 'library-resource' && tab.libraryPost?.id === post.id).forEach((tab) => closeTab(tab.id));
+      if (intent.kind === 'archive') {
+        await archiveLibraryPost(intent.post.id);
+        setNotice(`“${intent.post.titulo}” foi arquivada.`);
+      } else {
+        await permanentlyDeleteLibraryPost(intent.post.id);
+        tabs
+          .filter((tab) => tab.type === 'library-resource' && tab.libraryPost?.id === intent.post.id)
+          .forEach((tab) => closeTab(tab.id));
+        setNotice(`“${intent.post.titulo}” foi excluída definitivamente.`);
+      }
       await load(0, false);
-    } catch (purgeError) {
-      setError(purgeError instanceof Error ? purgeError.message : 'Não consegui excluir definitivamente a publicação.');
+      setPendingDeletion(null);
+    } catch (deleteFailure) {
+      setDeletionError(deleteFailure instanceof Error
+        ? deleteFailure.message
+        : intent.kind === 'permanent'
+          ? 'Não consegui excluir definitivamente a publicação.'
+          : 'Não consegui arquivar a publicação.');
     } finally {
-      setPurgingPostId(null);
+      if (intent.kind === 'archive') setDeletingPostId(null);
+      else setPurgingPostId(null);
     }
   };
 
-  const openReadingPost = (post: LibraryPost) => {
+  const openReadingPost = (post: LibraryPost, attachmentId?: string) => {
     setError('');
-    const openedId = openLibraryResource({ post });
+    const openedId = openLibraryResource({ post, attachmentId });
     if (!openedId) {
       setError(`Você atingiu o limite de ${MAX_OPEN_TABS} abas. Feche uma aba para abrir esta publicação.`);
       return;
@@ -305,30 +334,22 @@ export function LibraryScreen({ userId, mode }: LibraryScreenProps) {
   }
 
   return (
+    <>
     <div ref={pageRef} className="library-page" onScroll={(event) => { scrollTopRef.current = event.currentTarget.scrollTop; }}>
       <header className="library-hero">
-        <div className="library-hero-icon" aria-hidden="true"><span>⌘</span></div>
         <div className="library-hero-copy">
           <h1>Biblioteca</h1>
-          <p>{mode === 'teacher' ? 'Publique avisos, ideias e materiais que acompanharão suas turmas durante a aula.' : 'Materiais para as aulas'}</p>
+          <p>{mode === 'teacher' ? 'Mural da aula' : 'Mural da sua turma'}</p>
         </div>
         <div className="library-hero-action">
-          {mode === 'teacher' && sessionUserId && <button type="button" className="btn-primary library-new-post-button" onClick={() => setEditingPost(null)}><span aria-hidden="true">＋</span> Nova publicação</button>}
+          {mode === 'teacher' && sessionUserId && <button type="button" className="btn-primary library-new-post-button" onClick={() => setEditingPost(null)}><Plus aria-hidden="true" /> Nova publicação</button>}
         </div>
       </header>
 
       {error && <div className="dashboard-feedback dashboard-feedback-error library-page-feedback" role="alert"><span>{error}</span>{sessionUserId && <button type="button" className="library-feedback-retry" onClick={() => void load(0, false)}>Tentar novamente</button>}<button type="button" aria-label="Fechar mensagem" onClick={() => setError('')}>×</button></div>}
+      {notice && <div className="dashboard-feedback dashboard-feedback-success library-page-feedback" role="status"><span>{notice}</span><button type="button" aria-label="Fechar mensagem" onClick={() => setNotice('')}>×</button></div>}
 
       <section className="library-toolbar" aria-label="Filtros da Biblioteca">
-        <div className="library-toolbar-heading">
-          <div>
-            <span className="library-section-kicker">Encontrar no mural</span>
-          </div>
-          <div className="library-toolbar-summary">
-            <span className="library-count">{posts.length}{hasMore ? '+' : ''} {posts.length === 1 ? 'publicação' : 'publicações'}</span>
-            <button type="button" className="btn-ghost library-refresh-feed" onClick={() => void load(0, false)} disabled={loading || sessionLoading} aria-label="Atualizar publicações da Biblioteca"><span aria-hidden="true">↻</span> Atualizar</button>
-          </div>
-        </div>
         <div className="library-toolbar-controls">
           <label className="library-search">
             <span aria-hidden="true">⌕</span>
@@ -364,7 +385,9 @@ export function LibraryScreen({ userId, mode }: LibraryScreenProps) {
               />
             </div>
           </>}
-          {hasActiveFilters && <button type="button" className="btn-text library-clear-filters" onClick={clearFilters}>Limpar filtros</button>}
+          <span className="library-count" aria-live="polite">{posts.length}{hasMore ? '+' : ''} {posts.length === 1 ? 'publicação' : 'publicações'}</span>
+          <button type="button" className="btn-ghost library-refresh-feed" onClick={() => void load(0, false)} disabled={loading || sessionLoading} aria-label="Atualizar publicações da Biblioteca"><RefreshCw aria-hidden="true" className={loading ? 'is-spinning' : ''} /></button>
+          {hasActiveFilters && <button type="button" className="btn-text library-clear-filters" onClick={clearFilters}>Limpar</button>}
         </div>
         <div className="library-type-filters" role="group" aria-label="Filtrar por tipo de material">
           {MATERIAL_FILTERS.map((filter) => <button type="button" key={filter.value} className={typeFilter === filter.value ? 'active' : ''} onClick={() => setTypeFilter(filter.value)} aria-pressed={typeFilter === filter.value}><span aria-hidden="true">{filter.icon}</span>{filter.label}</button>)}
@@ -381,28 +404,67 @@ export function LibraryScreen({ userId, mode }: LibraryScreenProps) {
         </div>
       ) : (
         <main className="library-feed" aria-label="Publicações da Biblioteca">
-          <div className="library-feed-heading">
-            <div>
-              <span className="library-section-kicker">Publicações recentes</span>
-              <h2>{mode === 'teacher' ? 'Seu mural de aula' : 'Mural da sua turma'}</h2>
-            </div>
-            <span className="library-feed-hint">Cada material abre em uma aba, sem perder seu trabalho</span>
-          </div>
           {posts.map((post) => (
-            <LibraryCard key={post.id} post={post} mode={mode} classes={classes} onOpen={() => openReadingPost(post)} onEdit={() => setEditingPost(post)} onDelete={() => void handleDelete(post)} onRestore={() => void handleRestore(post)} onPermanentlyDelete={() => void handlePermanentlyDelete(post)} deleting={deletingPostId === post.id} restoring={restoringPostId === post.id} purging={purgingPostId === post.id} />
+            <LibraryCard key={post.id} post={post} mode={mode} classes={classes} onOpen={() => openReadingPost(post)} onOpenMainMaterial={(attachmentId) => openReadingPost(post, attachmentId)} onEdit={() => setEditingPost(post)} onDelete={() => requestArchive(post)} onRestore={() => void handleRestore(post)} onPermanentlyDelete={() => requestPermanentDelete(post)} deleting={deletingPostId === post.id} restoring={restoringPostId === post.id} purging={purgingPostId === post.id} />
           ))}
           {hasMore && <button type="button" className="library-load-more btn-secondary" onClick={() => void load(offset, true)} disabled={loadingMore}>{loadingMore ? 'Carregando…' : 'Carregar mais publicações'}</button>}
         </main>
       )}
     </div>
+    {pendingDeletion && (
+      <LibraryDeleteDialog
+        intent={pendingDeletion}
+        busy={deletingPostId === pendingDeletion.post.id || purgingPostId === pendingDeletion.post.id}
+        error={deletionError}
+        onCancel={cancelDeletion}
+        onConfirm={() => void confirmDeletion()}
+      />
+    )}
+    </>
   );
 }
 
-function LibraryCard({ post, mode, classes, onOpen, onEdit, onDelete, onRestore, onPermanentlyDelete, deleting, restoring, purging }: {
+function LibraryDeleteDialog({ intent, busy, error, onCancel, onConfirm }: {
+  intent: LibraryDeletionIntent;
+  busy: boolean;
+  error: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const permanentlyDeleting = intent.kind === 'permanent';
+  const modalRef = useModalA11y<HTMLDivElement>(busy ? () => undefined : onCancel);
+
+  return (
+    <div className="modal-overlay" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !busy) onCancel();
+    }}>
+      <div ref={modalRef} className="modal-box library-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="library-delete-title" aria-describedby={error ? 'library-delete-description library-delete-error' : 'library-delete-description'}>
+        <div className="library-delete-dialog-icon" aria-hidden="true">{permanentlyDeleting ? '!' : '⌫'}</div>
+        <span className="library-section-kicker">{permanentlyDeleting ? 'Ação permanente' : 'Arquivar publicação'}</span>
+        <h2 id="library-delete-title">{permanentlyDeleting ? 'Excluir definitivamente?' : 'Arquivar publicação?'}</h2>
+        <p id="library-delete-description">
+          {permanentlyDeleting
+            ? <>“<strong>{intent.post.titulo}</strong>” e seus materiais serão excluídos permanentemente. Esta ação não pode ser desfeita.</>
+            : <>“<strong>{intent.post.titulo}</strong>” deixará de aparecer no mural, mas poderá ser restaurada depois.</>}
+        </p>
+        {error && <div id="library-delete-error" className="form-error" role="alert">{error}</div>}
+        <div className="modal-actions">
+          <button type="button" className="btn-ghost" onClick={onCancel} disabled={busy}>Cancelar</button>
+          <button type="button" className="btn-danger" onClick={onConfirm} disabled={busy}>
+            {busy ? (permanentlyDeleting ? 'Excluindo…' : 'Arquivando…') : (permanentlyDeleting ? 'Excluir definitivamente' : 'Arquivar publicação')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LibraryCard({ post, mode, classes, onOpen, onOpenMainMaterial, onEdit, onDelete, onRestore, onPermanentlyDelete, deleting, restoring, purging }: {
   post: LibraryPost;
   mode: 'teacher' | 'student';
   classes: LibraryClass[];
   onOpen: () => void;
+  onOpenMainMaterial: (attachmentId?: string) => void;
   onEdit: () => void;
   onDelete: () => void;
   onRestore: () => void;
@@ -411,8 +473,15 @@ function LibraryCard({ post, mode, classes, onOpen, onEdit, onDelete, onRestore,
   restoring: boolean;
   purging: boolean;
 }) {
-  const cover = post.anexos.find((attachment) => attachment.id === post.capa_anexo_id && attachment.thumbnail_url)
+  // Imagens e PDFs podem abrir diretamente no leitor. Vídeos e links continuam
+  // abrindo a publicação para não criar uma tela vazia para esses formatos.
+  const mainMaterial = post.anexos.find((attachment) => attachment.id === post.capa_anexo_id && (attachment.tipo === 'image' || attachment.tipo === 'pdf'))
+    ?? post.anexos.find((attachment) => attachment.tipo === 'image' || attachment.tipo === 'pdf');
+  const cover = (mainMaterial?.thumbnail_url ? mainMaterial : undefined)
+    ?? post.anexos.find((attachment) => attachment.id === post.capa_anexo_id && attachment.thumbnail_url)
     ?? post.anexos.find((attachment) => attachment.thumbnail_url);
+  const opensMaterial = Boolean(mainMaterial);
+  const openMain = () => onOpenMainMaterial(mainMaterial?.id);
   const excerpt = post.conteudo_texto.length > 190 ? `${post.conteudo_texto.slice(0, 190).trim()}…` : post.conteudo_texto;
   const classNames = post.turma_ids.map((id) => classes.find((classroom) => classroom.id === id)?.nome).filter(Boolean);
   const attachmentTypes = [...new Set(post.anexos.map((attachment) => attachment.tipo))];
@@ -424,6 +493,14 @@ function LibraryCard({ post, mode, classes, onOpen, onEdit, onDelete, onRestore,
       <div className="library-card-cover-wrap">
         {cover?.thumbnail_url ? <img className="library-card-cover" src={cover.thumbnail_url} alt="" loading="lazy" decoding="async" /> : <div className="library-card-cover-placeholder" aria-hidden="true"><span>{getAttachmentIcon(post.anexos[0]?.tipo)}</span><small>Material de leitura</small></div>}
         <span className="library-card-kind">{typeLabel}</span>
+        <button
+          type="button"
+          className="library-card-cover-action"
+          onClick={opensMaterial ? openMain : onOpen}
+          aria-label={opensMaterial ? `Abrir ${mainMaterial?.titulo ?? 'material principal'}` : `Abrir ${post.titulo}`}
+        >
+          {opensMaterial ? 'Abrir material' : 'Ver publicação'}
+        </button>
       </div>
       <div className="library-card-body">
         <div className="library-card-meta">
@@ -440,7 +517,8 @@ function LibraryCard({ post, mode, classes, onOpen, onEdit, onDelete, onRestore,
           {mode === 'teacher' && classNames.length > 0 && <span className="library-class-chip">{classNames.length === 1 ? classNames[0] : `${classNames.length} turmas`}</span>}
         </div>
         <div className="library-card-actions">
-          <button type="button" className="btn-primary library-card-open" onClick={onOpen}>Abrir publicação <span aria-hidden="true">→</span></button>
+          <button type="button" className="btn-primary library-card-open" onClick={opensMaterial ? openMain : onOpen}>{opensMaterial ? 'Abrir material' : 'Ver publicação'} <span aria-hidden="true">→</span></button>
+          {opensMaterial && post.anexos.length > 1 && <button type="button" className="btn-text library-card-all-materials" onClick={onOpen}>Ver todos</button>}
           {mode === 'teacher' && post.status === 'archived' ? <><button type="button" className="btn-secondary library-card-secondary-action" onClick={onRestore} disabled={restoring || purging}>{restoring ? 'Restaurando…' : 'Restaurar'}</button><button type="button" className="btn-ghost library-card-icon-action library-delete-button" onClick={onPermanentlyDelete} disabled={restoring || purging} aria-label="Excluir definitivamente" title="Excluir definitivamente">{purging ? '…' : '×'}</button></> : mode === 'teacher' && <><button type="button" className="btn-ghost library-card-secondary-action" onClick={onEdit}>Editar</button><button type="button" className="btn-ghost library-card-icon-action library-delete-button" onClick={onDelete} disabled={deleting} aria-label="Arquivar publicação" title="Arquivar publicação">{deleting ? '…' : '⌫'}</button></>}
         </div>
       </div>
