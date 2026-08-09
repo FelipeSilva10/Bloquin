@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { normalizeExternalLink, normalizeYoutubeUrl } from '../src/services/libraryValidation.ts';
+
+const libraryScreenSource = readFileSync(new URL('../src/screens/LibraryScreen.tsx', import.meta.url), 'utf8');
 
 test('normaliza links externos HTTP e HTTPS', () => {
   assert.equal(normalizeExternalLink(' https://example.com/material '), 'https://example.com/material');
@@ -26,4 +29,20 @@ test('rejeita hosts e IDs que não pertencem ao formato do YouTube', () => {
   assert.equal(normalizeYoutubeUrl('https://vimeo.com/dQw4w9WgXcQ'), null);
   assert.equal(normalizeYoutubeUrl('https://www.youtube.com/watch?v=short'), null);
   assert.equal(normalizeYoutubeUrl('https://www.youtube.com/watch?v=dQw4w9WgXc!'), null);
+});
+
+test('mantém a falha de exclusão visível dentro do diálogo aberto', () => {
+  assert.match(libraryScreenSource, /const \[deletionError, setDeletionError\] = useState\(''\);/);
+  assert.match(libraryScreenSource, /<LibraryDeleteDialog[\s\S]*?error=\{deletionError\}/);
+  assert.match(libraryScreenSource, /function LibraryDeleteDialog\(\{ intent, busy, error, onCancel, onConfirm \}/);
+  assert.match(libraryScreenSource, /id="library-delete-error" className="form-error" role="alert">\{error\}/);
+});
+
+test('mural abre a imagem ou PDF principal direto do card, sem esconder a mídia atrás de uma introdução', () => {
+  assert.match(libraryScreenSource, /onOpenMainMaterial=\{\(attachmentId\) => openReadingPost\(post, attachmentId\)\}/);
+  assert.match(libraryScreenSource, /const mainMaterial = post\.anexos\.find\(/);
+  assert.match(libraryScreenSource, /attachment\.tipo === 'image' \|\| attachment\.tipo === 'pdf'/);
+  assert.match(libraryScreenSource, /className="library-card-cover-action"/);
+  assert.match(libraryScreenSource, /opensMaterial \? 'Abrir material' : 'Ver publicação'/);
+  assert.match(libraryScreenSource, /mode === 'teacher' && post\.status === 'archived'/);
 });

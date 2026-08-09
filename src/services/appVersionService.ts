@@ -1,6 +1,7 @@
 import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import packageJson from '../../package.json';
+import { compareVersions } from '../lib/semver';
 import { isTauriRuntime } from './localProjectService';
 
 export const OFFICIAL_SITE_URL = 'https://bloquin.online/';
@@ -22,24 +23,6 @@ interface LatestReleaseResponse {
 
 const BUILD_VERSION = packageJson.version;
 
-function parseVersion(version: string): [number, number, number] | null {
-  const match = version.trim().replace(/^v/i, '').match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
-  if (!match) return null;
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function compareVersions(left: string, right: string): number {
-  const leftParts = parseVersion(left);
-  const rightParts = parseVersion(right);
-  if (!leftParts || !rightParts) return 0;
-
-  for (let index = 0; index < leftParts.length; index += 1) {
-    if (leftParts[index] !== rightParts[index]) {
-      return leftParts[index] > rightParts[index] ? 1 : -1;
-    }
-  }
-  return 0;
-}
 
 /**
  * Reads the version from the Tauri application manifest in desktop builds.

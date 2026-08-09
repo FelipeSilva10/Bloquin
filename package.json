@@ -1,7 +1,7 @@
 {
   "name": "bloquin",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,8 +11,13 @@
     "test:sessions": "node --experimental-strip-types --test scripts/session-policy.test.mjs",
     "test:welcome": "node --test scripts/welcome-screen-validation.test.mjs",
     "test:layout": "node --test scripts/ide-layout-validation.test.mjs",
+    "test:components": "node --test scripts/components-validation.test.mjs",
+    "test:sag": "node --test scripts/sag-integration.test.mjs",
+    "test:version": "node --experimental-strip-types --test scripts/version-validation.test.mjs",
     "test:blocks": "node scripts/run-blockly-audit.mjs",
     "test:blocks:compile": "node scripts/run-blockly-audit.mjs --compile",
+    "test": "npm run test:library && npm run test:projects && npm run test:sessions && npm run test:welcome && npm run test:layout && npm run test:components && npm run test:sag && npm run test:version && npm run test:blocks",
+    "test:hardware": "npm run test:blocks:compile",
     "audit:blocks": "node scripts/run-blockly-audit.mjs",
     "audit:supabase-baseline": "node scripts/supabase-baseline-audit.mjs",
     "test:supabase-db": "supabase test db --local supabase/tests/database",

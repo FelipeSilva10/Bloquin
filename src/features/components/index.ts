@@ -1,0 +1,25 @@
+export {
+  COMPONENT_BY_ID,
+  COMPONENT_CATALOG,
+  COMPONENT_CATEGORIES,
+  getComponentById,
+  getComponentsByCategory,
+  isComponentId,
+} from './catalog';
+export {
+  COMPONENT_CATEGORY_IDS,
+  COMPONENT_IDS,
+  type ComponentBlockLink,
+  type ComponentCatalogItem,
+  type ComponentCategory,
+  type ComponentCategoryAccent,
+  type ComponentCategoryId,
+  type ComponentConnection,
+  type ComponentId,
+  type ComponentIllustrationId,
+  type ComponentMedia,
+  type ComponentMediaImage,
+  type ComponentMediaRole,
+  type ComponentPin,
+  type ComponentStudentContent,
+} from './types';

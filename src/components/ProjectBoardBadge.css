@@ -1,0 +1,36 @@
+.project-board-badge {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.project-board-badge svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.project-board-badge--selected {
+  color: #235a9f;
+  border-color: #cfe0fb;
+  background: #eff6ff;
+}
+
+.project-board-badge--unselected {
+  color: #945f13;
+  border-color: #f5d79b;
+  background: #fff8e8;
+}
+
+.project-board-badge--unknown {
+  color: #a13636;
+  border-color: #f2c2c2;
+  background: #fff1f1;
+}

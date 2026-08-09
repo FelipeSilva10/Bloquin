@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import logoCompleta from '../assets/LogoCompleta.png';
 import TutorialModal from "../components/modals/TutorialModal";
 import { EntryBackButton } from '../components/EntryBackButton';
+import './LoginScreen.css';
 import {
   clearSession,
   registerSession,

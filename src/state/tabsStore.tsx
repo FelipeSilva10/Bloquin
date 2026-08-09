@@ -2,9 +2,10 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 import type { BoardKey } from '../blockly/boards';
 import type { LibraryPost } from '../types/library';
 
-export type TabType = 'dashboard' | 'library' | 'library-resource' | 'project';
+export type TabType = 'dashboard' | 'library' | 'library-resource' | 'components' | 'sag' | 'project';
 export type ProjectSource = 'remote' | 'memory' | 'local-file';
 export type LibraryResourceKind = 'post' | 'image' | 'pdf';
+export type InternalPageType = 'library' | 'components' | 'sag';
 export const MAX_OPEN_TABS = 8;
 
 export interface ProjectTab {
@@ -32,10 +33,17 @@ interface OpenLibraryResourceInput {
   attachmentId?: string;
 }
 
+const INTERNAL_PAGE_TITLES: Record<InternalPageType, string> = {
+  library: 'Biblioteca',
+  components: 'Componentes',
+  sag: 'SAG',
+};
+
 interface TabsContextValue {
   tabs: ProjectTab[];
   activeTabId: string;
   activeTab: ProjectTab;
+  openInternalPage: (type: InternalPageType) => string | null;
   openLibrary: () => string | null;
   openLibraryResource: (input: OpenLibraryResourceInput) => string | null;
   openProject: (tab: Omit<ProjectTab, 'id' | 'type' | 'dirty'> & { dirty?: boolean }) => string | null;
@@ -46,7 +54,6 @@ interface TabsContextValue {
 }
 
 const dashboardTab: ProjectTab = { id: 'dashboard', type: 'dashboard', title: 'Início', dirty: false };
-const libraryTab: ProjectTab = { id: 'library', type: 'library', title: 'Biblioteca', dirty: false };
 const TabsContext = createContext<TabsContextValue | null>(null);
 
 function makeId() {
@@ -85,9 +92,9 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     return openedId;
   }, []);
 
-  const openLibrary = useCallback(() => {
+  const openInternalPage = useCallback((type: InternalPageType) => {
     const current = tabsRef.current;
-    const existing = current.find((tab) => tab.id === libraryTab.id);
+    const existing = current.find((tab) => tab.type === type);
     if (existing) {
       setActiveTabId(existing.id);
       return existing.id;
@@ -95,12 +102,20 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
 
     if (current.length >= MAX_OPEN_TABS) return null;
 
-    const next = [...current, libraryTab];
+    const tab: ProjectTab = {
+      id: type,
+      type,
+      title: INTERNAL_PAGE_TITLES[type],
+      dirty: false,
+    };
+    const next = [...current, tab];
     tabsRef.current = next;
     setTabs(next);
-    setActiveTabId(libraryTab.id);
-    return libraryTab.id;
+    setActiveTabId(tab.id);
+    return tab.id;
   }, []);
+
+  const openLibrary = useCallback(() => openInternalPage('library'), [openInternalPage]);
 
   const openLibraryResource = useCallback(({ post, attachmentId }: OpenLibraryResourceInput) => {
     const attachment = attachmentId
@@ -180,6 +195,7 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     tabs,
     activeTabId,
     activeTab: tabs.find((tab) => tab.id === activeTabId) ?? dashboardTab,
+    openInternalPage,
     openLibrary,
     openLibraryResource,
     openProject,
@@ -187,7 +203,7 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     closeTab,
     updateTab,
     resetTabs,
-  }), [tabs, activeTabId, openLibrary, openLibraryResource, openProject, activateTab, closeTab, updateTab, resetTabs]);
+  }), [tabs, activeTabId, openInternalPage, openLibrary, openLibraryResource, openProject, activateTab, closeTab, updateTab, resetTabs]);
 
   return <TabsContext.Provider value={value}>{children}</TabsContext.Provider>;
 }

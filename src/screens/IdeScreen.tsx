@@ -15,7 +15,7 @@ import {
   Usb,
 } from 'lucide-react';
 import { ProjectService } from '../services/projectService';
-import { HardwareService } from '../services/hardwareService';
+import { HardwareService, type UploadProgress } from '../services/hardwareService';
 import { watchIntervention, stopWatchingIntervention } from "../services/sessionService"; // Novo serviço de sessão
 import { BoardSelectionModal } from '../components/modals/BoardSelectionModal';
 import { UploadModal, UploadStage } from '../components/modals/UploadModal';
@@ -25,7 +25,7 @@ import { ErrorModal, FriendlyError, getFriendlyError } from '../components/modal
 import InterventionModal from "../components/modals/InterventionModal"; // Modal de bloqueio de tela
 import { ResponsiveToolbarButton } from '../components/ResponsiveToolbarButton';
 import { BloquinSelect } from '../components/forms/BloquinSelect';
-import logoSimples from '../icons/LogoSimples.png';
+import logoSimples from '../assets/LogoSimples.png';
 import LZString from 'lz-string';
 import { useTabs } from '../state/tabsStore';
 import { useSetup } from '../state/setupStore';
@@ -177,8 +177,6 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
       .map(b => BLOCK_NAMES[b.type] ?? b.type);
   };
 
-  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
   const initializeBlocklyModules = async () => {
     const { initBlocks } = await import('../blockly/blocks');
     const { initGenerators, generateCode } = await import('../blockly/generators');
@@ -301,6 +299,30 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
         }
         isUploadingRef.current = false;
         setIsUploading(false);
+      });
+      if (disposed) cleanup();
+      else unlisten = cleanup;
+    })();
+    return () => { disposed = true; unlisten?.(); };
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    (async () => {
+      const cleanup = await HardwareService.listenUploadProgress((payload: UploadProgress) => {
+        console.info(
+          `[UPLOAD][TIMING] ${payload.stage}/${payload.status}: ${payload.elapsedMs} ms (total ${payload.totalElapsedMs} ms)`,
+        );
+        if (payload.status !== 'started') return;
+
+        if (payload.stage === 'checking-core' || payload.stage === 'preparing') {
+          setUploadStage('validating');
+        } else if (payload.stage === 'compiling') {
+          setUploadStage('compiling');
+        } else if (payload.stage === 'sending') {
+          setUploadStage('sending');
+        }
       });
       if (disposed) cleanup();
       else unlisten = cleanup;
@@ -683,13 +705,16 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
   const handleUploadCode = async (ignoreOrphans = false) => {
     const currentWorkspace = workspace.current;
     if (!currentWorkspace || isUploadingRef.current || !board || setup.status !== 'ready') return;
+    const uploadStartedAt = performance.now();
     if (!port) {
       setFriendlyError(getFriendlyError('Nenhuma porta USB foi selecionada.'));
       return;
     }
     if (!ignoreOrphans) { const orphans = getOrphanedBlocks(); if (orphans.length > 0) { setOrphanWarning(orphans); return; } }
 
+    const validationStartedAt = performance.now();
     const auditIssues = auditWorkspace(currentWorkspace, board);
+    console.info(`[UPLOAD][TIMING] validation: ${Math.round(performance.now() - validationStartedAt)} ms`);
     if (auditIssues.length > 0) {
       const details = auditIssues.map((issue) => `• ${issue.message}`).join('\n');
       setFriendlyError({
@@ -705,9 +730,11 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
     }
 
     let codeToUpload: string;
+    const codeGenerationStartedAt = performance.now();
     try {
       codeToUpload = codeGeneratorRef.current?.(currentWorkspace, board) ?? '';
       setGeneratedCode(codeToUpload);
+      console.info(`[UPLOAD][TIMING] code-generation: ${Math.round(performance.now() - codeGenerationStartedAt)} ms`);
     } catch (error) {
       setFriendlyError({
         emoji: '🧩',
@@ -730,21 +757,21 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
       return;
     }
     if (isSerialOpen || isSerialStarting) {
+      const serialStopStartedAt = performance.now();
       await HardwareService.stopSerial();
       setIsSerialOpen(false);
       setIsSerialStarting(false);
+      console.info(`[UPLOAD][TIMING] serial-stop: ${Math.round(performance.now() - serialStopStartedAt)} ms`);
     }
     isUploadingRef.current = true;
     setIsUploading(true);
     setUploadStage('validating');
     try {
-      await delay(700);
-      if (!isUploadingRef.current) return;
-      setUploadStage('compiling');
+      // O backend emite as etapas reais (core, preparo, compilação e envio).
+      // Não aguardar tempos fixos aqui: além de atrasar o início, eles podiam
+      // exibir "Enviando" enquanto o arduino-cli ainda compilava.
       await HardwareService.uploadCode(codeToUpload, board, port);
-      await delay(2500);
-      if (!isUploadingRef.current) return;
-      setUploadStage('sending');
+      console.info(`[UPLOAD][TIMING] backend-started: ${Math.round(performance.now() - uploadStartedAt)} ms`);
     } catch (error) {
       isUploadingRef.current = false;
       setIsUploading(false);

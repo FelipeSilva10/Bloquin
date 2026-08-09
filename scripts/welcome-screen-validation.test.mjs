@@ -3,14 +3,18 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const htmlSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const entryBackButtonSource = readFileSync(new URL('../src/components/EntryBackButton.tsx', import.meta.url), 'utf8');
 const entryBackButtonCss = readFileSync(new URL('../src/components/EntryBackButton.css', import.meta.url), 'utf8');
 const loginSource = readFileSync(new URL('../src/screens/LoginScreen.tsx', import.meta.url), 'utf8');
+const loginCss = readFileSync(new URL('../src/screens/LoginScreen.css', import.meta.url), 'utf8');
 const splashSource = readFileSync(new URL('../src/components/SplashScreen.tsx', import.meta.url), 'utf8');
+const splashCss = readFileSync(new URL('../src/components/SplashScreen.css', import.meta.url), 'utf8');
+const tutorialSource = readFileSync(new URL('../src/components/modals/TutorialModal.tsx', import.meta.url), 'utf8');
+const tutorialCss = readFileSync(new URL('../src/components/modals/TutorialModal.css', import.meta.url), 'utf8');
 const visitorSource = readFileSync(new URL('../src/screens/VisitorDashboard.tsx', import.meta.url), 'utf8');
 const welcomeSource = readFileSync(new URL('../src/screens/WelcomeScreen.tsx', import.meta.url), 'utf8');
 const welcomeCss = readFileSync(new URL('../src/screens/WelcomeScreen.css', import.meta.url), 'utf8');
-const appCss = readFileSync(new URL('../src/App.css', import.meta.url), 'utf8');
 const logoAsset = readFileSync(new URL('../src/assets/LogoCompleta.png', import.meta.url));
 
 function balancedBlock(source, marker) {
@@ -57,6 +61,11 @@ test('asset oficial do logo é um PNG com canal alfa', () => {
   );
 });
 
+test('favicon também usa a marca simples atual, sem uma cópia pública obsoleta', () => {
+  assert.match(htmlSource, /href="\/src\/assets\/LogoSimples\.png"/);
+  assert.doesNotMatch(htmlSource, /href="\/LogoSimples\.png"/);
+});
+
 test('tela inicial usa o logo oficial e mantém as duas escolhas explícitas', () => {
   assert.match(welcomeSource, /<main className="welcome-screen">/);
   assert.match(welcomeSource, /<section className="welcome-content" aria-labelledby="welcome-title">/);
@@ -69,25 +78,31 @@ test('tela inicial usa o logo oficial e mantém as duas escolhas explícitas', (
   assert.doesNotMatch(welcomeSource, /logoLetters|welcome-logo-letter|LogoLetterStyle/);
   assert.doesNotMatch(welcomeCss, /welcome-logo-letter|--welcome-letter-/);
 
-  const capabilityLabels = [...welcomeSource.matchAll(/\{ label: '([^']+)', Icon:/g)]
-    .map((match) => match[1]);
-  assert.deepEqual(capabilityLabels, ['BLOCOS', 'CÓDIGO', 'HARDWARE']);
-  assert.match(welcomeSource, /className="welcome-capabilities" aria-label="Blocos, código e hardware"/);
-  assert.match(welcomeSource, /className=\{`welcome-connector welcome-connector--\$\{accent\}`\}/);
+  const entryButtons = welcomeSource.match(/className="welcome-button welcome-button--(?:enter|visitor)"/g) ?? [];
+  assert.equal(entryButtons.length, 2, 'A entrada deve oferecer apenas as escolhas Entrar e Continuar como visitante.');
 
   assert.match(
     welcomeSource,
-    /<button type="button" className="welcome-button welcome-button--enter" onClick=\{onEnter\}>[\s\S]*?<span>ENTRAR<\/span>[\s\S]*?<\/button>/,
+    /<button type="button" className="welcome-button welcome-button--enter" onClick=\{onEnter\}>[\s\S]*?<span>Entrar<\/span>[\s\S]*?<\/button>/,
   );
   assert.match(
     welcomeSource,
-    /<button type="button" className="welcome-button welcome-button--visitor" onClick=\{onVisitor\}>[\s\S]*?<span>VISITANTE<\/span>[\s\S]*?<\/button>/,
+    /<button type="button" className="welcome-button welcome-button--visitor" onClick=\{onVisitor\}>[\s\S]*?<span>Continuar como visitante<\/span>[\s\S]*?<\/button>/,
   );
   assert.match(welcomeSource, /className="welcome-version" aria-label=\{`Versão instalada \$\{version\}`\}/);
 
-  for (const position of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
-    assert.match(welcomeSource, new RegExp(`welcome-puzzle welcome-puzzle--${position}`));
+  for (const promotionalText of [
+    /PROGRAMAR,\s*DESCOBRIR,\s*CRIAR/i,
+    /Um espaço visual para transformar ideias em projetos com eletrônica\./i,
+    /\bBLOCOS\b/,
+    /\bCÓDIGO\b/,
+    /\bHARDWARE\b/,
+  ]) {
+    assert.doesNotMatch(welcomeSource, promotionalText);
   }
+
+  assert.doesNotMatch(welcomeSource, /welcome-(?:kicker|subtitle|capabilities|connector|puzzle|decoration)/);
+  assert.doesNotMatch(welcomeCss, /welcome-(?:kicker|subtitle|capabilities|connector|puzzle|decoration)/);
 });
 
 test('entrada e login permanecem em rotas separadas', () => {
@@ -136,24 +151,22 @@ test('login e dashboard visitante reutilizam o mesmo botão discreto de retorno'
 });
 
 test('splash e login enquadram a margem transparente sem cortar a marca', () => {
-  const splashLogoRule = balancedBlock(appCss, '.splash-logo {');
-  const splashLetterRule = balancedBlock(appCss, '.splash-letter {');
-  const splashImageRule = balancedBlock(appCss, '.splash-letter-image {');
-  const loginLogoRule = balancedBlock(appCss, '.login-logo {');
+  const splashLogoRule = balancedBlock(splashCss, '.bloquin-splash-logo {');
+  const splashImageRule = balancedBlock(splashCss, '.bloquin-splash-logo-image {');
+  const loginLogoRule = balancedBlock(loginCss, '.login-container .login-logo {');
 
   assert.match(splashSource, /import logoCompleta from '\.\.\/assets\/LogoCompleta\.png';/);
-  assert.match(splashSource, /src=\{logoCompleta\}[\s\S]*?className="splash-letter-image"/);
-  assert.match(splashLogoRule, /aspect-ratio:\s*5\.5\s*\/\s*1/);
-  assert.match(splashLogoRule, /background:\s*transparent/);
-  assert.doesNotMatch(splashLogoRule, /2172\s*\/\s*392/);
-  assert.match(splashLetterRule, /background:\s*transparent/);
-  assert.match(splashImageRule, /top:\s*50%/);
+  assert.match(splashSource, /className="bloquin-splash-logo-image"/);
+  assert.doesNotMatch(splashSource, /LOGO_WIDTH|LETTER_CUTS|LETTER_ROTATIONS|splash-letter/);
+  assert.match(splashLogoRule, /width:\s*min\(86vw, 980px\)/);
   assert.match(splashImageRule, /height:\s*auto/);
-  assert.match(splashImageRule, /transform:\s*translateY\(-50%\)/);
+  assert.match(splashImageRule, /object-fit:\s*contain/);
+  assert.doesNotMatch(splashImageRule, /object-fit:\s*cover|aspect-ratio/);
 
-  assert.match(loginLogoRule, /aspect-ratio:\s*5\.5\s*\/\s*1/);
+  assert.match(loginSource, /import '\.\/LoginScreen\.css';/);
+  assert.match(loginLogoRule, /aspect-ratio:\s*auto/);
   assert.match(loginLogoRule, /height:\s*auto/);
-  assert.match(loginLogoRule, /object-fit:\s*cover/);
+  assert.match(loginLogoRule, /object-fit:\s*contain/);
   assert.match(loginLogoRule, /object-position:\s*center/);
 });
 
@@ -212,7 +225,6 @@ test('dashboard visitante só cria ou importa projeto antes de abrir a IDE', () 
 
 test('layout inicial fica preso à área útil sem scroll e reduz a escala responsivamente', () => {
   const screenRule = balancedBlock(welcomeCss, '.welcome-screen {');
-  const decorationRule = balancedBlock(welcomeCss, '.welcome-decoration {');
   const contentRule = balancedBlock(welcomeCss, '.welcome-content {');
   const logoFrameRule = balancedBlock(welcomeCss, '.welcome-logo-frame {');
   const logoImageRule = balancedBlock(welcomeCss, '.welcome-logo-image {');
@@ -222,46 +234,92 @@ test('layout inicial fica preso à área útil sem scroll e reduz a escala respo
 
   assert.match(screenRule, /position:\s*absolute/);
   assert.match(screenRule, /inset:\s*0/);
-  assert.match(screenRule, /width:\s*auto/);
-  assert.match(screenRule, /height:\s*auto/);
+  assert.match(screenRule, /display:\s*grid/);
+  assert.match(screenRule, /place-items:\s*center/);
   assert.match(screenRule, /min-width:\s*0/);
   assert.match(screenRule, /min-height:\s*0/);
   assert.match(screenRule, /overflow:\s*hidden/);
-  assert.match(screenRule, /overflow:\s*clip/);
-  assert.match(screenRule, /contain:\s*layout paint/);
   assert.doesNotMatch(screenRule, /overflow:\s*(?:auto|scroll)/);
 
-  assert.match(decorationRule, /position:\s*absolute/);
-  assert.match(decorationRule, /inset:\s*0/);
-  assert.match(decorationRule, /overflow:\s*clip/);
-  assert.match(decorationRule, /contain:\s*paint/);
-  assert.doesNotMatch(decorationRule, /overflow:\s*(?:auto|scroll)/);
-
-  assert.match(contentRule, /width:\s*min\(640px, calc\(100% - 32px\)\)/);
+  assert.match(contentRule, /width:\s*min\(540px, calc\(100% - 32px\)\)/);
   assert.match(contentRule, /max-height:\s*100%/);
   assert.match(contentRule, /padding:\s*clamp\(/);
   assert.match(contentRule, /row-gap:\s*clamp\(/);
 
-  assert.match(logoFrameRule, /width:\s*clamp\(210px, 38vw, 400px\)/);
-  assert.match(logoFrameRule, /max-width:\s*100%/);
-  assert.match(logoFrameRule, /aspect-ratio:\s*5\.5\s*\/\s*1/);
-  assert.match(logoFrameRule, /background:\s*transparent/);
+  assert.match(logoFrameRule, /width:\s*min\(100%, clamp\(260px, 50vw, 500px\)\)/);
+  assert.match(logoFrameRule, /display:\s*flex/);
   assert.match(logoFrameRule, /filter:\s*drop-shadow\(/);
-  assert.doesNotMatch(logoFrameRule, /(?:^|;)\s*(?:padding|border|box-shadow):/);
+  assert.doesNotMatch(logoFrameRule, /aspect-ratio|overflow/);
   assert.match(logoImageRule, /width:\s*100%/);
-  assert.match(logoImageRule, /height:\s*100%/);
-  assert.match(logoImageRule, /object-fit:\s*cover/);
-  assert.match(logoImageRule, /object-position:\s*center/);
+  assert.match(logoImageRule, /height:\s*auto/);
+  assert.match(logoImageRule, /object-fit:\s*contain/);
 
   assert.doesNotMatch(welcomeCss, /100(?:d?vh|vw)/);
 
   assert.match(mobileMedia, /\.welcome-content\s*\{[\s\S]*?width:\s*calc\(100% - 24px\)/);
-  assert.match(mobileMedia, /\.welcome-button\s*\{\s*padding-inline:\s*10px/);
-  assert.match(mobileMedia, /\.welcome-puzzle\s*\{\s*opacity:\s*0\.43/);
-  assert.match(shortMedia, /\.welcome-content\s*\{[\s\S]*?padding:\s*16px 0 32px[\s\S]*?row-gap:\s*16px/);
-  assert.match(shortMedia, /\.welcome-logo-frame\s*\{\s*width:\s*clamp\(200px, 34vw, 320px\)/);
-  assert.match(shortMedia, /\.welcome-button\s*\{\s*min-height:\s*46px/);
+  assert.match(mobileMedia, /\.welcome-actions\s*\{\s*grid-template-columns:\s*1fr/);
+  assert.match(mobileMedia, /\.welcome-button\s*\{\s*padding-inline:\s*16px/);
+  assert.match(shortMedia, /\.welcome-content\s*\{[\s\S]*?padding:\s*14px 0 28px[\s\S]*?row-gap:\s*18px/);
+  assert.match(shortMedia, /\.welcome-logo-frame\s*\{\s*width:\s*clamp\(220px, 42vw, 380px\)/);
+  assert.match(shortMedia, /\.welcome-button\s*\{\s*min-height:\s*44px/);
 
   assert.match(reducedMotion, /\.welcome-logo-frame\s*\{\s*animation:\s*none/);
   assert.match(reducedMotion, /\.welcome-button\s*\{[\s\S]*?transition-duration:\s*0\.01ms/);
+});
+
+test('tutorial fullscreen tem cinco etapas curtas com os controles reais da IDE e a11y', () => {
+  const overlayRule = balancedBlock(tutorialCss, '.bloquin-tutorial-overlay {');
+  const tutorialRule = balancedBlock(tutorialCss, '.bloquin-tutorial {');
+  const contentRule = balancedBlock(tutorialCss, '.bloquin-tutorial-content {');
+  const stepperRule = balancedBlock(tutorialCss, '.bloquin-tutorial-stepper {');
+  const focusRule = balancedBlock(tutorialCss, '.bloquin-tutorial button:focus-visible {');
+  const steps = [...tutorialSource.matchAll(
+    /\{\s*id:\s*'([^']+)',\s*label:\s*'([^']+)',\s*eyebrow:\s*'([^']+)',\s*title:\s*'([^']+)',\s*description:\s*'([^']+)',/g,
+  )].map(([, id, label, eyebrow, title, description]) => ({ id, label, eyebrow, title, description }));
+
+  assert.match(tutorialSource, /import logoSimples from '\.\.\/\.\.\/assets\/LogoSimples\.png';/);
+  assert.match(tutorialSource, /useModalA11y<HTMLDivElement>\(onClose\)/);
+  assert.match(tutorialSource, /className="bloquin-tutorial-overlay"/);
+  assert.match(tutorialSource, /role="dialog"/);
+  assert.match(tutorialSource, /aria-modal="true"/);
+  assert.match(tutorialSource, /aria-labelledby=\{titleId\}/);
+  assert.match(tutorialSource, /data-autofocus/);
+  assert.match(tutorialSource, /aria-label="Fechar guia rápido"/);
+  assert.match(tutorialSource, /role="progressbar" aria-label="Progresso do guia" aria-valuemin=\{0\} aria-valuemax=\{100\} aria-valuenow=\{progress\}/);
+  assert.match(tutorialSource, /<nav className="bloquin-tutorial-stepper" aria-label="Etapas do guia">/);
+  assert.match(tutorialSource, /aria-current=\{index === stepIndex \? 'step' : undefined\}/);
+  assert.match(tutorialSource, /<main className="bloquin-tutorial-content" aria-live="polite">/);
+
+  assert.equal(steps.length, 5, 'O guia deve manter somente cinco etapas.');
+  assert.deepEqual(
+    steps.map(({ id, label }) => ({ id, label })),
+    [
+      { id: 'projeto', label: 'Projeto' },
+      { id: 'placa', label: 'Placa' },
+      { id: 'blocos', label: 'Blocos' },
+      { id: 'enviar', label: 'Enviar' },
+      { id: 'salvar', label: 'Salvar' },
+    ],
+  );
+  assert.ok(
+    steps.every(({ description }) => description.length <= 90),
+    'Cada etapa deve explicar uma única ideia em uma frase curta.',
+  );
+  for (const controlLabel of ['Novo projeto', 'PREPARAR', 'AGIR', 'Porta USB', 'Enviar', 'Salvar']) {
+    assert.match(tutorialSource, new RegExp(controlLabel));
+  }
+  assert.match(tutorialSource, /Etapa \{stepIndex \+ 1\} de \{STEPS\.length\}/);
+
+  assert.match(overlayRule, /position:\s*fixed/);
+  assert.match(overlayRule, /inset:\s*0/);
+  assert.match(overlayRule, /overflow:\s*hidden/);
+  assert.match(tutorialRule, /width:\s*100%/);
+  assert.match(tutorialRule, /height:\s*100%/);
+  assert.match(tutorialRule, /min-width:\s*0/);
+  assert.match(tutorialRule, /min-height:\s*0/);
+  assert.match(tutorialRule, /grid-template-rows:\s*auto auto minmax\(0, 1fr\) auto/);
+  assert.match(contentRule, /overflow:\s*auto/);
+  assert.match(stepperRule, /grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(focusRule, /outline:\s*3px solid var\(--primary\)/);
+  assert.doesNotMatch(tutorialCss, /max-width:\s*580px|\.tutorial-modal/);
 });

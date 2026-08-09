@@ -1,16 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import logoCompleta from '../assets/LogoCompleta.png';
+import './SplashScreen.css';
 
-const LOGO_WIDTH = 2172;
 const SPLASH_DURATION_MS = 2400;
 const REDUCED_SPLASH_DURATION_MS = 220;
-
-// Cortes horizontais da marca. Cada fatia continua apontando para a mesma
-// imagem; o CSS centraliza o canvas verticalmente e recorta somente a margem
-// transparente, deixando uma letra por vez visível durante a animação.
-const LETTER_CUTS = [0, 346, 656, 963, 1276, 1553, 1855, LOGO_WIDTH] as const;
-const LETTER_ROTATIONS = [-5, 4, -4, 3, -3, 4, -4] as const;
-const LETTER_NAMES = ['b', 'l', 'o', 'q', 'u', 'i', 'n'] as const;
 
 interface SplashScreenProps {
   ready: boolean;
@@ -73,7 +66,7 @@ export function SplashScreen({ ready, onFinished }: SplashScreenProps) {
 
   return (
     <div
-      className={`splash-screen${exiting ? ' splash-screen--exiting' : ''}`}
+      className={`bloquin-splash-screen${exiting ? ' bloquin-splash-screen--exiting' : ''}`}
       role="status"
       aria-live="polite"
       aria-label="Abrindo o Bloquin IDE"
@@ -81,36 +74,13 @@ export function SplashScreen({ ready, onFinished }: SplashScreenProps) {
         if (event.propertyName === 'opacity') finish();
       }}
     >
-      <div className="splash-logo" aria-hidden="true">
-        {LETTER_NAMES.map((letter, index) => {
-          const from = LETTER_CUTS[index];
-          const to = LETTER_CUTS[index + 1];
-          const width = to - from;
-          const style = {
-            '--splash-left': `${(from / LOGO_WIDTH) * 100}%`,
-            '--splash-width': `${(width / LOGO_WIDTH) * 100}%`,
-            '--splash-image-left': `${(-from / width) * 100}%`,
-            '--splash-image-width': `${(LOGO_WIDTH / width) * 100}%`,
-            '--splash-delay': `${index * 105}ms`,
-            '--splash-rotation': `${LETTER_ROTATIONS[index]}deg`,
-          } as CSSProperties;
-
-          return (
-            <span
-              className="splash-letter"
-              style={style}
-              data-letter={letter}
-              key={letter}
-            >
-              <img
-                src={logoCompleta}
-                alt=""
-                className="splash-letter-image"
-                draggable="false"
-              />
-            </span>
-          );
-        })}
+      <div className="bloquin-splash-logo" aria-hidden="true">
+        <img
+          src={logoCompleta}
+          alt=""
+          className="bloquin-splash-logo-image"
+          draggable="false"
+        />
       </div>
     </div>
   );
