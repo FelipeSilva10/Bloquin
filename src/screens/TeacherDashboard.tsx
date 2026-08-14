@@ -370,8 +370,8 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
         </div>
 
         <div className="dashboard-topbar-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button className="btn-secondary dashboard-library-button" onClick={onOpenLibrary}>📚 Biblioteca</button>
-          <button className="btn-secondary" onClick={onOpenComponents}>⚙️ Componentes</button>
+          <button className="btn-secondary dashboard-library-button" onClick={onOpenLibrary}>Biblioteca</button>
+          <button className="btn-secondary" onClick={onOpenComponents}>Componentes</button>
           <button
             type="button"
             className="btn-secondary"

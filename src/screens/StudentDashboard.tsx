@@ -221,8 +221,8 @@ export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary, o
           </h1>
         </div>
         <div className="dashboard-topbar-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button className="btn-secondary dashboard-library-button" onClick={onOpenLibrary}>📚 Biblioteca</button>
-          <button className="btn-secondary" onClick={onOpenComponents}>⚙️ Componentes</button>
+          <button className="btn-secondary dashboard-library-button" onClick={onOpenLibrary}>Biblioteca</button>
+          <button className="btn-secondary" onClick={onOpenComponents}>Componentes</button>
           <button className="btn-outline" onClick={onLogout} style={{ padding: '10px 20px' }}>Sair</button>
         </div>
       </header>

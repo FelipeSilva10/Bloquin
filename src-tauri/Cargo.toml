@@ -1,6 +1,6 @@
 [package]
 name = "bloquin"
-version = "2.1.0"
+version = "2.2.0"
 description = "Ambiente visual de programação para Arduino e ESP32 voltado para o ensino."
 authors = ["Felipe da Conceição Silva"]
 license = "MIT"

@@ -122,6 +122,36 @@
   text-shadow: 0 1px 4px rgba(14, 21, 79, 0.4);
 }
 
+.welcome-creator {
+  position: absolute;
+  right: clamp(12px, 2vw, 20px);
+  bottom: clamp(10px, 2vh, 18px);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: clamp(0.64rem, 1.2vw, 0.72rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 4px rgba(14, 21, 79, 0.4);
+}
+
+.welcome-creator a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #fff;
+  text-decoration-color: rgba(255, 255, 255, 0.58);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color 150ms ease, text-decoration-color 150ms ease;
+}
+
+.welcome-creator a:hover { color: #dff7ff; text-decoration-color: currentColor; }
+.welcome-creator a:focus-visible { outline: 2px solid #fff; outline-offset: 4px; border-radius: 3px; }
+.welcome-creator svg { width: 12px; height: 12px; stroke-width: 2.4; }
+
 @media (max-width: 480px) {
   .welcome-content {
     width: calc(100% - 24px);
@@ -130,6 +160,7 @@
 
   .welcome-actions { grid-template-columns: 1fr; }
   .welcome-button { padding-inline: 16px; }
+  .welcome-creator { bottom: 35px; font-size: 0.62rem; }
 }
 
 @media (max-height: 560px) {
@@ -140,6 +171,7 @@
 
   .welcome-logo-frame { width: clamp(220px, 42vw, 380px); }
   .welcome-button { min-height: 44px; }
+  .welcome-creator { bottom: 33px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

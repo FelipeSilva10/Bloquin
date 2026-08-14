@@ -1,5 +1,6 @@
-import { LogIn, Play } from 'lucide-react';
+import { ExternalLink, LogIn, Play } from 'lucide-react';
 import logoCompleta from '../assets/LogoCompleta.png';
+import { CREATOR_PORTFOLIO_URL, openCreatorPortfolio } from '../services/creatorPortfolioService';
 import './WelcomeScreen.css';
 
 interface WelcomeScreenProps {
@@ -9,6 +10,11 @@ interface WelcomeScreenProps {
 }
 
 export function WelcomeScreen({ onEnter, onVisitor, version }: WelcomeScreenProps) {
+  const handlePortfolioOpen = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    void openCreatorPortfolio();
+  };
+
   return (
     <main className="welcome-screen">
       <section className="welcome-content" aria-labelledby="welcome-title">
@@ -32,6 +38,20 @@ export function WelcomeScreen({ onEnter, onVisitor, version }: WelcomeScreenProp
       <span className="welcome-version" aria-label={`Versão instalada ${version}`}>
         Bloquin IDE v{version}
       </span>
+
+      <footer className="welcome-creator">
+        <span>Criado por Felipe Silva</span>
+        <span aria-hidden="true">·</span>
+        <a
+          href={CREATOR_PORTFOLIO_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={handlePortfolioOpen}
+          aria-label="Abrir o portfólio de Felipe Silva em uma nova aba"
+        >
+          Portfólio <ExternalLink aria-hidden="true" />
+        </a>
+      </footer>
     </main>
   );
 }

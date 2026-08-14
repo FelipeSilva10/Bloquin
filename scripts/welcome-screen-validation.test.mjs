@@ -15,6 +15,7 @@ const tutorialCss = readFileSync(new URL('../src/components/modals/TutorialModal
 const visitorSource = readFileSync(new URL('../src/screens/VisitorDashboard.tsx', import.meta.url), 'utf8');
 const welcomeSource = readFileSync(new URL('../src/screens/WelcomeScreen.tsx', import.meta.url), 'utf8');
 const welcomeCss = readFileSync(new URL('../src/screens/WelcomeScreen.css', import.meta.url), 'utf8');
+const creatorPortfolioSource = readFileSync(new URL('../src/services/creatorPortfolioService.ts', import.meta.url), 'utf8');
 const logoAsset = readFileSync(new URL('../src/assets/LogoCompleta.png', import.meta.url));
 
 function balancedBlock(source, marker) {
@@ -103,6 +104,21 @@ test('tela inicial usa o logo oficial e mantém as duas escolhas explícitas', (
 
   assert.doesNotMatch(welcomeSource, /welcome-(?:kicker|subtitle|capabilities|connector|puzzle|decoration)/);
   assert.doesNotMatch(welcomeCss, /welcome-(?:kicker|subtitle|capabilities|connector|puzzle|decoration)/);
+});
+
+test('tela inicial mantém um acesso discreto ao portfólio do criador', () => {
+  assert.match(welcomeSource, /import \{ CREATOR_PORTFOLIO_URL, openCreatorPortfolio \} from '\.\.\/services\/creatorPortfolioService';/);
+  assert.match(welcomeSource, /<footer className="welcome-creator">/);
+  assert.match(welcomeSource, /Criado por Felipe Silva/);
+  assert.match(welcomeSource, /href=\{CREATOR_PORTFOLIO_URL\}/);
+  assert.match(welcomeSource, /onClick=\{handlePortfolioOpen\}/);
+  assert.match(welcomeSource, /target="_blank"/);
+  assert.match(welcomeSource, /rel="noopener noreferrer"/);
+  assert.match(creatorPortfolioSource, /CREATOR_PORTFOLIO_URL = 'https:\/\/felipesilva10\.github\.io\/Portifolio\/'/);
+  assert.match(creatorPortfolioSource, /await openUrl\(CREATOR_PORTFOLIO_URL\)/);
+  assert.match(creatorPortfolioSource, /window\.open\(CREATOR_PORTFOLIO_URL, '_blank', 'noopener,noreferrer'\)/);
+  assert.match(welcomeCss, /\.welcome-creator \{/);
+  assert.match(welcomeCss, /\.welcome-creator a \{/);
 });
 
 test('entrada e login permanecem em rotas separadas', () => {

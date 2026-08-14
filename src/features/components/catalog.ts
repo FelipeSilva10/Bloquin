@@ -1,4 +1,13 @@
 import arduinoUnoImage from '../../assets/arduino_uno.jpg';
+import buzzerImage from '../../assets/buzzer.jpg';
+import hcSr04Image from '../../assets/hcsr04.jpg';
+import ldrImage from '../../assets/ldr.jpg';
+import ledImage from '../../assets/led.jpg';
+import motorImage from '../../assets/motor.jpg';
+import mpu6050Image from '../../assets/mpu6050.jpg';
+import ponteHImage from '../../assets/ponteH.jpg';
+import pushButtonImage from '../../assets/botãopush.jpg';
+import resistorImage from '../../assets/resistor.jpg';
 import esp32DevKitImage from '../../assets/esp32_devkit_v1.jpg';
 import type {
   ComponentCatalogItem,
@@ -123,7 +132,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       { blockType: 'escrever_pino_pwm', label: 'Controlar brilho (PWM)', toolboxCategory: 'Entradas e Saídas' },
     ],
     relatedComponentIds: ['resistor', 'arduino-uno', 'esp32-devkit-v1'],
-    media: [],
+    media: [{ kind: 'image', role: 'main', src: ledImage, alt: 'LED vermelho de 5 mm' }],
   },
   {
     id: 'resistor',
@@ -154,7 +163,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       { blockType: 'ler_pino_analogico', label: 'Ler sensor analógico', toolboxCategory: 'Entradas e Saídas', description: 'Usado quando o resistor forma um divisor com LDR.' },
     ],
     relatedComponentIds: ['led-5mm', 'ldr', 'push-button'],
-    media: [],
+    media: [{ kind: 'image', role: 'main', src: resistorImage, alt: 'Resistor eletrônico' }],
   },
   {
     id: 'push-button',
@@ -187,7 +196,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       { blockType: 'se_entao', label: 'Se… então', toolboxCategory: 'Lógica' },
     ],
     relatedComponentIds: ['resistor', 'led-5mm', 'passive-buzzer'],
-    media: [],
+    media: [{ kind: 'image', role: 'main', src: pushButtonImage, alt: 'Botão tátil' }],
   },
   {
     id: 'passive-buzzer',
@@ -219,7 +228,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       { blockType: 'buzzer_tocar_musica', label: 'Tocar música pronta', toolboxCategory: 'Buzzer' },
     ],
     relatedComponentIds: ['push-button', 'arduino-uno', 'esp32-devkit-v1'],
-    media: [],
+    media: [{ kind: 'image', role: 'main', src: buzzerImage, alt: 'Buzzer passivo' }],
   },
   {
     id: 'ldr',
@@ -252,7 +261,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       { blockType: 'mapear_valor', label: 'Converter escala', toolboxCategory: 'Matemática' },
     ],
     relatedComponentIds: ['resistor', 'led-5mm', 'arduino-uno'],
-    media: [],
+    media: [{ kind: 'image', role: 'main', src: ldrImage, alt: 'Sensor LDR' }],
   },
   {
     id: 'hc-sr04',
@@ -287,7 +296,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       { blockType: 'objeto_esta_perto', label: 'Objeto está perto?', toolboxCategory: 'Sensor de Distância' },
     ],
     relatedComponentIds: ['arduino-uno', 'esp32-devkit-v1', 'led-5mm'],
-    media: [],
+    media: [{ kind: 'image', role: 'main', src: hcSr04Image, alt: 'Sensor ultrassônico HC-SR04' }],
   },
   {
     id: 'mpu6050',
@@ -322,7 +331,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       { blockType: 'mpu_ler_roll', label: 'Ler inclinação lateral', toolboxCategory: 'Acelerômetro' },
     ],
     relatedComponentIds: ['esp32-devkit-v1', 'arduino-uno', 'l298n'],
-    media: [],
+    media: [{ kind: 'image', role: 'main', src: mpu6050Image, alt: 'Módulo MPU6050' }],
   },
   {
     id: 'l298n',
@@ -358,7 +367,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       { blockType: 'l298n_parar', label: 'Parar motores', toolboxCategory: 'Motor DC' },
     ],
     relatedComponentIds: ['dc-motor', 'esp32-devkit-v1', 'mpu6050'],
-    media: [],
+    media: [{ kind: 'image', role: 'main', src: ponteHImage, alt: 'Driver de motor L298N, ponte H' }],
   },
   {
     id: 'dc-motor',
@@ -391,7 +400,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       { blockType: 'l298n_mover_motor', label: 'Girar motor individual', toolboxCategory: 'Motor DC' },
     ],
     relatedComponentIds: ['l298n', 'esp32-devkit-v1', 'arduino-uno'],
-    media: [],
+    media: [{ kind: 'image', role: 'main', src: motorImage, alt: 'Motor de corrente contínua' }],
   },
 ];
 

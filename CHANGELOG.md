@@ -33,6 +33,17 @@ BREAKING CHANGE: apenas Arduino Uno R3+ é suportado a partir desta versão.
 
 <!-- Histórico de versões -->
 
+## [2.2.0] — 13/08/2026
+
+### Novas funcionalidades
+
+- Adicionadas imagens de referência para LED, resistor, botão tátil, buzzer, LDR, HC-SR04, MPU6050, driver L298N e motor DC no catálogo de Componentes.
+- Adicionado à tela inicial um acesso discreto ao portfólio de Felipe Silva, criador do Bloquin.
+
+### Melhorias de interface
+
+- Simplificados os atalhos de Biblioteca e Componentes nas dashboards de aluno e professor.
+
 ## [2.1.0] — 08/08/2026
 
 ### Novas funcionalidades
