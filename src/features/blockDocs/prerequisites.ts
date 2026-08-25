@@ -26,9 +26,14 @@ export const BLOCK_PREREQUISITES: readonly BlockPrerequisiteRule[] = [
     message: 'Configure o sensor ultrassônico no bloco PREPARAR antes de usá-lo.',
   },
   {
-    types: ['mpu_ler_pitch', 'mpu_ler_roll'],
+    types: [
+      'mpu_ler_pitch', 'mpu_ler_roll',
+      'mpu_ler_aceleracao_x', 'mpu_ler_aceleracao_y', 'mpu_ler_aceleracao_z',
+      'mpu_ler_giro_x', 'mpu_ler_giro_y', 'mpu_ler_giro_z',
+      'mpu_ler_temperatura',
+    ],
     requiresType: 'mpu_iniciar',
-    message: 'Inicie o acelerômetro no bloco PREPARAR antes de ler sua inclinação.',
+    message: 'Inicie o MPU6050 no bloco PREPARAR antes de ler seus dados.',
   },
   {
     types: ['l298n_mover_robo', 'l298n_parar', 'l298n_mover_motor', 'l298n_velocidade_por_pitch_roll'],
@@ -41,12 +46,12 @@ export const BLOCK_PREREQUISITES: readonly BlockPrerequisiteRule[] = [
     message: 'Prepare a comunicação sem fio (Wi-Fi) no bloco PREPARAR antes deste bloco.',
   },
   {
-    types: ['espnow_adicionar_receptor', 'espnow_enviar_pacote'],
+    types: ['espnow_adicionar_receptor', 'espnow_enviar_pacote', 'espnow_enviar_mensagem', 'espnow_envio_confirmado'],
     requiresType: 'espnow_transmissor_init',
     message: 'Prepare o transmissor ESP-NOW antes de conectar ou enviar dados.',
   },
   {
-    types: ['espnow_enviar_pacote'],
+    types: ['espnow_enviar_pacote', 'espnow_enviar_mensagem'],
     requiresType: 'espnow_adicionar_receptor',
     message: 'Conecte ao código MAC do receptor antes de enviar dados.',
   },
@@ -58,9 +63,29 @@ export const BLOCK_PREREQUISITES: readonly BlockPrerequisiteRule[] = [
       'espnow_ler_flag_parar',
       'espnow_timeout_ms',
       'espnow_marcar_lido',
+      'espnow_mensagem_tipo',
+      'espnow_mensagem_valor_a',
+      'espnow_mensagem_valor_b',
+      'espnow_mensagem_valor_c',
+      'espnow_mensagem_sinal',
+      'espnow_mensagem_remetente',
+      'espnow_contagem_invalidas',
     ],
     requiresType: 'espnow_receptor_init',
     message: 'Prepare o receptor ESP-NOW antes de ler mensagens.',
+  },
+  // `espnow_iniciou_com_sucesso` NÃO entra aqui: em audit.ts ele aceita
+  // transmissor OU receptor (checagem bespoke, não um requireBlock de um
+  // único tipo) — ver o dependencyNotes manual desse bloco em registry.ts.
+  {
+    types: ['bt_disponivel', 'bt_ler_texto', 'bt_enviar_texto', 'bt_conectado'],
+    requiresType: 'bt_iniciar',
+    message: 'Inicie o Bluetooth no bloco PREPARAR antes de usá-lo.',
+  },
+  {
+    types: ['wifi_esta_conectado', 'wifi_endereco_ip', 'wifi_desconectar'],
+    requiresType: 'wifi_conectar',
+    message: 'Adicione "Conectar ao Wi-Fi" em algum lugar do projeto antes de consultar o status da rede.',
   },
 ];
 

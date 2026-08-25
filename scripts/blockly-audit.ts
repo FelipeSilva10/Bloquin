@@ -8,6 +8,7 @@ import { BOARDS, type BoardKey } from '../src/blockly/boards';
 import { auditSerializedWorkspace, auditWorkspace } from '../src/blockly/audit';
 import { BLOCK_NAMES, getToolboxConfig, toolboxConfig } from '../src/blockly/toolbox';
 import { synchronizeVariableTypes } from '../src/blockly/variableTypes';
+import { BLOCK_EXAMPLES } from '../src/features/blockDocs/examples';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -72,17 +73,17 @@ export async function runBlockAudit() {
   initGenerators();
 
   const customTypes = Object.keys(Blockly.Blocks);
-  assert(customTypes.length === 78, `Esperava 78 blocos; encontrei ${customTypes.length}.`);
+  assert(customTypes.length === 104, `Esperava 104 blocos; encontrei ${customTypes.length}.`);
 
   const toolboxTypes = toolboxBlockTypes();
-  assert(new Set(toolboxTypes).size === 74, 'A toolbox deve expor 74 blocos sem duplicatas.');
+  assert(new Set(toolboxTypes).size === 100, 'A toolbox deve expor 100 blocos sem duplicatas.');
   assert(
     !toolboxTypes.includes('util_map_float') && !toolboxTypes.includes('util_fabsf'),
     'Aliases decimais legados devem continuar definidos, mas não duplicar opções na toolbox.',
   );
   assert(
     toolboxConfig.contents.map((category) => category.name).join('|')
-      === 'Lógica|Controle|Matemática|Variáveis|Funções|Tempo|Entradas e Saídas|Sensor de Distância|Acelerômetro|Servo|Buzzer|Motor DC|Comunicação|Comunicação Sem Fio',
+      === 'Lógica|Controle|Matemática|Variáveis|Funções|Tempo|Entradas e Saídas|Sensor de Distância|MPU6050|Servo|Buzzer|Motor DC|Comunicação|ESP-NOW|Wi-Fi|Bluetooth',
     'A ordem da toolbox deve priorizar fundamentos antes de hardware e comunicação.',
   );
   for (const type of toolboxTypes) {
@@ -101,8 +102,10 @@ export async function runBlockAudit() {
 
   const avrToolboxJson = JSON.stringify(getToolboxConfig('uno'));
   assert(
-    !avrToolboxJson.includes('"type":"espnow_'),
-    'A toolbox AVR não pode criar blocos ESP-NOW, nem dentro de presets.',
+    !avrToolboxJson.includes('"type":"espnow_')
+      && !avrToolboxJson.includes('"type":"wifi_')
+      && !avrToolboxJson.includes('"type":"bt_'),
+    'A toolbox AVR não pode criar blocos ESP-NOW/Wi-Fi/Bluetooth, nem dentro de presets.',
   );
   assert(
     avrToolboxJson.includes(
@@ -522,6 +525,67 @@ export async function runBlockAudit() {
   testIsolatedDependency('uno', 'servo_configurar', '#include <Servo.h>');
   testIsolatedDependency('esp32', 'servo_configurar', '#include <ESP32Servo.h>');
 
+  // MPU-6050: acelerômetro, giroscópio e temperatura têm fórmulas distintas
+  // (não são "a mesma coisa"), lidas num único burst de 14 bytes.
+  testIsolatedDependency('uno', 'mpu_ler_aceleracao_x', '_mpu_accelX = ax / 16384.0f;');
+  testIsolatedDependency('uno', 'mpu_ler_giro_z', '_mpu_gyroZ = gz / 131.0f;');
+  testIsolatedDependency('uno', 'mpu_ler_temperatura', '_mpu_tempC = rawTemp / 340.0f + 36.53f;');
+
+  // ESP-NOW — mensagem genérica: envio/leitura usam o mesmo envelope
+  // (_BloquinMensagem) que os blocos legados de pitch/roll/parar.
+  testIsolatedDependency('esp32', 'espnow_enviar_mensagem', 'esp_now_send(_espnow_peer_mac, (uint8_t*)&_msg, sizeof(_msg));');
+  testIsolatedDependency('esp32', 'espnow_mensagem_valor_c', '_bloquin_lerEspnowValorC()', true);
+  testIsolatedDependency('esp32', 'espnow_mensagem_remetente', '_bloquin_espnowRemetente()', true);
+  testIsolatedDependency('esp32', 'espnow_iniciou_com_sucesso', '_espnow_ok', true);
+  testIsolatedDependency('esp32', 'espnow_envio_confirmado', '_espnow_ultimoEnvioOk', true);
+  testIsolatedDependency('esp32', 'espnow_contagem_invalidas', '_espnow_invalidas', true);
+
+  // Wi-Fi/Bluetooth seguem a mesma filosofia iniciar/status/enviar/receber.
+  testIsolatedDependency('esp32', 'wifi_conectar', 'WiFi.begin(');
+  testIsolatedDependency('esp32', 'wifi_esta_conectado', 'WL_CONNECTED', true);
+  testIsolatedDependency('esp32', 'bt_iniciar', '_bloquinBT.begin(');
+  testIsolatedDependency('esp32', 'bt_ler_texto', '_bloquin_lerBluetooth()', true);
+
+  // Falha de inicialização do ESP-NOW não pode mais travar o sketch para
+  // sempre: o usuário decide o que fazer consultando "iniciou com sucesso?".
+  syncBoardPins('esp32');
+  const noHaltWorkspace = new Blockly.Workspace();
+  const noHaltRoots = makeRoots(noHaltWorkspace);
+  connectChain(noHaltRoots.setup, 'DO', [
+    noHaltWorkspace.newBlock('espnow_iniciar_wifi'),
+    noHaltWorkspace.newBlock('espnow_transmissor_init'),
+    noHaltWorkspace.newBlock('espnow_adicionar_receptor'),
+  ]);
+  const noHaltCode = generateCode(noHaltWorkspace as Blockly.WorkspaceSvg, 'esp32');
+  assert(
+    !noHaltCode.includes('while(true)') && !noHaltCode.includes('while (true)'),
+    'Falha de inicialização do ESP-NOW ainda trava o sketch com um laço infinito.',
+  );
+  assert(
+    noHaltCode.includes('_espnow_ok = (esp_now_init() == ESP_OK);'),
+    'Inicialização do transmissor ESP-NOW não expõe mais o estado de sucesso em _espnow_ok.',
+  );
+  noHaltWorkspace.dispose();
+
+  // A inclinação calculada não pode mais depender de uma correção de eixo
+  // específica de um projeto (a antiga troca "luva rotacionada 90°"): pitch
+  // e roll devem vir direto da fórmula padrão do acelerômetro.
+  syncBoardPins('uno');
+  const mpuFormulaWorkspace = new Blockly.Workspace();
+  const mpuFormulaRoots = makeRoots(mpuFormulaWorkspace);
+  connectStatement(mpuFormulaRoots.setup, 'DO', mpuFormulaWorkspace.newBlock('mpu_iniciar'));
+  const mpuFormulaPrint = mpuFormulaWorkspace.newBlock('escrever_serial_valor');
+  connectValue(mpuFormulaPrint, 'VALOR', mpuFormulaWorkspace.newBlock('mpu_ler_pitch'));
+  connectStatement(mpuFormulaRoots.loop, 'DO', mpuFormulaPrint);
+  const mpuFormulaCode = generateCode(mpuFormulaWorkspace as Blockly.WorkspaceSvg, 'uno');
+  assert(
+    mpuFormulaCode.includes('_mpu_pitchCache = atan2f(-_mpu_accelX, sqrtf(_mpu_accelY*_mpu_accelY + _mpu_accelZ*_mpu_accelZ)) * 180.0f / PI;')
+      && mpuFormulaCode.includes('_mpu_rollCache  = atan2f(_mpu_accelY, _mpu_accelZ) * 180.0f / PI;')
+      && !mpuFormulaCode.includes('_mpu_pitchCache = sensorRoll'),
+    'O cálculo de inclinação ainda contém a correção de eixo específica de um projeto.',
+  );
+  mpuFormulaWorkspace.dispose();
+
   for (const [board, expectedSda, expectedScl] of [
     ['uno', 'A4', 'A5'],
     ['nano', 'A4', 'A5'],
@@ -694,11 +758,41 @@ export async function runBlockAudit() {
   const fixtureNames = Object.keys(createCompilationFixtures());
   assert(
     fixtureNames.join('|')
-      === 'uno-fundamentals|uno-hardware|nano-io|esp32-io|esp32-transmitter|esp32-receiver',
+      === 'uno-fundamentals|uno-hardware|nano-io|esp32-io|esp32-transmitter|esp32-receiver'
+        + '|esp32-generic-transmitter|esp32-generic-receiver|esp32-wifi|esp32-bluetooth',
     'A matriz de compilação representativa está incompleta.',
   );
 
-  console.log('Auditoria Blockly: 78/78 blocos, 3 placas e 6 cenários de compilação validados.');
+  // Todo exemplo da Documentação de Blocos precisa carregar de verdade num
+  // workspace Blockly (mesmo contrato de Blockly.serialization.workspaces
+  // .load() que o próprio arquivo de exemplos documenta) — não só "parecer"
+  // certo como texto. Isto pegou um bug real: `declarar_variavel_global`
+  // (sem previousStatement/nextStatement) estava aninhado dentro do DO de
+  // PREPARAR num exemplo, o que lança ao carregar de verdade.
+  for (const example of BLOCK_EXAMPLES) {
+    syncBoardPins(example.board);
+    const exampleWorkspace = new Blockly.Workspace();
+    try {
+      Blockly.serialization.workspaces.load(example.workspace as never, exampleWorkspace);
+      const loadedTypes = new Set(exampleWorkspace.getAllBlocks(false).map((block) => block.type));
+      const missing = example.blockTypes.filter((type) => !loadedTypes.has(type));
+      const extra = [...loadedTypes].filter((type) => !example.blockTypes.includes(type));
+      assert(
+        missing.length === 0 && extra.length === 0,
+        `Exemplo "${example.id}" tem blockTypes divergente do workspace real ` +
+          `(faltando: ${missing.join(', ') || 'nenhum'}; sobrando: ${extra.join(', ') || 'nenhum'}).`,
+      );
+    } catch (error) {
+      throw new Error(`Exemplo "${example.id}" não carrega como workspace Blockly válido: ${(error as Error).message}`);
+    } finally {
+      exampleWorkspace.dispose();
+    }
+  }
+
+  console.log(
+    `Auditoria Blockly: ${customTypes.length}/${customTypes.length} blocos, 3 placas, `
+      + `${fixtureNames.length} cenários de compilação e ${BLOCK_EXAMPLES.length} exemplos de documentação validados.`,
+  );
 }
 
 export interface CompilationFixture {
@@ -951,6 +1045,131 @@ export function createCompilationFixtures(): Record<string, CompilationFixture> 
     esp32Receiver,
     'esp32',
   );
+
+  // ── Composição SEM bloco monolítico ──────────────────────────────────────
+  // Mesmo cenário funcional de esp32-transmitter/esp32-receiver acima (MPU6050
+  // → lógica → ESP-NOW → motor, com fail-safe), mas montado só com blocos
+  // genéricos: a direção vem de um SE...SENÃO comum (não de um bloco
+  // "controlar robô por inclinação"), e o transporte é a mensagem
+  // tipo/A/B/C/sinal, que serve para qualquer projeto, não só este.
+  syncBoardPins('esp32');
+  const esp32GenericTransmitter = new Blockly.Workspace();
+  const genericTxRoots = makeRoots(esp32GenericTransmitter);
+  connectChain(genericTxRoots.setup, 'DO', [
+    esp32GenericTransmitter.newBlock('espnow_iniciar_wifi'),
+    esp32GenericTransmitter.newBlock('espnow_transmissor_init'),
+    esp32GenericTransmitter.newBlock('espnow_adicionar_receptor'),
+    esp32GenericTransmitter.newBlock('mpu_iniciar'),
+  ]);
+  const genericTxDecision = esp32GenericTransmitter.newBlock('se_entao_senao');
+  const genericTxCompare = esp32GenericTransmitter.newBlock('comparar_valores');
+  genericTxCompare.setFieldValue('>', 'OP');
+  connectValue(genericTxCompare, 'A', esp32GenericTransmitter.newBlock('mpu_ler_pitch'));
+  const genericTxThreshold = esp32GenericTransmitter.newBlock('numero_fixo');
+  genericTxThreshold.setFieldValue(15, 'VALOR');
+  connectValue(genericTxCompare, 'B', genericTxThreshold);
+  connectValue(genericTxDecision, 'CONDICAO', genericTxCompare);
+  const genericTxSendForward = esp32GenericTransmitter.newBlock('espnow_enviar_mensagem');
+  genericTxSendForward.setFieldValue(1, 'TIPO');
+  connectValue(genericTxSendForward, 'A', esp32GenericTransmitter.newBlock('mpu_ler_pitch'));
+  connectValue(genericTxSendForward, 'B', esp32GenericTransmitter.newBlock('mpu_ler_roll'));
+  connectValue(genericTxSendForward, 'C', esp32GenericTransmitter.newBlock('numero_fixo'));
+  connectValue(genericTxSendForward, 'SINAL', esp32GenericTransmitter.newBlock('valor_booleano_fixo'));
+  connectStatement(genericTxDecision, 'ENTAO', genericTxSendForward);
+  const genericTxSendStop = esp32GenericTransmitter.newBlock('espnow_enviar_mensagem');
+  connectValue(genericTxSendStop, 'A', esp32GenericTransmitter.newBlock('mpu_ler_pitch'));
+  connectValue(genericTxSendStop, 'B', esp32GenericTransmitter.newBlock('mpu_ler_roll'));
+  connectValue(genericTxSendStop, 'C', esp32GenericTransmitter.newBlock('numero_fixo'));
+  connectValue(genericTxSendStop, 'SINAL', esp32GenericTransmitter.newBlock('valor_booleano_fixo'));
+  connectStatement(genericTxDecision, 'SENAO', genericTxSendStop);
+  const genericTxStatus = esp32GenericTransmitter.newBlock('escrever_serial_valor');
+  connectValue(genericTxStatus, 'VALOR', esp32GenericTransmitter.newBlock('espnow_envio_confirmado'));
+  connectChain(genericTxRoots.loop, 'DO', [genericTxDecision, genericTxStatus]);
+  fixtures['esp32-generic-transmitter'] = finishFixture(
+    'esp32-generic-transmitter',
+    esp32GenericTransmitter,
+    'esp32',
+  );
+
+  syncBoardPins('esp32');
+  const esp32GenericReceiver = new Blockly.Workspace();
+  const genericRxRoots = makeRoots(esp32GenericReceiver);
+  const genericRxMotorConfig = esp32GenericReceiver.newBlock('l298n_configurar_simples');
+  for (const [field, pin] of Object.entries({
+    ENA: '25', IN1: '26', IN2: '27', ENB: '33', IN3: '32', IN4: '14',
+  })) {
+    genericRxMotorConfig.setFieldValue(pin, field);
+  }
+  connectChain(genericRxRoots.setup, 'DO', [
+    esp32GenericReceiver.newBlock('espnow_iniciar_wifi'),
+    esp32GenericReceiver.newBlock('espnow_receptor_init'),
+    genericRxMotorConfig,
+  ]);
+  const genericRxHasData = esp32GenericReceiver.newBlock('se_entao');
+  connectValue(genericRxHasData, 'CONDICAO', esp32GenericReceiver.newBlock('espnow_tem_dados_novos'));
+  const genericRxDispatch = esp32GenericReceiver.newBlock('se_entao_senao');
+  const genericRxTypeCompare = esp32GenericReceiver.newBlock('comparar_valores');
+  genericRxTypeCompare.setFieldValue('==', 'OP');
+  connectValue(genericRxTypeCompare, 'A', esp32GenericReceiver.newBlock('espnow_mensagem_tipo'));
+  const genericRxTypeValue = esp32GenericReceiver.newBlock('numero_fixo');
+  genericRxTypeValue.setFieldValue(1, 'VALOR');
+  connectValue(genericRxTypeCompare, 'B', genericRxTypeValue);
+  connectValue(genericRxDispatch, 'CONDICAO', genericRxTypeCompare);
+  const genericRxMoveForward = esp32GenericReceiver.newBlock('l298n_mover_robo');
+  genericRxMoveForward.setFieldValue('FRENTE', 'DIRECAO');
+  const genericRxForce = esp32GenericReceiver.newBlock('numero_fixo');
+  genericRxForce.setFieldValue(180, 'VALOR');
+  connectValue(genericRxMoveForward, 'FORCA', genericRxForce);
+  connectStatement(genericRxDispatch, 'ENTAO', genericRxMoveForward);
+  connectStatement(genericRxDispatch, 'SENAO', esp32GenericReceiver.newBlock('l298n_parar'));
+  connectChain(genericRxHasData, 'ENTAO', [
+    esp32GenericReceiver.newBlock('espnow_marcar_lido'),
+    genericRxDispatch,
+  ]);
+  const genericRxTimeoutCheck = esp32GenericReceiver.newBlock('se_entao');
+  const genericRxTimeout = esp32GenericReceiver.newBlock('espnow_timeout_ms');
+  genericRxTimeout.setFieldValue(800, 'MS');
+  connectValue(genericRxTimeoutCheck, 'CONDICAO', genericRxTimeout);
+  connectStatement(genericRxTimeoutCheck, 'ENTAO', esp32GenericReceiver.newBlock('l298n_parar'));
+  connectChain(genericRxRoots.loop, 'DO', [genericRxHasData, genericRxTimeoutCheck]);
+  fixtures['esp32-generic-receiver'] = finishFixture(
+    'esp32-generic-receiver',
+    esp32GenericReceiver,
+    'esp32',
+  );
+
+  // ── Wi-Fi (rede comum) ────────────────────────────────────────────────────
+  syncBoardPins('esp32');
+  const esp32Wifi = new Blockly.Workspace();
+  const wifiRoots = makeRoots(esp32Wifi);
+  connectStatement(wifiRoots.setup, 'DO', esp32Wifi.newBlock('wifi_conectar'));
+  const wifiStatus = esp32Wifi.newBlock('se_entao_senao');
+  connectValue(wifiStatus, 'CONDICAO', esp32Wifi.newBlock('wifi_esta_conectado'));
+  const wifiPrintIp = esp32Wifi.newBlock('escrever_serial_valor');
+  connectValue(wifiPrintIp, 'VALOR', esp32Wifi.newBlock('wifi_endereco_ip'));
+  connectStatement(wifiStatus, 'ENTAO', wifiPrintIp);
+  const wifiPrintDown = esp32Wifi.newBlock('escrever_serial');
+  wifiPrintDown.setFieldValue('Sem Wi-Fi', 'TEXT');
+  connectStatement(wifiStatus, 'SENAO', wifiPrintDown);
+  connectStatement(wifiRoots.loop, 'DO', wifiStatus);
+  fixtures['esp32-wifi'] = finishFixture('esp32-wifi', esp32Wifi, 'esp32');
+
+  // ── Bluetooth clássico ────────────────────────────────────────────────────
+  // Sozinho (sem Wi-Fi/ESP-NOW no mesmo sketch): o stack Bluetooth clássico
+  // (Bluedroid) já usa boa parte do espaço de programa padrão da placa —
+  // combiná-lo com Wi-Fi/ESP-NOW pode ultrapassar o espaço disponível
+  // dependendo do restante do projeto. Ver docs/blockly-system.md.
+  syncBoardPins('esp32');
+  const esp32Bluetooth = new Blockly.Workspace();
+  const btRoots = makeRoots(esp32Bluetooth);
+  connectStatement(btRoots.setup, 'DO', esp32Bluetooth.newBlock('bt_iniciar'));
+  const btEcho = esp32Bluetooth.newBlock('se_entao');
+  connectValue(btEcho, 'CONDICAO', esp32Bluetooth.newBlock('bt_disponivel'));
+  const btSend = esp32Bluetooth.newBlock('bt_enviar_texto');
+  connectValue(btSend, 'TEXTO', esp32Bluetooth.newBlock('bt_ler_texto'));
+  connectStatement(btEcho, 'ENTAO', btSend);
+  connectStatement(btRoots.loop, 'DO', btEcho);
+  fixtures['esp32-bluetooth'] = finishFixture('esp32-bluetooth', esp32Bluetooth, 'esp32');
 
   return fixtures;
 }

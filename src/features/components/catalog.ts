@@ -70,7 +70,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
     relatedBlocks: [
       { blockType: 'configurar_pino', label: 'Configurar pino', toolboxCategory: 'Entradas e Saídas' },
       { blockType: 'escrever_pino', label: 'Colocar pino em estado', toolboxCategory: 'Entradas e Saídas' },
-      { blockType: 'espnow_iniciar_wifi', label: 'Preparar comunicação sem fio', toolboxCategory: 'Comunicação Sem Fio' },
+      { blockType: 'espnow_iniciar_wifi', label: 'Preparar comunicação sem fio', toolboxCategory: 'ESP-NOW' },
     ],
     relatedComponentIds: ['mpu6050', 'l298n', 'hc-sr04'],
     media: [{ kind: 'image', role: 'main', src: esp32DevKitImage, alt: 'Placa ESP32 DevKit V1' }],
@@ -379,7 +379,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       bloquinExample: 'Incline para virar o robô.',
     },
     howItWorks: 'Dentro do chip existem estruturas microscópicas que se movem ligeiramente quando o sensor acelera ou gira — parecido com sentir o corpo ser empurrado para o lado em um carro fazendo curva. O acelerômetro mede essa força em três direções (X, Y, Z), e o giroscópio mede a velocidade de rotação nos mesmos três eixos. O chip transforma esses movimentos minúsculos em números elétricos e os envia pela conexão I²C sempre que a placa pergunta.',
-    codeLogic: 'O bloco de iniciar acelerômetro conversa com o chip pela primeira vez e confere se ele respondeu no endereço esperado (0x68). Depois, ler inclinação frente/trás e ler inclinação lateral pedem ao chip os números mais recentes de aceleração em cada eixo e fazem, por trás dos panos, uma continha de trigonometria para transformá-los em um ângulo de inclinação em graus — bem mais fácil de usar em um bloco de se... então do que os valores brutos do sensor.',
+    codeLogic: 'O bloco de iniciar MPU6050 conversa com o chip pela primeira vez, no endereço escolhido (0x68 ou 0x69), e confere se ele respondeu. Depois, ler inclinação frente/trás e ler inclinação lateral pedem ao chip os números mais recentes de aceleração em cada eixo e fazem, por trás dos panos, uma continha de trigonometria para transformá-los em um ângulo de inclinação em graus — bem mais fácil de usar em um bloco de se... então do que os valores brutos do sensor. Quando os valores brutos são úteis (por exemplo, para detectar uma batida ou um giro rápido), os blocos de aceleração X/Y/Z e rotação X/Y/Z devolvem exatamente o que o acelerômetro e o giroscópio medem, sem nenhuma conversão.',
     parts: [
       { label: 'Chip MPU6050', description: 'O quadradinho preto no centro da placa — é onde moram o acelerômetro e o giroscópio, juntos no mesmo chip.' },
       { label: 'Pinos SDA e SCL', description: 'As duas linhas de comunicação I²C: uma carrega os dados, a outra marca o ritmo (clock).' },
@@ -400,9 +400,11 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
     ],
     cautions: ['Confira a tensão lógica e os pull-ups do seu breakout antes de usar com ESP32.', 'Mantenha o módulo firme: vibrações e montagem inclinada afetam a leitura.'],
     relatedBlocks: [
-      { blockType: 'mpu_iniciar', label: 'Iniciar acelerômetro', toolboxCategory: 'Acelerômetro' },
-      { blockType: 'mpu_ler_pitch', label: 'Ler inclinação frente/trás', toolboxCategory: 'Acelerômetro' },
-      { blockType: 'mpu_ler_roll', label: 'Ler inclinação lateral', toolboxCategory: 'Acelerômetro' },
+      { blockType: 'mpu_iniciar', label: 'Iniciar MPU6050', toolboxCategory: 'MPU6050' },
+      { blockType: 'mpu_ler_pitch', label: 'Ler inclinação frente/trás', toolboxCategory: 'MPU6050' },
+      { blockType: 'mpu_ler_roll', label: 'Ler inclinação lateral', toolboxCategory: 'MPU6050' },
+      { blockType: 'mpu_ler_aceleracao_x', label: 'Aceleração X (bruta)', toolboxCategory: 'MPU6050' },
+      { blockType: 'mpu_ler_giro_x', label: 'Rotação X (giroscópio)', toolboxCategory: 'MPU6050' },
     ],
     relatedComponentIds: ['esp32-devkit-v1', 'arduino-uno', 'l298n'],
     media: [{ kind: 'image', role: 'main', src: mpu6050Image, alt: 'Módulo MPU6050' }],

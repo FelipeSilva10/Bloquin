@@ -29,6 +29,7 @@ export const SETUP_ONLY_TYPES = new Set([
   'espnow_receptor_init',
   'mpu_iniciar',
   'l298n_configurar_simples',
+  'bt_iniciar',
 ]);
 
 export const ESP_NOW_TYPES = new Set([
@@ -44,12 +45,29 @@ export const ESP_NOW_TYPES = new Set([
   'espnow_ler_flag_parar',
   'espnow_timeout_ms',
   'espnow_marcar_lido',
+  // Mensagem genérica (tipo + valorA/B/C + sinal). Os blocos "pitch/roll/
+  // parar" acima leem/escrevem os MESMOS campos (valorA/valorB/sinal) — um
+  // alias legado sobre o mesmo protocolo, não um segundo formato concorrente.
+  'espnow_enviar_mensagem',
+  'espnow_mensagem_tipo',
+  'espnow_mensagem_valor_a',
+  'espnow_mensagem_valor_b',
+  'espnow_mensagem_valor_c',
+  'espnow_mensagem_sinal',
+  'espnow_mensagem_remetente',
+  // Diagnóstico, usável em qualquer papel (transmissor ou receptor).
+  'espnow_iniciou_com_sucesso',
+  // Diagnóstico específico de papel — ver ESP_NOW_TRANSMITTER_TYPES/RECEIVER_TYPES.
+  'espnow_envio_confirmado',
+  'espnow_contagem_invalidas',
 ]);
 
 export const ESP_NOW_TRANSMITTER_TYPES = new Set([
   'espnow_transmissor_init',
   'espnow_adicionar_receptor',
   'espnow_enviar_pacote',
+  'espnow_enviar_mensagem',
+  'espnow_envio_confirmado',
 ]);
 
 export const ESP_NOW_RECEIVER_TYPES = new Set([
@@ -60,6 +78,46 @@ export const ESP_NOW_RECEIVER_TYPES = new Set([
   'espnow_ler_flag_parar',
   'espnow_timeout_ms',
   'espnow_marcar_lido',
+  'espnow_mensagem_tipo',
+  'espnow_mensagem_valor_a',
+  'espnow_mensagem_valor_b',
+  'espnow_mensagem_valor_c',
+  'espnow_mensagem_sinal',
+  'espnow_mensagem_remetente',
+  'espnow_contagem_invalidas',
+]);
+
+/**
+ * Diferente dos outros blocos de "iniciar" (MPU, ESP-NOW, Bluetooth),
+ * `wifi_conectar` NÃO está em SETUP_ONLY_TYPES nem em SINGLETON_BLOCKS: uma
+ * rede Wi-Fi pode cair, então o projeto precisa poder chamá-lo de novo a
+ * partir de AGIR (ex.: "SE NÃO estiver conectado ENTÃO conectar de novo").
+ */
+export const WIFI_TYPES = new Set([
+  'wifi_conectar',
+  'wifi_esta_conectado',
+  'wifi_endereco_ip',
+  'wifi_desconectar',
+]);
+
+export const BLUETOOTH_TYPES = new Set([
+  'bt_iniciar',
+  'bt_disponivel',
+  'bt_ler_texto',
+  'bt_enviar_texto',
+  'bt_conectado',
+]);
+
+/**
+ * União de todos os blocos que exigem um ESP32 (rádio Wi-Fi/Bluetooth). Use
+ * este conjunto para o "portão" genérico de placa (auditoria, toolbox,
+ * documentação). `ESP_NOW_TYPES` continua existindo à parte para as regras
+ * específicas de papel/ordem do ESP-NOW, que não se aplicam a Wi-Fi/Bluetooth.
+ */
+export const ESP32_ONLY_TYPES = new Set([
+  ...ESP_NOW_TYPES,
+  ...WIFI_TYPES,
+  ...BLUETOOTH_TYPES,
 ]);
 
 export const ESP32_INPUT_ONLY_PINS = new Set(['34', '35', '36', '39']);
@@ -96,6 +154,10 @@ export const SINGLETON_BLOCKS: ReadonlyArray<{
   {
     type: 'espnow_receptor_init',
     message: 'Prepare o receptor ESP-NOW apenas uma vez.',
+  },
+  {
+    type: 'bt_iniciar',
+    message: 'Inicie o Bluetooth apenas uma vez.',
   },
 ];
 

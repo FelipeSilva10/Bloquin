@@ -75,12 +75,11 @@ export const BLOCK_EXAMPLES: readonly BlockExample[] = [
     'contador-serial',
     'Contar e mostrar no monitor',
     'uno',
-    'Guarda um número numa variável, aumenta 1 a cada volta do AGIR e mostra o valor atual.',
+    'Guarda um número numa variável, aumenta 1 a cada volta do AGIR e mostra o valor atual. "Variável" fica solto no workspace (fora de PREPARAR/AGIR): ele vira uma declaração global, não um passo de setup.',
     [
-      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
-        type: 'declarar_variavel_global', fields: { TIPO: 'int', NOME: 'contador' },
+      { type: 'declarar_variavel_global', x: 20, y: 20, fields: { TIPO: 'int', NOME: 'contador' },
         inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } },
-      } } } },
+      },
       { type: 'bloco_loop', x: 20, y: 140, inputs: { DO: { block: {
         type: 'incrementar_variavel', fields: { NOME: 'contador' },
         inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 1 } } } },
@@ -91,7 +90,7 @@ export const BLOCK_EXAMPLES: readonly BlockExample[] = [
         } },
       } } } },
     ],
-    ['bloco_setup', 'bloco_loop', 'declarar_variavel_global', 'incrementar_variavel', 'ler_variavel', 'escrever_serial_valor', 'numero_fixo', 'esperar'],
+    ['bloco_loop', 'declarar_variavel_global', 'incrementar_variavel', 'ler_variavel', 'escrever_serial_valor', 'numero_fixo', 'esperar'],
   ),
   example(
     'bipe-repetido',
@@ -363,6 +362,153 @@ export const BLOCK_EXAMPLES: readonly BlockExample[] = [
       } },
     ],
     ['esperar_duracao', 'random_valor'],
+  ),
+  // Os dois exemplos abaixo mostram a MESMA arquitetura do par
+  // esp-now-transmissor/esp-now-receptor (MPU6050 → lógica → ESP-NOW →
+  // motor, com fail-safe), mas compostos só com blocos genéricos — nenhum
+  // bloco "controlar robô por inclinação" foi criado: a decisão de direção
+  // é um SE...SENÃO comum, e o transporte é a mensagem tipo/A/B/C/sinal, que
+  // serve para qualquer projeto, não só este.
+  example(
+    'esp-now-transmissor-generico',
+    'Transmissor: decidir e enviar por mensagem genérica',
+    'esp32',
+    'Em vez do pacote fixo de inclinação, a inclinação lida vira uma decisão (SE... SENÃO) e a mensagem genérica carrega o tipo decidido, além dos valores brutos — a mesma mensagem serve para sensor, comando ou telemetria em outros projetos.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'espnow_iniciar_wifi',
+        next: { block: {
+          type: 'espnow_transmissor_init',
+          next: { block: {
+            type: 'espnow_adicionar_receptor', fields: { MAC: 'AA:BB:CC:DD:EE:FF' },
+            next: { block: { type: 'mpu_iniciar', fields: { SDA: '21', SCL: '22', ADDR: '0x68' } } },
+          } },
+        } },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 220, inputs: { DO: { block: {
+        type: 'se_entao_senao', inputs: {
+          CONDICAO: { block: {
+            type: 'comparar_valores', fields: { OP: '>' },
+            inputs: {
+              A: { block: { type: 'mpu_ler_pitch' } },
+              B: { block: { type: 'numero_fixo', fields: { VALOR: 15 } } },
+            },
+          } },
+          ENTAO: { block: {
+            type: 'espnow_enviar_mensagem', fields: { TIPO: 1 },
+            inputs: {
+              A: { block: { type: 'mpu_ler_pitch' } },
+              B: { block: { type: 'mpu_ler_roll' } },
+              C: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+              SINAL: { block: { type: 'valor_booleano_fixo', fields: { VALOR: 'false' } } },
+            },
+          } },
+          SENAO: { block: {
+            type: 'espnow_enviar_mensagem', fields: { TIPO: 0 },
+            inputs: {
+              A: { block: { type: 'mpu_ler_pitch' } },
+              B: { block: { type: 'mpu_ler_roll' } },
+              C: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+              SINAL: { block: { type: 'valor_booleano_fixo', fields: { VALOR: 'false' } } },
+            },
+          } },
+        },
+      } } } },
+    ],
+    ['bloco_setup', 'bloco_loop', 'espnow_iniciar_wifi', 'espnow_transmissor_init', 'espnow_adicionar_receptor', 'mpu_iniciar', 'se_entao_senao', 'comparar_valores', 'mpu_ler_pitch', 'numero_fixo', 'espnow_enviar_mensagem', 'mpu_ler_roll', 'valor_booleano_fixo'],
+  ),
+  example(
+    'esp-now-receptor-generico',
+    'Receptor: interpretar mensagem genérica e aplicar fail-safe',
+    'esp32',
+    'Lê o "tipo" da mensagem para decidir frente ou parar, e — fora do "chegou mensagem nova", rodando sempre — para os motores se ficar tempo demais sem receber nada: o timeout já existente é o mecanismo de fail-safe, aqui aplicado a uma mensagem genérica.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'espnow_iniciar_wifi',
+        next: { block: {
+          type: 'espnow_receptor_init',
+          next: { block: {
+            type: 'l298n_configurar_simples',
+            fields: { ENA: '25', IN1: '26', IN2: '27', ENB: '33', IN3: '32', IN4: '14' },
+          } },
+        } },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 220, inputs: { DO: { block: {
+        type: 'se_entao', inputs: {
+          CONDICAO: { block: { type: 'espnow_tem_dados_novos' } },
+          ENTAO: { block: {
+            type: 'espnow_marcar_lido',
+            next: { block: {
+              type: 'se_entao_senao', inputs: {
+                CONDICAO: { block: {
+                  type: 'comparar_valores', fields: { OP: '==' },
+                  inputs: {
+                    A: { block: { type: 'espnow_mensagem_tipo' } },
+                    B: { block: { type: 'numero_fixo', fields: { VALOR: 1 } } },
+                  },
+                } },
+                ENTAO: { block: {
+                  type: 'l298n_mover_robo', fields: { DIRECAO: 'FRENTE' },
+                  inputs: { FORCA: { block: { type: 'numero_fixo', fields: { VALOR: 180 } } } },
+                } },
+                SENAO: { block: { type: 'l298n_parar' } },
+              },
+            } },
+          } },
+        },
+        next: { block: {
+          type: 'se_entao', inputs: {
+            CONDICAO: { block: { type: 'espnow_timeout_ms', fields: { MS: 800 } } },
+            ENTAO: { block: { type: 'l298n_parar' } },
+          },
+        } },
+      } } } },
+    ],
+    ['bloco_setup', 'bloco_loop', 'espnow_iniciar_wifi', 'espnow_receptor_init', 'l298n_configurar_simples', 'se_entao', 'espnow_tem_dados_novos', 'espnow_marcar_lido', 'se_entao_senao', 'comparar_valores', 'espnow_mensagem_tipo', 'numero_fixo', 'l298n_mover_robo', 'l298n_parar', 'espnow_timeout_ms'],
+  ),
+  example(
+    'wifi-status',
+    'Conectar ao Wi-Fi e mostrar o IP',
+    'esp32',
+    'Conecta a uma rede comum no PREPARAR; no AGIR, mostra o endereço IP quando conectado ou avisa quando não está — sem travar o programa se a rede cair.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'wifi_conectar', fields: { SSID: 'MinhaRede', SENHA: 'minhasenha' },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 140, inputs: { DO: { block: {
+        type: 'se_entao_senao', inputs: {
+          CONDICAO: { block: { type: 'wifi_esta_conectado' } },
+          ENTAO: { block: {
+            type: 'escrever_serial_valor',
+            inputs: { VALOR: { block: { type: 'wifi_endereco_ip' } } },
+          } },
+          SENAO: { block: { type: 'escrever_serial', fields: { TEXT: 'Sem Wi-Fi' } } },
+        },
+        next: { block: { type: 'esperar', fields: { TIME: 1000 } } },
+      } } } },
+    ],
+    ['bloco_setup', 'bloco_loop', 'wifi_conectar', 'se_entao_senao', 'wifi_esta_conectado', 'escrever_serial_valor', 'wifi_endereco_ip', 'escrever_serial', 'esperar'],
+  ),
+  example(
+    'bluetooth-eco',
+    'Ecoar de volta o que chegar pelo Bluetooth',
+    'esp32',
+    'Inicia o Bluetooth uma vez; a cada volta do AGIR, se chegou texto novo, devolve o mesmo texto — útil para testar a conexão com um app como "Serial Bluetooth Terminal" no celular.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'bt_iniciar', fields: { NOME: 'Bloquin' },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 140, inputs: { DO: { block: {
+        type: 'se_entao', inputs: {
+          CONDICAO: { block: { type: 'bt_disponivel' } },
+          ENTAO: { block: {
+            type: 'bt_enviar_texto',
+            inputs: { TEXTO: { block: { type: 'bt_ler_texto' } } },
+          } },
+        },
+      } } } },
+    ],
+    ['bloco_setup', 'bloco_loop', 'bt_iniciar', 'se_entao', 'bt_disponivel', 'bt_enviar_texto', 'bt_ler_texto'],
   ),
 ];
 

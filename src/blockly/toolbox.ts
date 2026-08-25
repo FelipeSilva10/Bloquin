@@ -1,5 +1,11 @@
 import { BOARDS, type BoardKey } from './boards';
 
+// Categorias que só fazem sentido com o rádio Wi-Fi/Bluetooth do ESP32 —
+// escondidas da toolbox em Uno/Nano por getToolboxConfig() abaixo. Mantido
+// por nome (não por import de ESP32_ONLY_TYPES de contracts.ts) porque o
+// filtro aqui é por categoria inteira, não por tipo de bloco individual.
+const ESP32_ONLY_CATEGORY_NAMES = new Set(['ESP-NOW', 'Wi-Fi', 'Bluetooth']);
+
 export const toolboxConfig = {
   kind: 'categoryToolbox',
   contents: [
@@ -88,11 +94,19 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Acelerômetro', colour: '310',
+      kind: 'category', name: 'MPU6050', colour: '310',
       contents: [
         { kind: 'block', type: 'mpu_iniciar' },
         { kind: 'block', type: 'mpu_ler_pitch' },
         { kind: 'block', type: 'mpu_ler_roll' },
+        { kind: 'sep' },
+        { kind: 'block', type: 'mpu_ler_aceleracao_x' },
+        { kind: 'block', type: 'mpu_ler_aceleracao_y' },
+        { kind: 'block', type: 'mpu_ler_aceleracao_z' },
+        { kind: 'block', type: 'mpu_ler_giro_x' },
+        { kind: 'block', type: 'mpu_ler_giro_y' },
+        { kind: 'block', type: 'mpu_ler_giro_z' },
+        { kind: 'block', type: 'mpu_ler_temperatura' },
       ],
     },
     {
@@ -137,13 +151,44 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Comunicação Sem Fio', colour: '300',
+      // ESP-NOW é um TRANSPORTE genérico entre ESP32s — não é exclusivo de
+      // controle de robô. A mensagem tipo/valor A/B/C/sinal serve para
+      // sensor, comando, LED ou telemetria; pitch/roll/parar é só um alias
+      // legado sobre os mesmos campos, mantido para projetos salvos.
+      kind: 'category', name: 'ESP-NOW', colour: '300',
       contents: [
         { kind: 'block', type: 'espnow_iniciar_wifi' },
         { kind: 'block', type: 'espnow_mac_serial' },
+        { kind: 'block', type: 'espnow_iniciou_com_sucesso' },
         { kind: 'sep' },
         { kind: 'block', type: 'espnow_transmissor_init' },
         { kind: 'block', type: 'espnow_adicionar_receptor' },
+        {
+          kind: 'block', type: 'espnow_enviar_mensagem',
+          inputs: {
+            A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+            B: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+            C: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+            SINAL: { block: { type: 'valor_booleano_fixo', fields: { VALOR: 'false' } } },
+          },
+        },
+        { kind: 'block', type: 'espnow_envio_confirmado' },
+        { kind: 'sep' },
+        { kind: 'block', type: 'espnow_receptor_init' },
+        { kind: 'block', type: 'espnow_tem_dados_novos' },
+        { kind: 'block', type: 'espnow_mensagem_tipo' },
+        { kind: 'block', type: 'espnow_mensagem_valor_a' },
+        { kind: 'block', type: 'espnow_mensagem_valor_b' },
+        { kind: 'block', type: 'espnow_mensagem_valor_c' },
+        { kind: 'block', type: 'espnow_mensagem_sinal' },
+        { kind: 'block', type: 'espnow_mensagem_remetente' },
+        { kind: 'block', type: 'espnow_marcar_lido' },
+        { kind: 'block', type: 'espnow_timeout_ms' },
+        { kind: 'block', type: 'espnow_contagem_invalidas' },
+        { kind: 'sep' },
+        { kind: 'block', type: 'espnow_ler_pitch' },
+        { kind: 'block', type: 'espnow_ler_roll' },
+        { kind: 'block', type: 'espnow_ler_flag_parar' },
         {
           kind: 'block', type: 'espnow_enviar_pacote',
           inputs: {
@@ -152,20 +197,48 @@ export const toolboxConfig = {
             PARAR: { block: { type: 'valor_booleano_fixo', fields: { VALOR: 'false' } } },
           },
         },
-        { kind: 'sep' },
-        { kind: 'block', type: 'espnow_receptor_init' },
-        { kind: 'block', type: 'espnow_tem_dados_novos' },
-        { kind: 'block', type: 'espnow_ler_pitch' },
-        { kind: 'block', type: 'espnow_ler_roll' },
-        { kind: 'block', type: 'espnow_ler_flag_parar' },
-        { kind: 'block', type: 'espnow_timeout_ms' },
-        { kind: 'block', type: 'espnow_marcar_lido' }
+      ],
+    },
+    {
+      kind: 'category', name: 'Wi-Fi', colour: '200',
+      contents: [
+        { kind: 'block', type: 'wifi_conectar' },
+        { kind: 'block', type: 'wifi_esta_conectado' },
+        { kind: 'block', type: 'wifi_endereco_ip' },
+        { kind: 'block', type: 'wifi_desconectar' },
+      ],
+    },
+    {
+      kind: 'category', name: 'Bluetooth', colour: '230',
+      contents: [
+        { kind: 'block', type: 'bt_iniciar' },
+        { kind: 'block', type: 'bt_conectado' },
+        { kind: 'block', type: 'bt_disponivel' },
+        { kind: 'block', type: 'bt_ler_texto' },
+        { kind: 'block', type: 'bt_enviar_texto', inputs: { TEXTO: { block: { type: 'texto_fixo', fields: { TEXT: 'Olá!' } } } } },
       ],
     },
   ],
 };
 
+const toolboxConfigCache = new Map<BoardKey, ReturnType<typeof buildToolboxConfig>>();
+
 export function getToolboxConfig(board: BoardKey) {
+  const cached = toolboxConfigCache.get(board);
+  if (cached) return cached;
+  const built = buildToolboxConfig(board);
+  toolboxConfigCache.set(board, built);
+  return built;
+}
+
+/**
+ * Reconstrói o toolbox inteiro (filter+map de todas as categorias/blocos) —
+ * caro o bastante para NÃO chamar direto fora de `getToolboxConfig` acima,
+ * que memoiza o resultado por placa (só existem 3 valores possíveis). Sem
+ * esse cache, cada busca de um bloco na toolbox (ex. `derive.ts` resolvendo
+ * a documentação de cada bloco) reconstruía a árvore inteira do zero.
+ */
+function buildToolboxConfig(board: BoardKey) {
   const defaults = board === 'esp32'
     ? {
         ultrasonic: { TRIG: '18', ECHO: '19' },
@@ -189,7 +262,7 @@ export function getToolboxConfig(board: BoardKey) {
   return {
     ...toolboxConfig,
     contents: toolboxConfig.contents
-      .filter((category) => board === 'esp32' || category.name !== 'Comunicação Sem Fio')
+      .filter((category) => board === 'esp32' || !ESP32_ONLY_CATEGORY_NAMES.has(category.name ?? ''))
       .map((category) => {
         return {
           ...category,
@@ -319,19 +392,45 @@ export const BLOCK_NAMES: Record<string, string> = {
   texto_fixo: 'Texto',
   espnow_iniciar_wifi: 'Preparar Comunicação Sem Fio',
   espnow_mac_serial: 'Mostrar Código deste Dispositivo',
+  espnow_iniciou_com_sucesso: 'ESP-NOW Iniciou com Sucesso?',
   espnow_transmissor_init: 'Preparar como Transmissor',
   espnow_adicionar_receptor: 'Conectar ao Receptor',
-  espnow_enviar_pacote: 'Enviar Dados (A, B, Parar)',
+  espnow_enviar_mensagem: 'Enviar Mensagem (tipo + A/B/C + sinal)',
+  espnow_envio_confirmado: 'Envio Confirmado pelo Rádio?',
+  espnow_enviar_pacote: 'Enviar Dados (legado: A, B, Parar)',
   espnow_receptor_init: 'Preparar como Receptor',
   espnow_tem_dados_novos: 'Chegou Mensagem Nova?',
-  espnow_ler_pitch: 'Valor A Recebido',
-  espnow_ler_roll: 'Valor B Recebido',
-  espnow_ler_flag_parar: 'Comando Parar Recebido?',
-  espnow_timeout_ms: 'Sem Sinal por Mais de X ms?',
+  espnow_mensagem_tipo: 'Tipo da Mensagem Recebida',
+  espnow_mensagem_valor_a: 'Valor A Recebido',
+  espnow_mensagem_valor_b: 'Valor B Recebido',
+  espnow_mensagem_valor_c: 'Valor C Recebido',
+  espnow_mensagem_sinal: 'Sinal Recebido',
+  espnow_mensagem_remetente: 'Remetente da Mensagem (MAC)',
   espnow_marcar_lido: 'Marcar Mensagem como Lida',
-  mpu_iniciar: 'Iniciar Acelerômetro',
+  espnow_timeout_ms: 'Sem Sinal por Mais de X ms?',
+  espnow_contagem_invalidas: 'Mensagens Inválidas Recebidas',
+  espnow_ler_pitch: 'Valor A Recebido (legado)',
+  espnow_ler_roll: 'Valor B Recebido (legado)',
+  espnow_ler_flag_parar: 'Comando Parar Recebido? (legado)',
+  wifi_conectar: 'Conectar ao Wi-Fi',
+  wifi_esta_conectado: 'Wi-Fi Está Conectado?',
+  wifi_endereco_ip: 'Endereço IP do Wi-Fi',
+  wifi_desconectar: 'Desconectar Wi-Fi',
+  bt_iniciar: 'Iniciar Bluetooth',
+  bt_conectado: 'Celular Conectado por Bluetooth?',
+  bt_disponivel: 'Chegou Dado pelo Bluetooth?',
+  bt_ler_texto: 'Ler Texto do Bluetooth',
+  bt_enviar_texto: 'Enviar Texto pelo Bluetooth',
+  mpu_iniciar: 'Iniciar MPU6050',
   mpu_ler_pitch: 'Ler Inclinação Frente/Trás',
   mpu_ler_roll: 'Ler Inclinação Lateral',
+  mpu_ler_aceleracao_x: 'Aceleração X',
+  mpu_ler_aceleracao_y: 'Aceleração Y',
+  mpu_ler_aceleracao_z: 'Aceleração Z',
+  mpu_ler_giro_x: 'Rotação X (Giroscópio)',
+  mpu_ler_giro_y: 'Rotação Y (Giroscópio)',
+  mpu_ler_giro_z: 'Rotação Z (Giroscópio)',
+  mpu_ler_temperatura: 'Temperatura do MPU6050',
   l298n_configurar_simples: 'Configurar Motor DC',
   l298n_mover_robo: 'Mover (Frente, Trás, Esq, Dir)',
   l298n_parar: 'Parar Motores',

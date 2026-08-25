@@ -40,11 +40,36 @@ function fitWorkspaceToContent(workspace: Blockly.WorkspaceSvg, container: HTMLD
   return true;
 }
 
+const IN_VIEW_ROOT_MARGIN = '200px';
+
+/**
+ * Só monta o workspace Blockly quando o card entra (ou está perto de entrar)
+ * na viewport. Sem isso, uma grade com uma centena de blocos injeta uma
+ * centena de instâncias Blockly de uma vez no mount da tela de Documentação
+ * — cada uma cara o bastante para, somadas, travar a página por vários
+ * segundos.
+ */
 function useLiveBlockWorkspace(load: (workspace: Blockly.WorkspaceSvg) => void, deps: unknown[]) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [ready, setReady] = useState(false);
+  const [inView, setInView] = useState(false);
 
   useEffect(() => {
+    if (inView) return;
+    const element = containerRef.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setInView(true);
+      },
+      { rootMargin: IN_VIEW_ROOT_MARGIN },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [inView]);
+
+  useEffect(() => {
+    if (!inView) return;
     const container = containerRef.current;
     if (!container) return;
     let disposed = false;
@@ -82,7 +107,7 @@ function useLiveBlockWorkspace(load: (workspace: Blockly.WorkspaceSvg) => void, 
       workspace?.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [inView, ...deps]);
 
   return { containerRef, ready };
 }

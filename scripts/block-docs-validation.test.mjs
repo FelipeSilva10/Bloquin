@@ -56,5 +56,5 @@ test('todo exampleId citado no registro existe de fato em examples.ts', () => {
 
 test('categorias usadas pela documentação existem na toolbox real', () => {
   const toolboxCategoryNames = new Set([...toolboxSource.matchAll(/kind: 'category', name: '([^']+)'/g)].map((match) => match[1]));
-  assert.ok(toolboxCategoryNames.size === 14, `esperava 14 categorias na toolbox, encontrei ${toolboxCategoryNames.size}`);
+  assert.ok(toolboxCategoryNames.size === 16, `esperava 16 categorias na toolbox, encontrei ${toolboxCategoryNames.size}`);
 });

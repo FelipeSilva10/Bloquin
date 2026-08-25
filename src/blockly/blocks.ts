@@ -226,10 +226,43 @@ export function initBlocks() {
     { type: 'espnow_timeout_ms', colour: 300, message0: 'Sem sinal da luva por mais de %1 ms?', args0: [{ type: 'field_number', name: 'MS', value: 600, min: 100 }], output: 'Boolean' },
     { type: 'espnow_marcar_lido', colour: 300, message0: '✅ Marcar mensagem como lida', args0: [], previousStatement: null, nextStatement: null },
 
+    // ── ESP-NOW — mensagem genérica (não é exclusiva de robôs: sensor, LED,
+    // comando, telemetria — qualquer combinação de até 3 números + 1 sinal)
+    { type: 'espnow_enviar_mensagem', colour: 300, message0: '📤 Enviar mensagem: tipo %1 %2 valor A %3 valor B %4 valor C %5 %6 sinal %7', args0: [{ type: 'field_number', name: 'TIPO', value: 0, min: 0, max: 255, precision: 1 }, { type: 'input_dummy' }, { type: 'input_value', name: 'A', check: 'Number' }, { type: 'input_value', name: 'B', check: 'Number' }, { type: 'input_value', name: 'C', check: 'Number' }, { type: 'input_dummy' }, { type: 'input_value', name: 'SINAL', check: 'Boolean' }], inputsInline: true, previousStatement: null, nextStatement: null },
+    { type: 'espnow_mensagem_tipo', colour: 300, message0: 'Tipo da mensagem recebida', output: 'Number' },
+    { type: 'espnow_mensagem_valor_a', colour: 300, message0: 'Valor A recebido', output: 'Number' },
+    { type: 'espnow_mensagem_valor_b', colour: 300, message0: 'Valor B recebido', output: 'Number' },
+    { type: 'espnow_mensagem_valor_c', colour: 300, message0: 'Valor C recebido', output: 'Number' },
+    { type: 'espnow_mensagem_sinal', colour: 300, message0: 'Sinal (verdadeiro/falso) recebido', output: 'Boolean' },
+    { type: 'espnow_mensagem_remetente', colour: 300, message0: 'Código (MAC) de quem enviou a última mensagem', output: 'String' },
+    { type: 'espnow_iniciou_com_sucesso', colour: 300, message0: 'ESP-NOW iniciou com sucesso?', output: 'Boolean' },
+    { type: 'espnow_envio_confirmado', colour: 300, message0: 'O último envio foi confirmado pelo rádio?', output: 'Boolean' },
+    { type: 'espnow_contagem_invalidas', colour: 300, message0: 'Quantidade de mensagens inválidas recebidas', output: 'Number' },
+
+    // ── WI-FI (rede) — conexão comum à internet/roteador, independente do ESP-NOW
+    { type: 'wifi_conectar', colour: 200, message0: '📶 Conectar ao Wi-Fi: rede %1 senha %2', args0: [{ type: 'field_input', name: 'SSID', text: 'MinhaRede' }, { type: 'field_input', name: 'SENHA', text: 'minhasenha' }], previousStatement: null, nextStatement: null },
+    { type: 'wifi_esta_conectado', colour: 200, message0: 'Wi-Fi está conectado?', output: 'Boolean' },
+    { type: 'wifi_endereco_ip', colour: 200, message0: 'Endereço IP do Wi-Fi', output: 'String' },
+    { type: 'wifi_desconectar', colour: 200, message0: '📶 Desconectar Wi-Fi', previousStatement: null, nextStatement: null },
+
+    // ── BLUETOOTH (clássico, porta serial sem fio — parear com celular)
+    { type: 'bt_iniciar', colour: 230, message0: '🔵 Iniciar Bluetooth: nome do dispositivo %1', args0: [{ type: 'field_input', name: 'NOME', text: 'Bloquin' }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
+    { type: 'bt_disponivel', colour: 230, message0: 'Chegou dado novo pelo Bluetooth?', output: 'Boolean' },
+    { type: 'bt_ler_texto', colour: 230, message0: 'Ler texto recebido pelo Bluetooth', output: 'String' },
+    { type: 'bt_enviar_texto', colour: 230, message0: 'Enviar texto pelo Bluetooth: %1', args0: [{ type: 'input_value', name: 'TEXTO', check: 'String' }], inputsInline: true, previousStatement: null, nextStatement: null },
+    { type: 'bt_conectado', colour: 230, message0: 'Um celular está conectado pelo Bluetooth?', output: 'Boolean' },
+
     // ── MPU-6050
-    { type: 'mpu_iniciar', colour: 310, message0: '🧭 Iniciar Acelerômetro (SDA %1 SCL %2)', args0: [{ type: 'field_dropdown', name: 'SDA', options: () => currentI2cSdaPins }, { type: 'field_dropdown', name: 'SCL', options: () => currentI2cSclPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
+    { type: 'mpu_iniciar', colour: 310, message0: '🧭 Iniciar MPU6050 (SDA %1 SCL %2 Endereço %3)', args0: [{ type: 'field_dropdown', name: 'SDA', options: () => currentI2cSdaPins }, { type: 'field_dropdown', name: 'SCL', options: () => currentI2cSclPins }, { type: 'field_dropdown', name: 'ADDR', options: [['0x68 (padrão — AD0 em GND)', '0x68'], ['0x69 (AD0 em VCC)', '0x69']] }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
     { type: 'mpu_ler_pitch', colour: 310, message0: '🧭 Inclinação frente/trás (graus)', output: 'Number' }, // C6
     { type: 'mpu_ler_roll', colour: 310, message0: '🧭 Inclinação esquerda/direita (graus)', output: 'Number' }, // C6
+    { type: 'mpu_ler_aceleracao_x', colour: 310, message0: '📈 Aceleração X (g)', output: 'Number' },
+    { type: 'mpu_ler_aceleracao_y', colour: 310, message0: '📈 Aceleração Y (g)', output: 'Number' },
+    { type: 'mpu_ler_aceleracao_z', colour: 310, message0: '📈 Aceleração Z (g)', output: 'Number' },
+    { type: 'mpu_ler_giro_x', colour: 310, message0: '🌀 Rotação X (°/s)', output: 'Number' },
+    { type: 'mpu_ler_giro_y', colour: 310, message0: '🌀 Rotação Y (°/s)', output: 'Number' },
+    { type: 'mpu_ler_giro_z', colour: 310, message0: '🌀 Rotação Z (°/s)', output: 'Number' },
+    { type: 'mpu_ler_temperatura', colour: 310, message0: '🌡️ Temperatura do MPU6050 (°C)', output: 'Number' },
 
     // ── PONTE H
     { type: 'l298n_configurar_simples', colour: 120, message0: '⚙️ Configurar Motores do Robô%1Motor Esquerdo (Força %2 IN1 %3 IN2 %4)%5Motor Direito (Força %6 IN3 %7 IN4 %8)', args0: [{ type: 'input_dummy' }, { type: 'field_dropdown', name: 'ENA', options: () => currentPwmPins }, { type: 'field_dropdown', name: 'IN1', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'IN2', options: () => currentOutputPins }, { type: 'input_dummy' }, { type: 'field_dropdown', name: 'ENB', options: () => currentPwmPins }, { type: 'field_dropdown', name: 'IN3', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'IN4', options: () => currentOutputPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },

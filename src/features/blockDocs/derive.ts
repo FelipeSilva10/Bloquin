@@ -1,7 +1,7 @@
 import * as Blockly from 'blockly/core';
 import { getToolboxConfig, toolboxConfig, BLOCK_NAMES } from '../../blockly/toolbox';
 import {
-  ESP_NOW_TYPES,
+  ESP32_ONLY_TYPES,
   SETUP_ONLY_TYPES,
   SINGLETON_BLOCKS,
   PIN_RULES,
@@ -45,7 +45,7 @@ function findToolboxEntry(type: string, board: BoardKey): { category: ToolboxCat
 
 /** Categoria/cor de um bloco a partir do toolbox "canônico" (não depende de placa, exceto ESP-NOW). */
 function findCategoryInfo(type: string): { name: string; colour: string } | null {
-  const board: BoardKey = ESP_NOW_TYPES.has(type) ? 'esp32' : 'uno';
+  const board: BoardKey = ESP32_ONLY_TYPES.has(type) ? 'esp32' : 'uno';
   const found = findToolboxEntry(type, board);
   if (found) return { name: found.category.name ?? '', colour: found.category.colour ?? '' };
   return null;
@@ -98,7 +98,7 @@ const COMPONENT_NAMES_BY_BLOCK: Map<string, string[]> = (() => {
 })();
 
 function getUsedWith(type: string): string[] {
-  const found = findToolboxEntry(type, ESP_NOW_TYPES.has(type) ? 'esp32' : 'uno');
+  const found = findToolboxEntry(type, ESP32_ONLY_TYPES.has(type) ? 'esp32' : 'uno');
   const shadowSiblings = found
     ? Object.values(found.entry.inputs ?? {}).map((input) => input.block?.type).filter((value): value is string => Boolean(value))
     : [];
@@ -130,7 +130,7 @@ export function getBlockDoc(type: string): ResolvedBlockDoc | null {
     inputs,
     output,
     isStatement,
-    boardOnly: ESP_NOW_TYPES.has(type) ? 'esp32' : null,
+    boardOnly: ESP32_ONLY_TYPES.has(type) ? 'esp32' : null,
     setupOnly: SETUP_ONLY_TYPES.has(type),
     singletonMessage: singleton?.message ?? null,
     pinRequirements: PIN_RULES.filter((rule) => rule.types.includes(type)).map((rule) => ({ field: rule.field, capability: rule.capability })),
@@ -155,7 +155,7 @@ export function getDocCategories(): string[] {
 
 /** Resolve o estado (fields/inputs) "canônico" do bloco para renderização — os mesmos valores-padrão da toolbox. */
 export function getCanonicalBlockState(type: string, board: BoardKey): Record<string, unknown> {
-  const resolvedBoard: BoardKey = ESP_NOW_TYPES.has(type) ? 'esp32' : board;
+  const resolvedBoard: BoardKey = ESP32_ONLY_TYPES.has(type) ? 'esp32' : board;
   const found = findToolboxEntry(type, resolvedBoard);
   if (!found) return { type };
   const { entry } = found;

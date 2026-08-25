@@ -3,6 +3,7 @@ import { BOARDS, type BoardKey } from './boards';
 import {
   ESP32_ADC2_PINS,
   ESP32_INPUT_ONLY_PINS,
+  ESP32_ONLY_TYPES,
   ESP_NOW_RECEIVER_TYPES,
   ESP_NOW_TRANSMITTER_TYPES,
   ESP_NOW_TYPES,
@@ -43,7 +44,7 @@ export function auditSerializedWorkspace(
 
     const record = candidate as Record<string, unknown>;
     if (typeof record.type === 'string') {
-      if (board !== 'esp32' && ESP_NOW_TYPES.has(record.type)) {
+      if (board !== 'esp32' && ESP32_ONLY_TYPES.has(record.type)) {
         issues.push(`O bloco ${record.type} exige uma placa ESP32.`);
       }
       if (record.fields && typeof record.fields === 'object' && !Array.isArray(record.fields)) {
@@ -239,8 +240,8 @@ export function auditWorkspace(
     if (block.type === 'parar_repeticao' && !isInsideLoop(block)) {
       add(block, '“Parar repetição” precisa ficar dentro de “Repetir” ou “Enquanto”.');
     }
-    if (board !== 'esp32' && ESP_NOW_TYPES.has(block.type)) {
-      add(block, 'Comunicação ESP-NOW só está disponível para a placa ESP32.');
+    if (board !== 'esp32' && ESP32_ONLY_TYPES.has(block.type)) {
+      add(block, 'Este bloco (ESP-NOW, Wi-Fi ou Bluetooth) só está disponível para a placa ESP32.');
     }
     if (
       block.type === 'espnow_adicionar_receptor'
@@ -502,9 +503,14 @@ export function auditWorkspace(
     'Configure o sensor ultrassônico no bloco PREPARAR antes de usá-lo.',
   );
   requireBlock(
-    ['mpu_ler_pitch', 'mpu_ler_roll'],
+    [
+      'mpu_ler_pitch', 'mpu_ler_roll',
+      'mpu_ler_aceleracao_x', 'mpu_ler_aceleracao_y', 'mpu_ler_aceleracao_z',
+      'mpu_ler_giro_x', 'mpu_ler_giro_y', 'mpu_ler_giro_z',
+      'mpu_ler_temperatura',
+    ],
     'mpu_iniciar',
-    'Inicie o acelerômetro no bloco PREPARAR antes de ler sua inclinação.',
+    'Inicie o MPU6050 no bloco PREPARAR antes de ler seus dados.',
   );
   requireBlock(
     ['l298n_mover_robo', 'l298n_parar', 'l298n_mover_motor', 'l298n_velocidade_por_pitch_roll'],
@@ -517,12 +523,12 @@ export function auditWorkspace(
     add(espNowBlock, 'Prepare a comunicação sem fio no bloco PREPARAR.');
   }
   requireBlock(
-    ['espnow_adicionar_receptor', 'espnow_enviar_pacote'],
+    ['espnow_adicionar_receptor', 'espnow_enviar_pacote', 'espnow_enviar_mensagem', 'espnow_envio_confirmado'],
     'espnow_transmissor_init',
     'Prepare o transmissor ESP-NOW antes de conectar ou enviar dados.',
   );
   requireBlock(
-    ['espnow_enviar_pacote'],
+    ['espnow_enviar_pacote', 'espnow_enviar_mensagem'],
     'espnow_adicionar_receptor',
     'Conecte ao código MAC do receptor antes de enviar dados.',
   );
@@ -534,9 +540,45 @@ export function auditWorkspace(
       'espnow_ler_flag_parar',
       'espnow_timeout_ms',
       'espnow_marcar_lido',
+      'espnow_mensagem_tipo',
+      'espnow_mensagem_valor_a',
+      'espnow_mensagem_valor_b',
+      'espnow_mensagem_valor_c',
+      'espnow_mensagem_sinal',
+      'espnow_mensagem_remetente',
+      'espnow_contagem_invalidas',
     ],
     'espnow_receptor_init',
     'Prepare o receptor ESP-NOW antes de ler mensagens.',
+  );
+
+  // Diagnóstico de inicialização é válido em qualquer papel (transmissor OU
+  // receptor) — por isso não usa requireBlock (que exige UM requiredType).
+  const initStatusUse = blocks.find((block) => block.type === 'espnow_iniciou_com_sucesso');
+  if (
+    initStatusUse
+    && !types.has('espnow_transmissor_init')
+    && !types.has('espnow_receptor_init')
+  ) {
+    add(
+      initStatusUse,
+      'Prepare o transmissor ou o receptor ESP-NOW antes de consultar se a inicialização teve sucesso.',
+    );
+  }
+
+  requireBlock(
+    ['bt_disponivel', 'bt_ler_texto', 'bt_enviar_texto', 'bt_conectado'],
+    'bt_iniciar',
+    'Inicie o Bluetooth no bloco PREPARAR antes de usá-lo.',
+  );
+  // wifi_conectar não é setup-only (pode ser chamado de novo em AGIR para
+  // reconectar), então isto verifica só que ele existe em algum lugar do
+  // projeto — não que venha antes, o que preservaria até um padrão de
+  // reconexão como "SE NÃO conectado ENTÃO conectar de novo".
+  requireBlock(
+    ['wifi_esta_conectado', 'wifi_endereco_ip', 'wifi_desconectar'],
+    'wifi_conectar',
+    'Adicione "Conectar ao Wi-Fi" em algum lugar do projeto antes de consultar o status da rede.',
   );
 
   const setupRoot = workspace.getTopBlocks(false).find((block) => block.type === 'bloco_setup');
@@ -569,15 +611,22 @@ export function auditWorkspace(
       'espnow_mac_serial',
       'Prepare o Wi-Fi antes de mostrar o código MAC deste dispositivo.',
     );
+    for (const sendUse of ['espnow_enviar_pacote', 'espnow_enviar_mensagem']) {
+      requireBefore(
+        'espnow_transmissor_init',
+        sendUse,
+        'Inicie o transmissor antes de enviar dados.',
+      );
+      requireBefore(
+        'espnow_adicionar_receptor',
+        sendUse,
+        'Conecte ao receptor antes de enviar dados.',
+      );
+    }
     requireBefore(
       'espnow_transmissor_init',
-      'espnow_enviar_pacote',
-      'Inicie o transmissor antes de enviar dados.',
-    );
-    requireBefore(
-      'espnow_adicionar_receptor',
-      'espnow_enviar_pacote',
-      'Conecte ao receptor antes de enviar dados.',
+      'espnow_envio_confirmado',
+      'Inicie o transmissor antes de consultar a confirmação de envio.',
     );
     for (const receiverUse of [
       'espnow_tem_dados_novos',
@@ -586,6 +635,13 @@ export function auditWorkspace(
       'espnow_ler_flag_parar',
       'espnow_timeout_ms',
       'espnow_marcar_lido',
+      'espnow_mensagem_tipo',
+      'espnow_mensagem_valor_a',
+      'espnow_mensagem_valor_b',
+      'espnow_mensagem_valor_c',
+      'espnow_mensagem_sinal',
+      'espnow_mensagem_remetente',
+      'espnow_contagem_invalidas',
     ]) {
       requireBefore(
         'espnow_receptor_init',
@@ -593,11 +649,23 @@ export function auditWorkspace(
         'Inicie o receptor antes de consultar os dados recebidos.',
       );
     }
-    for (const mpuUse of ['mpu_ler_pitch', 'mpu_ler_roll']) {
+    for (const mpuUse of [
+      'mpu_ler_pitch', 'mpu_ler_roll',
+      'mpu_ler_aceleracao_x', 'mpu_ler_aceleracao_y', 'mpu_ler_aceleracao_z',
+      'mpu_ler_giro_x', 'mpu_ler_giro_y', 'mpu_ler_giro_z',
+      'mpu_ler_temperatura',
+    ]) {
       requireBefore(
         'mpu_iniciar',
         mpuUse,
-        'Inicie o acelerômetro antes de ler sua inclinação.',
+        'Inicie o MPU6050 antes de ler seus dados.',
+      );
+    }
+    for (const btUse of ['bt_disponivel', 'bt_ler_texto', 'bt_enviar_texto', 'bt_conectado']) {
+      requireBefore(
+        'bt_iniciar',
+        btUse,
+        'Inicie o Bluetooth antes de usá-lo.',
       );
     }
     for (const motorUse of [

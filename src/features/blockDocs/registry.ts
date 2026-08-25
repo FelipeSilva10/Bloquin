@@ -374,6 +374,11 @@ export const BLOCK_DOC_REGISTRY: Record<string, BlockDocEntry> = {
   },
 
   // ── ESP-NOW (SEM FIO) ────────────────────────────────────────────────────
+  // ESP-NOW é um TRANSPORTE genérico entre ESP32s, não um recurso exclusivo
+  // de controle de robô: a mensagem "tipo + valor A/B/C + sinal" pode
+  // carregar leitura de sensor, comando de motor, aviso de LED ou
+  // telemetria qualquer. Os blocos "pitch/roll/parar" abaixo são um alias
+  // antigo sobre os mesmos campos, mantido para abrir projetos salvos.
   espnow_iniciar_wifi: {
     summary: 'Preparar comunicação sem fio (Wi-Fi) — primeiro passo antes de qualquer bloco de ESP-NOW.',
     whatItDoes: 'Coloca o rádio Wi-Fi do ESP32 no modo necessário para o ESP-NOW funcionar (sem se conectar a nenhuma rede Wi-Fi de verdade).',
@@ -388,96 +393,285 @@ export const BLOCK_DOC_REGISTRY: Record<string, BlockDocEntry> = {
     dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar Comunicação Sem Fio" já tenha rodado antes.'],
     exampleIds: ['mostrar-mac'],
   },
+  espnow_iniciou_com_sucesso: {
+    summary: 'Verdadeiro se o transmissor ou receptor ESP-NOW iniciou (e, no transmissor, conectou ao peer) sem erro.',
+    whatItDoes: 'Consulta o resultado da última inicialização do ESP-NOW. Diferente de outros blocos de configuração, uma falha aqui NÃO trava o programa: você decide o que fazer.',
+    whenToUse: 'Use logo depois de "Preparar como Transmissor"/"Preparar como Receptor" (e, no transmissor, depois de "Conectar ao Receptor") para mostrar um aviso, acender um LED de erro ou tentar de novo, em vez de deixar o sketch travado silenciosamente.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Transmissor" ou "Preparar como Receptor" já tenha rodado antes.'],
+  },
   espnow_transmissor_init: {
     summary: 'Preparar Luva (Transmissor) — inicia este dispositivo como o lado que envia dados.',
-    whatItDoes: 'Ativa o ESP-NOW no papel de transmissor, deixando pronto para adicionar o receptor e enviar pacotes.',
+    whatItDoes: 'Ativa o ESP-NOW no papel de transmissor, deixando pronto para adicionar o receptor e enviar mensagens. Se a inicialização falhar, o programa continua rodando (consulte "ESP-NOW Iniciou com Sucesso?" para reagir ao erro).',
     whenToUse: 'Use no PREPARAR do dispositivo que vai enviar dados (por exemplo, a "luva" de controle), depois de "Preparar Comunicação Sem Fio".',
     dependencyNotes: ['Disponível apenas para placas ESP32.'],
     exampleIds: ['esp-now-transmissor'],
   },
   espnow_adicionar_receptor: {
     summary: 'Conecta este transmissor ao código (MAC) de um receptor específico.',
-    whatItDoes: 'Registra o endereço MAC informado como o destino para onde os pacotes de dados serão enviados.',
+    whatItDoes: 'Registra o endereço MAC informado como o destino para onde as mensagens serão enviadas.',
     whenToUse: 'Use uma vez no PREPARAR do transmissor, com o código MAC mostrado pelo robô receptor (via "Mostrar Código deste Dispositivo").',
     dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Transmissor" já tenha rodado antes.'],
     exampleIds: ['esp-now-transmissor'],
   },
+  espnow_enviar_mensagem: {
+    summary: 'Envia uma mensagem genérica: um número de tipo (0–255), até três valores numéricos e um sinal verdadeiro/falso.',
+    whatItDoes: 'Monta uma mensagem com os campos plugados nas entradas e envia por ESP-NOW para o receptor já conectado. O significado de "tipo" e de cada valor é definido por você — o mesmo formato serve para telemetria de sensor, comando de motor, aviso de LED, etc.',
+    whenToUse: 'Use no AGIR do transmissor sempre que precisar mandar dados para o outro ESP32 — não é exclusivo de controle de robô.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Transmissor" e "Conectar ao Receptor" já tenham rodado antes.'],
+    exampleIds: ['esp-now-transmissor-generico'],
+  },
+  espnow_envio_confirmado: {
+    summary: 'Verdadeiro se o último envio foi confirmado pelo rádio Wi-Fi do destinatário.',
+    whatItDoes: 'Consulta o resultado do callback de status de envio do ESP-NOW (esp_now_register_send_cb): o rádio confirma no nível do link se o pacote chegou ao destino, mesmo sem qualquer confirmação no nível da sua aplicação.',
+    whenToUse: 'Use depois de "Enviar Mensagem" para saber se aquele envio específico teve sucesso — por exemplo, para contar falhas ou repetir um envio importante.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Transmissor" já tenha rodado antes.', 'O resultado só é válido depois de pelo menos um envio.'],
+  },
   espnow_enviar_pacote: {
-    summary: 'Envia para o robô os valores de inclinação frente/trás, esquerda/direita e um sinal de parar.',
-    whatItDoes: 'Monta um pacote com os três valores plugados nas entradas e envia por ESP-NOW para o receptor já conectado.',
-    whenToUse: 'Use no AGIR do transmissor, geralmente enviando valores lidos do acelerômetro (MPU-6050), para controlar o robô à distância.',
+    summary: '[Legado] Envia para o robô os valores de inclinação frente/trás, esquerda/direita e um sinal de parar.',
+    whatItDoes: 'Monta um pacote com os três valores plugados nas entradas e envia por ESP-NOW para o receptor já conectado. Usa por baixo dos panos o mesmo formato de mensagem genérica de "Enviar Mensagem".',
+    whenToUse: 'Mantido para abrir projetos salvos antes da mensagem genérica existir. Em projetos novos, prefira "Enviar Mensagem", que serve para qualquer tipo de dado, não só inclinação.',
     dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Transmissor" e "Conectar ao Receptor" já tenham rodado antes.'],
     exampleIds: ['esp-now-transmissor'],
   },
   espnow_receptor_init: {
     summary: 'Preparar Robô (Receptor) — inicia este dispositivo como o lado que recebe dados.',
-    whatItDoes: 'Ativa o ESP-NOW no papel de receptor, deixando pronto para escutar pacotes enviados por um transmissor.',
+    whatItDoes: 'Ativa o ESP-NOW no papel de receptor, deixando pronto para escutar mensagens enviadas por um transmissor. Se a inicialização falhar, o programa continua rodando (consulte "ESP-NOW Iniciou com Sucesso?" para reagir ao erro).',
     whenToUse: 'Use no PREPARAR do dispositivo que vai receber comandos (por exemplo, o robô controlado pela luva), depois de "Preparar Comunicação Sem Fio".',
     dependencyNotes: ['Disponível apenas para placas ESP32.'],
     exampleIds: ['esp-now-receptor'],
   },
   espnow_tem_dados_novos: {
     summary: 'Verdadeiro quando chegou uma mensagem nova do transmissor que ainda não foi lida.',
-    whatItDoes: 'Consulta se um novo pacote ESP-NOW chegou desde a última vez que foi marcado como lido.',
+    whatItDoes: 'Consulta se uma nova mensagem ESP-NOW chegou desde a última vez que foi marcada como lida.',
     whenToUse: 'Use na condição de um SE... ENTÃO para só processar os dados recebidos quando realmente houver algo novo.',
     dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
     exampleIds: ['esp-now-receptor'],
   },
+  espnow_mensagem_tipo: {
+    summary: 'Devolve o número de tipo (0–255) da última mensagem recebida.',
+    whatItDoes: 'Lê o campo "tipo" da mensagem mais recente recebida por ESP-NOW — o rótulo que o transmissor escolheu para dizer do que se trata aquele dado.',
+    whenToUse: 'Use num SE... ENTÃO/SENÃO para decidir o que fazer com a mensagem conforme o tipo (por exemplo, tipo 1 = comando de movimento, tipo 2 = leitura de sensor).',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
+    exampleIds: ['esp-now-receptor-generico'],
+  },
+  espnow_mensagem_valor_a: {
+    summary: 'Devolve o primeiro valor numérico da última mensagem recebida.',
+    whatItDoes: 'Lê o campo "valor A" da mensagem mais recente recebida por ESP-NOW. O significado é o que o transmissor decidiu mandar ali — inclinação, temperatura, velocidade, etc.',
+    whenToUse: 'Use depois de confirmar "Chegou Mensagem Nova?", combinando com "Tipo da Mensagem Recebida" quando o projeto envia mais de um tipo de dado.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
+    exampleIds: ['esp-now-receptor-generico'],
+  },
+  espnow_mensagem_valor_b: {
+    summary: 'Devolve o segundo valor numérico da última mensagem recebida.',
+    whatItDoes: 'Lê o campo "valor B" da mensagem mais recente recebida por ESP-NOW.',
+    whenToUse: 'Use depois de confirmar "Chegou Mensagem Nova?", junto com "Valor A Recebido" quando a mensagem carrega dois números relacionados (como X/Y ou inclinação/velocidade).',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
+    exampleIds: ['esp-now-receptor-generico'],
+  },
+  espnow_mensagem_valor_c: {
+    summary: 'Devolve o terceiro valor numérico da última mensagem recebida.',
+    whatItDoes: 'Lê o campo "valor C" da mensagem mais recente recebida por ESP-NOW.',
+    whenToUse: 'Use quando a mensagem precisa de um terceiro número — por exemplo, um identificador, uma velocidade separada da direção, ou uma segunda leitura de sensor.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
+  },
+  espnow_mensagem_sinal: {
+    summary: 'Devolve o sinal verdadeiro/falso da última mensagem recebida.',
+    whatItDoes: 'Lê o campo "sinal" da mensagem mais recente recebida por ESP-NOW — um valor lógico cujo significado é livre (parar, ligar/desligar, confirmar, etc.).',
+    whenToUse: 'Use para transportar um comando de dois estados junto com os valores numéricos, sem precisar de uma mensagem separada.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
+  },
+  espnow_mensagem_remetente: {
+    summary: 'Devolve o código (MAC) de quem enviou a última mensagem recebida, como texto.',
+    whatItDoes: 'Lê o endereço MAC de origem capturado pelo ESP-NOW no momento da última mensagem recebida e devolve como texto no formato AA:BB:CC:DD:EE:FF.',
+    whenToUse: 'Use para identificar o remetente quando o receptor pode ouvir mais de um transmissor, ou para registrar/depurar de onde veio cada mensagem.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
+  },
   espnow_ler_pitch: {
-    summary: 'Devolve o valor de inclinação frente/trás recebido no último pacote.',
-    whatItDoes: 'Lê o campo "pitch" do pacote mais recente recebido por ESP-NOW.',
-    whenToUse: 'Use depois de confirmar "Chegou Mensagem Nova?", geralmente para mover o robô com "Mover por Dois Valores (A e B)".',
+    summary: '[Legado] Devolve o valor de inclinação frente/trás recebido na última mensagem.',
+    whatItDoes: 'Lê o campo "valor A" da mensagem mais recente recebida por ESP-NOW (o mesmo campo genérico de "Valor A Recebido").',
+    whenToUse: 'Mantido para abrir projetos salvos antes da mensagem genérica existir. Em projetos novos, prefira "Valor A Recebido".',
     dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
     exampleIds: ['esp-now-receptor'],
   },
   espnow_ler_roll: {
-    summary: 'Devolve o valor de inclinação esquerda/direita recebido no último pacote.',
-    whatItDoes: 'Lê o campo "roll" do pacote mais recente recebido por ESP-NOW.',
-    whenToUse: 'Use depois de confirmar "Chegou Mensagem Nova?", geralmente para mover o robô com "Mover por Dois Valores (A e B)".',
+    summary: '[Legado] Devolve o valor de inclinação esquerda/direita recebido na última mensagem.',
+    whatItDoes: 'Lê o campo "valor B" da mensagem mais recente recebida por ESP-NOW (o mesmo campo genérico de "Valor B Recebido").',
+    whenToUse: 'Mantido para abrir projetos salvos antes da mensagem genérica existir. Em projetos novos, prefira "Valor B Recebido".',
     dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
     exampleIds: ['esp-now-receptor'],
   },
   espnow_ler_flag_parar: {
-    summary: 'Verdadeiro se o último pacote recebido pediu para parar.',
-    whatItDoes: 'Lê o campo "parar" do pacote mais recente recebido por ESP-NOW.',
-    whenToUse: 'Use para dar ao transmissor um jeito de mandar o robô parar imediatamente, por exemplo com um botão dedicado na luva.',
+    summary: '[Legado] Verdadeiro se a última mensagem recebida pediu para parar.',
+    whatItDoes: 'Lê o campo "sinal" da mensagem mais recente recebida por ESP-NOW (o mesmo campo genérico de "Sinal Recebido").',
+    whenToUse: 'Mantido para abrir projetos salvos antes da mensagem genérica existir. Em projetos novos, prefira "Sinal Recebido".',
     dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
   },
   espnow_timeout_ms: {
     summary: 'Verdadeiro se já faz mais tempo que o indicado desde a última mensagem recebida.',
-    whatItDoes: 'Compara o tempo desde o último pacote recebido com o limite escolhido (em milissegundos).',
-    whenToUse: 'Use como segurança: se o sinal da luva sumir (por distância, interferência, etc.), detecte isso e pare o robô automaticamente.',
+    whatItDoes: 'Compara o tempo desde a última mensagem recebida com o limite escolhido (em milissegundos).',
+    whenToUse: 'Use como segurança: se o sinal do transmissor sumir (por distância, interferência, dispositivo desligado, etc.), detecte isso e leve o receptor a um estado seguro (por exemplo, parar os motores) automaticamente.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
+    exampleIds: ['esp-now-receptor-generico'],
+  },
+  espnow_contagem_invalidas: {
+    summary: 'Quantidade de mensagens recebidas com tamanho inválido e descartadas desde que o programa ligou.',
+    whatItDoes: 'Conta quantas vezes o ESP-NOW recebeu dados no tamanho errado (mensagem corrompida ou de um protocolo diferente) e os descartou automaticamente, sem afetar a última mensagem válida guardada.',
+    whenToUse: 'Use para diagnosticar problemas de comunicação — se esse número cresce muito rápido, algo está enviando dados incompatíveis nesse canal.',
     dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
   },
   espnow_marcar_lido: {
-    summary: 'Reseta o flag de dados novos. Coloque como primeiro bloco dentro de "SE Chegou mensagem da luva?".',
+    summary: 'Reseta o flag de dados novos. Coloque como primeiro bloco dentro de "SE Chegou mensagem nova?".',
     whatItDoes: 'Marca a mensagem atual como já processada, para que "Chegou Mensagem Nova?" volte a ser falso até a próxima mensagem chegar.',
     whenToUse: 'Sempre como o primeiro bloco dentro do SE... ENTÃO que verifica "Chegou Mensagem Nova?" — evita processar a mesma mensagem repetidas vezes.',
     dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Preparar como Receptor" já tenha rodado antes.'],
     exampleIds: ['esp-now-receptor'],
   },
 
-  // ── MPU-6050 (ACELERÔMETRO) ──────────────────────────────────────────────
+  // ── WI-FI (REDE) ─────────────────────────────────────────────────────────
+  // Conexão comum a um roteador/internet — independente do ESP-NOW. Um
+  // projeto pode usar só Wi-Fi, só ESP-NOW, ou os dois (nesse caso os dois
+  // compartilham o mesmo rádio e a mesma inclusão de biblioteca).
+  wifi_conectar: {
+    summary: 'Conecta a placa a uma rede Wi-Fi comum (roteador), pelo nome e senha.',
+    whatItDoes: 'Tenta conectar à rede indicada por até 10 segundos e mostra no monitor serial se conseguiu (com o endereço IP) ou não. Não trava o programa se falhar — use "Wi-Fi Está Conectado?" para decidir o que fazer.',
+    whenToUse: 'Use no PREPARAR para a conexão inicial, ou também dentro de AGIR (por exemplo, num "SE NÃO estiver conectado, ENTÃO conectar de novo") para reconectar depois de uma queda de sinal.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.'],
+    exampleIds: ['wifi-status'],
+  },
+  wifi_esta_conectado: {
+    summary: 'Verdadeiro se a placa está conectada a uma rede Wi-Fi neste momento.',
+    whatItDoes: 'Consulta o estado atual da conexão Wi-Fi.',
+    whenToUse: 'Use para verificar antes de tentar algo que precisa de internet, ou para decidir quando chamar "Conectar ao Wi-Fi" de novo depois de uma queda de sinal.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.'],
+    exampleIds: ['wifi-status'],
+  },
+  wifi_endereco_ip: {
+    summary: 'Devolve o endereço IP atual da placa na rede, como texto.',
+    whatItDoes: 'Lê o endereço IP dado pelo roteador quando a conexão Wi-Fi está ativa.',
+    whenToUse: 'Use para mostrar/registrar o IP da placa, por exemplo no monitor serial logo depois de conectar.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Só tem um valor útil enquanto "Wi-Fi Está Conectado?" for verdadeiro.'],
+    exampleIds: ['wifi-status'],
+  },
+  wifi_desconectar: {
+    summary: 'Desconecta a placa da rede Wi-Fi atual.',
+    whatItDoes: 'Encerra a conexão Wi-Fi ativa.',
+    whenToUse: 'Use quando o projeto não precisa mais de rede e quiser economizar energia, ou antes de conectar a uma rede diferente.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.'],
+  },
+
+  // ── BLUETOOTH (CLÁSSICO) ─────────────────────────────────────────────────
+  // Porta serial sem fio (BluetoothSerial) — mesma filosofia de
+  // iniciar/status/enviar/receber do Wi-Fi e do ESP-NOW, agora para parear
+  // com um celular (ex.: um app como "Serial Bluetooth Terminal").
+  bt_iniciar: {
+    summary: 'Liga o Bluetooth clássico da placa com o nome escolhido, para outros dispositivos encontrarem ao parear.',
+    whatItDoes: 'Inicia o rádio Bluetooth clássico (BluetoothSerial) com o nome informado, deixando a placa visível para pareamento.',
+    whenToUse: 'Use uma vez no PREPARAR, antes de qualquer outro bloco de Bluetooth.',
+    dependencyNotes: [
+      'Disponível apenas para placas ESP32.',
+      'O Bluetooth clássico usa bastante memória de programa: combiná-lo com Wi-Fi e ESP-NOW no mesmo projeto pode ultrapassar o espaço disponível na placa, dependendo do restante do programa.',
+    ],
+    exampleIds: ['bluetooth-eco'],
+  },
+  bt_conectado: {
+    summary: 'Verdadeiro se algum celular/computador está pareado e conectado por Bluetooth agora.',
+    whatItDoes: 'Consulta se existe um cliente Bluetooth conectado à placa neste momento.',
+    whenToUse: 'Use para só enviar dados quando realmente há alguém ouvindo, ou para mostrar um aviso de conexão/desconexão.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Iniciar Bluetooth" já tenha rodado antes.'],
+  },
+  bt_disponivel: {
+    summary: 'Verdadeiro quando chegou algum dado pelo Bluetooth que ainda não foi lido.',
+    whatItDoes: 'Consulta se há bytes esperando para serem lidos no buffer de recepção do Bluetooth.',
+    whenToUse: 'Use na condição de um SE... ENTÃO antes de "Ler Texto do Bluetooth", para não ler quando não há nada novo.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Iniciar Bluetooth" já tenha rodado antes.'],
+    exampleIds: ['bluetooth-eco'],
+  },
+  bt_ler_texto: {
+    summary: 'Lê e devolve como texto tudo o que chegou pelo Bluetooth até agora.',
+    whatItDoes: 'Junta os bytes disponíveis no buffer de recepção do Bluetooth num texto e devolve.',
+    whenToUse: 'Use depois de confirmar "Chegou Dado pelo Bluetooth?", para processar um comando enviado por um app no celular.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Iniciar Bluetooth" já tenha rodado antes.'],
+    exampleIds: ['bluetooth-eco'],
+  },
+  bt_enviar_texto: {
+    summary: 'Envia um texto pelo Bluetooth, como uma linha.',
+    whatItDoes: 'Manda o texto plugado na entrada para o dispositivo conectado por Bluetooth.',
+    whenToUse: 'Use para responder a um comando recebido, mostrar uma leitura de sensor no celular, ou qualquer mensagem de texto para o app pareado.',
+    dependencyNotes: ['Disponível apenas para placas ESP32.', 'Precisa que "Iniciar Bluetooth" já tenha rodado antes.'],
+    exampleIds: ['bluetooth-eco'],
+  },
+
+  // ── MPU-6050 (ACELERÔMETRO + GIROSCÓPIO) ─────────────────────────────────
+  // O MPU-6050 tem DOIS sensores num só chip: um acelerômetro (força linear
+  // nos 3 eixos, usada para calcular inclinação) e um giroscópio (velocidade
+  // de rotação nos 3 eixos). Não são a mesma coisa nem medem a mesma
+  // grandeza — por isso existem blocos brutos separados para cada um, além
+  // dos blocos prontos de inclinação (que usam só o acelerômetro).
   mpu_iniciar: {
-    summary: 'Inicia o sensor acelerômetro/giroscópio MPU-6050, indicando os pinos SDA e SCL (I²C).',
-    whatItDoes: 'Liga a comunicação I²C com o sensor MPU-6050 e confirma se ele respondeu corretamente (mostra no monitor serial se deu certo ou não).',
-    whenToUse: 'Use uma vez no PREPARAR, antes de "Ler Inclinação Frente/Trás" ou "Ler Inclinação Lateral".',
-    dependencyNotes: ['Precisa de um sensor MPU-6050 conectado nos pinos SDA/SCL escolhidos.'],
+    summary: 'Inicia o sensor acelerômetro/giroscópio MPU-6050, indicando os pinos SDA/SCL (I²C) e o endereço.',
+    whatItDoes: 'Liga a comunicação I²C com o sensor MPU-6050 no endereço escolhido e confirma se ele respondeu corretamente (mostra no monitor serial se deu certo ou não).',
+    whenToUse: 'Use uma vez no PREPARAR, antes de qualquer bloco de leitura do MPU6050 (inclinação, aceleração, giroscópio ou temperatura).',
+    dependencyNotes: [
+      'Precisa de um sensor MPU-6050 conectado nos pinos SDA/SCL escolhidos.',
+      'O endereço é 0x68 quando o pino AD0 do módulo está em GND (padrão da maioria dos breakouts) ou 0x69 quando AD0 está em VCC — útil para usar dois MPU-6050 no mesmo barramento I²C.',
+    ],
     exampleIds: ['acelerometro-leitura', 'esp-now-transmissor'],
   },
   mpu_ler_pitch: {
     summary: 'Inclinação frente/trás (graus) — lê o quanto o sensor está inclinado para frente ou para trás.',
-    whatItDoes: 'Devolve, em graus, a inclinação atual do MPU-6050 no eixo frente/trás.',
+    whatItDoes: 'Devolve, em graus, a inclinação atual do MPU-6050 no eixo frente/trás, calculada a partir do acelerômetro.',
     whenToUse: 'Use para controlar algo pela inclinação — mover um robô, ou enviar essa leitura por ESP-NOW para controlar outro robô à distância.',
-    dependencyNotes: ['Precisa que "Iniciar Acelerômetro" já tenha rodado antes.'],
+    dependencyNotes: ['Precisa que "Iniciar MPU6050" já tenha rodado antes.'],
     exampleIds: ['acelerometro-leitura', 'esp-now-transmissor'],
   },
   mpu_ler_roll: {
     summary: 'Inclinação esquerda/direita (graus) — lê o quanto o sensor está inclinado para os lados.',
-    whatItDoes: 'Devolve, em graus, a inclinação atual do MPU-6050 no eixo esquerda/direita.',
+    whatItDoes: 'Devolve, em graus, a inclinação atual do MPU-6050 no eixo esquerda/direita, calculada a partir do acelerômetro.',
     whenToUse: 'Use para controlar algo pela inclinação lateral — mover um robô, ou enviar essa leitura por ESP-NOW para controlar outro robô à distância.',
-    dependencyNotes: ['Precisa que "Iniciar Acelerômetro" já tenha rodado antes.'],
+    dependencyNotes: ['Precisa que "Iniciar MPU6050" já tenha rodado antes.'],
     exampleIds: ['acelerometro-leitura', 'esp-now-transmissor'],
+  },
+  mpu_ler_aceleracao_x: {
+    summary: 'Aceleração bruta no eixo X, em g (1 g ≈ força da gravidade).',
+    whatItDoes: 'Devolve o valor bruto do acelerômetro no eixo X, sem nenhuma conversão para ângulo.',
+    whenToUse: 'Use quando precisar do dado bruto do acelerômetro — para montar seu próprio cálculo de inclinação, detectar batida/vibração (variação brusca) ou registrar dados. Para inclinação pronta em graus, use "Ler Inclinação Frente/Trás" ou "Ler Inclinação Lateral".',
+    dependencyNotes: ['Precisa que "Iniciar MPU6050" já tenha rodado antes.'],
+  },
+  mpu_ler_aceleracao_y: {
+    summary: 'Aceleração bruta no eixo Y, em g (1 g ≈ força da gravidade).',
+    whatItDoes: 'Devolve o valor bruto do acelerômetro no eixo Y, sem nenhuma conversão para ângulo.',
+    whenToUse: 'Use quando precisar do dado bruto do acelerômetro — para montar seu próprio cálculo de inclinação, detectar batida/vibração (variação brusca) ou registrar dados.',
+    dependencyNotes: ['Precisa que "Iniciar MPU6050" já tenha rodado antes.'],
+  },
+  mpu_ler_aceleracao_z: {
+    summary: 'Aceleração bruta no eixo Z, em g (1 g ≈ força da gravidade).',
+    whatItDoes: 'Devolve o valor bruto do acelerômetro no eixo Z, sem nenhuma conversão para ângulo. Com o sensor parado e na horizontal, este valor fica perto de 1 g (a gravidade "empurrando" para baixo).',
+    whenToUse: 'Use quando precisar do dado bruto do acelerômetro — para montar seu próprio cálculo de inclinação, detectar batida/vibração (variação brusca) ou registrar dados.',
+    dependencyNotes: ['Precisa que "Iniciar MPU6050" já tenha rodado antes.'],
+  },
+  mpu_ler_giro_x: {
+    summary: 'Velocidade de rotação no eixo X, em graus por segundo — não é o mesmo dado do acelerômetro.',
+    whatItDoes: 'Devolve a velocidade angular medida pelo giroscópio no eixo X: o quão rápido o sensor está girando naquele instante, não o ângulo em si.',
+    whenToUse: 'Use para detectar movimento de rotação (giro rápido) em vez de inclinação estática. Combine com "Ler Inclinação" quando precisar tanto de ângulo quanto de velocidade de giro.',
+    dependencyNotes: ['Precisa que "Iniciar MPU6050" já tenha rodado antes.'],
+  },
+  mpu_ler_giro_y: {
+    summary: 'Velocidade de rotação no eixo Y, em graus por segundo — não é o mesmo dado do acelerômetro.',
+    whatItDoes: 'Devolve a velocidade angular medida pelo giroscópio no eixo Y: o quão rápido o sensor está girando naquele instante, não o ângulo em si.',
+    whenToUse: 'Use para detectar movimento de rotação (giro rápido) em vez de inclinação estática.',
+    dependencyNotes: ['Precisa que "Iniciar MPU6050" já tenha rodado antes.'],
+  },
+  mpu_ler_giro_z: {
+    summary: 'Velocidade de rotação no eixo Z, em graus por segundo — não é o mesmo dado do acelerômetro.',
+    whatItDoes: 'Devolve a velocidade angular medida pelo giroscópio no eixo Z: o quão rápido o sensor está girando naquele instante, não o ângulo em si (esse é o eixo de uma "rodinha" vista de cima).',
+    whenToUse: 'Use para detectar movimento de rotação (giro rápido) em vez de inclinação estática.',
+    dependencyNotes: ['Precisa que "Iniciar MPU6050" já tenha rodado antes.'],
+  },
+  mpu_ler_temperatura: {
+    summary: 'Temperatura interna do chip MPU-6050, em graus Celsius.',
+    whatItDoes: 'Devolve a temperatura medida pelo sensor de temperatura embutido no próprio chip MPU-6050.',
+    whenToUse: 'Use para um registro aproximado da temperatura do ambiente/placa. É a temperatura do chip, não um termômetro de precisão calibrado.',
+    dependencyNotes: ['Precisa que "Iniciar MPU6050" já tenha rodado antes.'],
   },
 
   // ── PONTE H (L298N / MOTOR DC) ───────────────────────────────────────────
@@ -511,9 +705,9 @@ export const BLOCK_DOC_REGISTRY: Record<string, BlockDocEntry> = {
   },
   l298n_velocidade_por_pitch_roll: {
     summary: 'Move o robô combinando dois valores de inclinação (frente/trás e esquerda/direita) num único comando.',
-    whatItDoes: 'Calcula automaticamente a força de cada motor a partir dos dois valores de entrada, permitindo movimentos combinados (por exemplo, virar enquanto anda) numa única chamada.',
-    whenToUse: 'O bloco pensado para controle por inclinação — normalmente ligado direto às leituras vindas de "Valor A Recebido"/"Valor B Recebido" (ESP-NOW) ou de um acelerômetro local.',
+    whatItDoes: 'Calcula automaticamente a força de cada motor a partir dos dois valores de entrada, permitindo movimentos combinados e proporcionais (por exemplo, virar mais forte quanto maior a inclinação) numa única chamada.',
+    whenToUse: 'Para controle CONTÍNUO e proporcional por inclinação — normalmente ligado direto às leituras vindas de "Valor A Recebido"/"Valor B Recebido" (ESP-NOW) ou de um acelerômetro local. Se preferir decidir a direção você mesmo (por exemplo, com SE/SENÃO comparando a inclinação a um limite) e mover em estados discretos, "Mover (Frente, Trás, Esq, Dir)" combinado com blocos de condição alcança o mesmo resultado por composição — veja "esp-now-receptor-generico" nos exemplos deste bloco.',
     dependencyNotes: ['Precisa que "Configurar Motor DC" já tenha rodado antes.'],
-    exampleIds: ['esp-now-receptor'],
+    exampleIds: ['esp-now-receptor', 'esp-now-receptor-generico'],
   },
 };

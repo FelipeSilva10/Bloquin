@@ -279,9 +279,19 @@ export function initGenerators() {
   // ESP-NOW
   cppGenerator.forBlock['espnow_iniciar_wifi'] = (_b: Blockly.Block) => `  WiFi.mode(WIFI_STA);\n  WiFi.disconnect();\n  delay(100);\n`;
   cppGenerator.forBlock['espnow_mac_serial'] = (_b: Blockly.Block) => `  Serial.print("[INFO] MAC: ");\n  Serial.println(WiFi.macAddress());\n`;
+  // Ao contrário da versão anterior, falha de inicialização/peer NÃO trava o
+  // sketch para sempre num `while(true)`: isso impediria qualquer fail-safe
+  // (nem o timeout do receptor rodaria). Em vez disso, guardamos o estado em
+  // `_espnow_ok` e o usuário pode consultá-lo com "ESP-NOW iniciou com
+  // sucesso?" para decidir o que fazer.
   cppGenerator.forBlock['espnow_transmissor_init'] = (_b: Blockly.Block) =>
-    `  if (esp_now_init() != ESP_OK) {\n    Serial.println("[ERRO] ESP-NOW falhou");\n    while(true) delay(1000);\n  }\n` +
-    `  Serial.println("[OK] ESP-NOW iniciado.");\n`;
+    `  _espnow_ok = (esp_now_init() == ESP_OK);\n` +
+    `  if (_espnow_ok) {\n` +
+    `    esp_now_register_send_cb(_bloquin_OnDataSent);\n` +
+    `    Serial.println("[OK] ESP-NOW iniciado (transmissor).");\n` +
+    `  } else {\n` +
+    `    Serial.println("[ERRO] ESP-NOW falhou ao iniciar. Verifique se a placa é um ESP32.");\n` +
+    `  }\n`;
 
   cppGenerator.forBlock['espnow_adicionar_receptor'] = (b: Blockly.Block) => {
     const mac = (b.getFieldValue('MAC') || 'AA:BB:CC:DD:EE:FF');
@@ -291,29 +301,67 @@ export function initGenerators() {
       : 'FF:FF:FF:FF:FF:FF';
     const parts = safeMac.split(':').map((p: string) => `0x${p.toUpperCase()}`);
     return (
-      `  uint8_t _tmp_mac[6] = {${parts.join(', ')}};\n` +
-      `  memcpy(_espnow_peer_mac, _tmp_mac, 6);\n` +
-      `  if (esp_now_is_peer_exist(_espnow_peer_mac)) esp_now_del_peer(_espnow_peer_mac);\n` +
-      `  esp_now_peer_info_t _pi = {};\n` +
-      `  memcpy(_pi.peer_addr, _espnow_peer_mac, 6);\n` +
-      `  _pi.channel = 0;\n` +
-      `  _pi.encrypt = false;\n` +
-      `  _pi.ifidx = WIFI_IF_STA;\n` +
-      `  if (esp_now_add_peer(&_pi) != ESP_OK) {\n` +
-      `    Serial.println("[ERRO] Falha ao conectar ao receptor");\n` +
-      `    while(true) delay(1000);\n` +
+      `  if (_espnow_ok) {\n` +
+      `    uint8_t _tmp_mac[6] = {${parts.join(', ')}};\n` +
+      `    memcpy(_espnow_peer_mac, _tmp_mac, 6);\n` +
+      `    if (esp_now_is_peer_exist(_espnow_peer_mac)) esp_now_del_peer(_espnow_peer_mac);\n` +
+      `    esp_now_peer_info_t _pi = {};\n` +
+      `    memcpy(_pi.peer_addr, _espnow_peer_mac, 6);\n` +
+      `    _pi.channel = 0;\n` +
+      `    _pi.encrypt = false;\n` +
+      `    _pi.ifidx = WIFI_IF_STA;\n` +
+      `    if (esp_now_add_peer(&_pi) != ESP_OK) {\n` +
+      `      _espnow_ok = false;\n` +
+      `      Serial.println("[ERRO] Falha ao conectar ao receptor.");\n` +
+      `    }\n` +
       `  }\n`
     );
   };
 
-  cppGenerator.forBlock['espnow_enviar_pacote'] = (b: Blockly.Block) => `  _PacoteDados _pkt;\n  _pkt.pitch = (float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'});\n  _pkt.roll  = (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'});\n  _pkt.parar = ${cppGenerator.valueToCode(b, 'PARAR', 0) || 'false'};\n  esp_now_send(_espnow_peer_mac, (uint8_t*)&_pkt, sizeof(_pkt));\n`;
-  cppGenerator.forBlock['espnow_receptor_init'] = (_b: Blockly.Block) => `  if (esp_now_init() != ESP_OK) {\n    Serial.println("[ERRO] ESP-NOW falhou");\n    while(true) delay(1000);\n  }\n  esp_now_register_recv_cb(_bloquin_OnDataRecv);\n`;
+  cppGenerator.forBlock['espnow_enviar_pacote'] = (b: Blockly.Block) => `  _BloquinMensagem _pkt = {};\n  _pkt.valorA = (float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'});\n  _pkt.valorB  = (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'});\n  _pkt.sinal = ${cppGenerator.valueToCode(b, 'PARAR', 0) || 'false'};\n  esp_now_send(_espnow_peer_mac, (uint8_t*)&_pkt, sizeof(_pkt));\n`;
+  cppGenerator.forBlock['espnow_receptor_init'] = (_b: Blockly.Block) =>
+    `  _espnow_ok = (esp_now_init() == ESP_OK);\n` +
+    `  if (_espnow_ok) {\n` +
+    `    esp_now_register_recv_cb(_bloquin_OnDataRecv);\n` +
+    `    Serial.println("[OK] ESP-NOW iniciado (receptor).");\n` +
+    `  } else {\n` +
+    `    Serial.println("[ERRO] ESP-NOW falhou ao iniciar. Verifique se a placa é um ESP32.");\n` +
+    `  }\n`;
   cppGenerator.forBlock['espnow_tem_dados_novos'] = (_b: Blockly.Block) => [`_bloquin_temDadosNovos()`, 0];
   cppGenerator.forBlock['espnow_ler_pitch'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowPitch()`, 0];
   cppGenerator.forBlock['espnow_ler_roll'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowRoll()`, 0];
   cppGenerator.forBlock['espnow_ler_flag_parar'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowParar()`, 0];
   cppGenerator.forBlock['espnow_timeout_ms'] = (b: Blockly.Block) => [`_bloquin_espnowTimeout(${b.getFieldValue('MS')}UL)`, 0];
   cppGenerator.forBlock['espnow_marcar_lido'] = (_b: Blockly.Block) => `  _bloquin_marcarEspnowLido();\n`;
+
+  // ESP-NOW — mensagem genérica: o mesmo envelope (tipo + valorA/B/C + sinal)
+  // serve para telemetria de sensor, comandos de motor, LED, etc. Os blocos
+  // "pitch/roll/parar" acima são um alias legado sobre os mesmos campos.
+  cppGenerator.forBlock['espnow_enviar_mensagem'] = (b: Blockly.Block) => {
+    const tipo = b.getFieldValue('TIPO');
+    const a = cppGenerator.valueToCode(b, 'A', 99) || '0.0f';
+    const bv = cppGenerator.valueToCode(b, 'B', 99) || '0.0f';
+    const c = cppGenerator.valueToCode(b, 'C', 99) || '0.0f';
+    const sinal = cppGenerator.valueToCode(b, 'SINAL', 0) || 'false';
+    return (
+      `  _BloquinMensagem _msg = {};\n` +
+      `  _msg.tipo = (uint8_t)(${tipo});\n` +
+      `  _msg.valorA = (float)(${a});\n` +
+      `  _msg.valorB = (float)(${bv});\n` +
+      `  _msg.valorC = (float)(${c});\n` +
+      `  _msg.sinal = ${sinal};\n` +
+      `  esp_now_send(_espnow_peer_mac, (uint8_t*)&_msg, sizeof(_msg));\n`
+    );
+  };
+  cppGenerator.forBlock['espnow_mensagem_tipo'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowTipo()`, 0];
+  cppGenerator.forBlock['espnow_mensagem_valor_a'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowValorA()`, 0];
+  cppGenerator.forBlock['espnow_mensagem_valor_b'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowValorB()`, 0];
+  cppGenerator.forBlock['espnow_mensagem_valor_c'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowValorC()`, 0];
+  cppGenerator.forBlock['espnow_mensagem_sinal'] = (_b: Blockly.Block) => [`_bloquin_lerEspnowSinal()`, 0];
+  cppGenerator.forBlock['espnow_mensagem_remetente'] = (_b: Blockly.Block) => [`_bloquin_espnowRemetente()`, 0];
+  cppGenerator.forBlock['espnow_iniciou_com_sucesso'] = (_b: Blockly.Block) => [`_espnow_ok`, 0];
+  cppGenerator.forBlock['espnow_envio_confirmado'] = (_b: Blockly.Block) => [`_espnow_ultimoEnvioOk`, 0];
+  cppGenerator.forBlock['espnow_contagem_invalidas'] = (_b: Blockly.Block) => [`_espnow_invalidas`, 0];
 
   // Ultrassônico
   cppGenerator.forBlock['configurar_ultrassonico'] = (b: Blockly.Block) => `  pinMode(${b.getFieldValue('TRIG')}, OUTPUT);\n  pinMode(${b.getFieldValue('ECHO')}, INPUT);\n`;
@@ -334,18 +382,27 @@ export function initGenerators() {
     const pin    = b.getFieldValue('PIN');
     return `  _bloquin_tocarMusica(_bloquin_mel_${musica}, _bloquin_notes_${musica}, _bloquin_tempo_${musica}, ${pin});\n`;
   };
-  cppGenerator.forBlock['mpu_iniciar'] = (b: Blockly.Block) =>
-    (targetBoard === 'esp32'
+  cppGenerator.forBlock['mpu_iniciar'] = (b: Blockly.Block) => {
+    const addr = b.getFieldValue('ADDR') || '0x68';
+    return (targetBoard === 'esp32'
       ? `  Wire.begin(${b.getFieldValue('SDA')}, ${b.getFieldValue('SCL')});\n`
       : '  Wire.begin(); // SDA=A4, SCL=A5 no Arduino Uno/Nano\n') +
-    `  Wire.beginTransmission(0x68);\n  Wire.write(0x6B);\n  Wire.write(0);\n` +
+    `  Wire.beginTransmission(${addr});\n  Wire.write(0x6B);\n  Wire.write(0);\n` +
     `  if (Wire.endTransmission(true) == 0) {\n` +
     `    Serial.println("[OK] MPU-6050 iniciado");\n` +
     `  } else {\n` +
     `    Serial.println("[ERRO] MPU-6050 não respondeu");\n` +
     `  }\n`;
+  };
   cppGenerator.forBlock['mpu_ler_pitch'] = (_b: Blockly.Block) => [`_bloquin_lerPitch()`, 0];
   cppGenerator.forBlock['mpu_ler_roll'] = (_b: Blockly.Block) => [`_bloquin_lerRoll()`, 0];
+  cppGenerator.forBlock['mpu_ler_aceleracao_x'] = (_b: Blockly.Block) => [`_bloquin_lerAcelX()`, 0];
+  cppGenerator.forBlock['mpu_ler_aceleracao_y'] = (_b: Blockly.Block) => [`_bloquin_lerAcelY()`, 0];
+  cppGenerator.forBlock['mpu_ler_aceleracao_z'] = (_b: Blockly.Block) => [`_bloquin_lerAcelZ()`, 0];
+  cppGenerator.forBlock['mpu_ler_giro_x'] = (_b: Blockly.Block) => [`_bloquin_lerGiroX()`, 0];
+  cppGenerator.forBlock['mpu_ler_giro_y'] = (_b: Blockly.Block) => [`_bloquin_lerGiroY()`, 0];
+  cppGenerator.forBlock['mpu_ler_giro_z'] = (_b: Blockly.Block) => [`_bloquin_lerGiroZ()`, 0];
+  cppGenerator.forBlock['mpu_ler_temperatura'] = (_b: Blockly.Block) => [`_bloquin_lerTemperaturaMPU()`, 0];
 
   // ── Ponte H — FIX Bug 4: usa macros _LEDC_ATTACH/_LEDC_WRITE compatíveis
   //    com Core 2.x (ledcSetup/ledcAttachPin/ledcWrite por canal) e
@@ -387,6 +444,39 @@ export function initGenerators() {
   cppGenerator.forBlock['l298n_velocidade_por_pitch_roll'] = (b: Blockly.Block) => `  _bloquin_aplicarControle((float)(${cppGenerator.valueToCode(b, 'PITCH', 99) || '0.0f'}), (float)(${cppGenerator.valueToCode(b, 'ROLL', 99) || '0.0f'}), 10.0f, 8.0f);\n`;
   cppGenerator.forBlock['util_map_float'] = (b: Blockly.Block) => [`_bloquin_mapFloat((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}), ${floatLiteral(b.getFieldValue('DE_MIN'))}, ${floatLiteral(b.getFieldValue('DE_MAX'))}, ${floatLiteral(b.getFieldValue('PARA_MIN'))}, ${floatLiteral(b.getFieldValue('PARA_MAX'))})`, 0];
   cppGenerator.forBlock['util_fabsf'] = (b: Blockly.Block) => [`fabsf((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}))`, 0];
+
+  // Wi-Fi (rede comum, independente do ESP-NOW) — não trava em caso de falha:
+  // o usuário decide o que fazer consultando "Wi-Fi está conectado?".
+  cppGenerator.forBlock['wifi_conectar'] = (b: Blockly.Block) => {
+    const ssid = cppStringLiteral(b.getFieldValue('SSID'));
+    const senha = cppStringLiteral(b.getFieldValue('SENHA'));
+    return (
+      `  WiFi.mode(WIFI_STA);\n` +
+      `  WiFi.begin(${ssid}, ${senha});\n` +
+      `  {\n` +
+      `    unsigned long _wifiInicio = millis();\n` +
+      `    while (WiFi.status() != WL_CONNECTED && millis() - _wifiInicio < 10000UL) delay(250);\n` +
+      `  }\n` +
+      `  if (WiFi.status() == WL_CONNECTED) {\n` +
+      `    Serial.print("[OK] Wi-Fi conectado. IP: ");\n` +
+      `    Serial.println(WiFi.localIP());\n` +
+      `  } else {\n` +
+      `    Serial.println("[ERRO] Não foi possível conectar ao Wi-Fi em 10 s.");\n` +
+      `  }\n`
+    );
+  };
+  cppGenerator.forBlock['wifi_esta_conectado'] = (_b: Blockly.Block) => [`(WiFi.status() == WL_CONNECTED)`, 0];
+  cppGenerator.forBlock['wifi_endereco_ip'] = (_b: Blockly.Block) => [`WiFi.localIP().toString()`, 0];
+  cppGenerator.forBlock['wifi_desconectar'] = (_b: Blockly.Block) => `  WiFi.disconnect(true);\n`;
+
+  // Bluetooth clássico (BluetoothSerial) — mesma filosofia do ESP-NOW/Wi-Fi:
+  // iniciar, status, enviar, receber.
+  cppGenerator.forBlock['bt_iniciar'] = (b: Blockly.Block) =>
+    `  _bloquinBT.begin(${cppStringLiteral(b.getFieldValue('NOME'))});\n  Serial.println("[OK] Bluetooth iniciado.");\n`;
+  cppGenerator.forBlock['bt_disponivel'] = (_b: Blockly.Block) => [`(_bloquinBT.available() > 0)`, 0];
+  cppGenerator.forBlock['bt_ler_texto'] = (_b: Blockly.Block) => [`_bloquin_lerBluetooth()`, 0];
+  cppGenerator.forBlock['bt_enviar_texto'] = (b: Blockly.Block) => `  _bloquinBT.println(${cppGenerator.valueToCode(b, 'TEXTO', 0) || '""'});\n`;
+  cppGenerator.forBlock['bt_conectado'] = (_b: Blockly.Block) => [`_bloquinBT.hasClient()`, 0];
 }
 
 export const generateCode = (
@@ -527,7 +617,21 @@ export const generateCode = (
     }
   }
 
+  // ── Wi-Fi/ESP-NOW compartilham o mesmo #include <WiFi.h> — emitido uma
+  // única vez aqui, nunca dentro de espNowHeader/wifiHeader individualmente.
+  const needsGenericWifi = hasBlock(
+    'wifi_conectar',
+    'wifi_esta_conectado',
+    'wifi_endereco_ip',
+    'wifi_desconectar',
+  );
+
   // ── ESP-NOW ───────────────────────────────────────────────────────────────
+  // O envelope de mensagem (`_BloquinMensagem`) é genérico: tipo + até três
+  // valores numéricos + um sinal verdadeiro/falso. Os blocos legados
+  // "pitch/roll/parar" (mantidos por compatibilidade com projetos salvos) e
+  // os novos blocos "tipo/valor A/B/C/sinal" leem os MESMOS campos — não há
+  // dois protocolos concorrentes, só dois conjuntos de nomes para o mesmo dado.
   const needsEspNowRx = hasBlock(
     'espnow_receptor_init',
     'espnow_tem_dados_novos',
@@ -536,40 +640,73 @@ export const generateCode = (
     'espnow_ler_flag_parar',
     'espnow_timeout_ms',
     'espnow_marcar_lido',
+    'espnow_mensagem_tipo',
+    'espnow_mensagem_valor_a',
+    'espnow_mensagem_valor_b',
+    'espnow_mensagem_valor_c',
+    'espnow_mensagem_sinal',
+    'espnow_mensagem_remetente',
+    'espnow_contagem_invalidas',
   );
   const needsEspNowTx = hasBlock(
     'espnow_transmissor_init',
     'espnow_adicionar_receptor',
     'espnow_enviar_pacote',
+    'espnow_enviar_mensagem',
+    'espnow_envio_confirmado',
   );
   const needsEspNow = [...blockTypes].some((type) => type.startsWith('espnow_'));
 
   let espNowHeader = '';
-  if (needsEspNow) {
+  if (needsEspNow && targetBoard !== 'esp32') {
+    // Sem o include incompatível: assim o compilador para nesta única
+    // mensagem, em vez de falhar primeiro por "esp_now.h: No such file".
+    espNowHeader = '#error "Os blocos ESP-NOW exigem uma placa ESP32."\n\n';
+  } else if (needsEspNow) {
     espNowHeader =
-      '#include <esp_now.h>\n' +
-      '#include <WiFi.h>\n\n' +
-      'typedef struct { float pitch; float roll; bool parar; } _PacoteDados;\n' +
-      '_PacoteDados _espnow_pacoteBruto = {};\n' +
-      '_PacoteDados _espnow_snapshot = {};\n' +
-      'volatile uint32_t _espnow_geracao = 0;\n' +
-      'volatile unsigned long _espnow_ultimoRx = 0;\n' +
-      'volatile bool _espnow_primeiroRx = false;\n' +
-      'uint32_t _espnow_geracaoLida = 0;\n' +
-      'uint32_t _espnow_geracaoConsultada = 0;\n' +
-      'portMUX_TYPE _espnow_mux = portMUX_INITIALIZER_UNLOCKED;\n';
+      '#include <esp_now.h>\n\n' +
+      'typedef struct {\n' +
+      '  uint8_t tipo;\n' +
+      '  float valorA;\n' +
+      '  float valorB;\n' +
+      '  float valorC;\n' +
+      '  bool sinal;\n' +
+      '} _BloquinMensagem;\n' +
+      // Estado da última inicialização/registro de peer, consultável pelo
+      // usuário em vez de travar o sketch num `while(true)` silencioso.
+      'volatile bool _espnow_ok = false;\n';
 
     if (needsEspNowTx) {
-      espNowHeader += 'uint8_t _espnow_peer_mac[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};\n';
+      espNowHeader +=
+        'uint8_t _espnow_peer_mac[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};\n' +
+        'volatile bool _espnow_ultimoEnvioOk = false;\n' +
+        '\nvoid _bloquin_OnDataSent(const wifi_tx_info_t *info, esp_now_send_status_t status) {\n' +
+        '  (void)info;\n' +
+        '  _espnow_ultimoEnvioOk = (status == ESP_NOW_SEND_SUCCESS);\n' +
+        '}\n';
     }
 
     if (needsEspNowRx) {
       espNowHeader +=
+        '_BloquinMensagem _espnow_pacoteBruto = {};\n' +
+        '_BloquinMensagem _espnow_snapshot = {};\n' +
+        'volatile uint32_t _espnow_geracao = 0;\n' +
+        'volatile unsigned long _espnow_ultimoRx = 0;\n' +
+        'volatile bool _espnow_primeiroRx = false;\n' +
+        'uint32_t _espnow_geracaoLida = 0;\n' +
+        'uint32_t _espnow_geracaoConsultada = 0;\n' +
+        'portMUX_TYPE _espnow_mux = portMUX_INITIALIZER_UNLOCKED;\n' +
+        // Identificação do remetente e contagem de pacotes rejeitados por
+        // tamanho inválido — diagnóstico de erro pedido pela auditoria de
+        // comunicação (não inventam retransmissão: o ESP-NOW/Wi-Fi já faz
+        // ACK e retentativa a nível de rádio para unicast).
+        'uint8_t _espnow_remetente[6] = {0,0,0,0,0,0};\n' +
+        'volatile uint32_t _espnow_invalidas = 0;\n' +
         '\nvoid _bloquin_OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {\n' +
-        '  (void)info;\n' +
-        '  if (len != sizeof(_PacoteDados)) return;\n' +
+        '  if (len != sizeof(_BloquinMensagem)) { _espnow_invalidas++; return; }\n' +
+        '  if (info) memcpy(_espnow_remetente, info->src_addr, 6);\n' +
         '  portENTER_CRITICAL(&_espnow_mux);\n' +
-        '  memcpy(&_espnow_pacoteBruto, data, sizeof(_PacoteDados));\n' +
+        '  memcpy(&_espnow_pacoteBruto, data, sizeof(_BloquinMensagem));\n' +
         '  _espnow_geracao++;\n' +
         '  _espnow_ultimoRx = millis();\n' +
         '  _espnow_primeiroRx = true;\n' +
@@ -585,17 +722,31 @@ export const generateCode = (
         '  portEXIT_CRITICAL(&_espnow_mux);\n' +
         '  return novos;\n' +
         '}\n' +
-        '\n_PacoteDados _bloquin_obterSnapshotEspnow() {\n' +
+        '\n_BloquinMensagem _bloquin_obterSnapshotEspnow() {\n' +
         '  portENTER_CRITICAL(&_espnow_mux);\n' +
         '  _espnow_snapshot = _espnow_pacoteBruto;\n' +
         '  _espnow_geracaoConsultada = _espnow_geracao;\n' +
-        '  _PacoteDados copia = _espnow_snapshot;\n' +
+        '  _BloquinMensagem copia = _espnow_snapshot;\n' +
         '  portEXIT_CRITICAL(&_espnow_mux);\n' +
         '  return copia;\n' +
         '}\n' +
-        '\nfloat _bloquin_lerEspnowPitch() { return _bloquin_obterSnapshotEspnow().pitch; }\n' +
-        'float _bloquin_lerEspnowRoll() { return _bloquin_obterSnapshotEspnow().roll; }\n' +
-        'bool _bloquin_lerEspnowParar() { return _bloquin_obterSnapshotEspnow().parar; }\n' +
+        // Aliases legados (pitch/roll/parar) sobre os mesmos campos genéricos.
+        '\nfloat _bloquin_lerEspnowPitch() { return _bloquin_obterSnapshotEspnow().valorA; }\n' +
+        'float _bloquin_lerEspnowRoll() { return _bloquin_obterSnapshotEspnow().valorB; }\n' +
+        'bool _bloquin_lerEspnowParar() { return _bloquin_obterSnapshotEspnow().sinal; }\n' +
+        // Acessores genéricos.
+        'uint8_t _bloquin_lerEspnowTipo() { return _bloquin_obterSnapshotEspnow().tipo; }\n' +
+        'float _bloquin_lerEspnowValorA() { return _bloquin_obterSnapshotEspnow().valorA; }\n' +
+        'float _bloquin_lerEspnowValorB() { return _bloquin_obterSnapshotEspnow().valorB; }\n' +
+        'float _bloquin_lerEspnowValorC() { return _bloquin_obterSnapshotEspnow().valorC; }\n' +
+        'bool _bloquin_lerEspnowSinal() { return _bloquin_obterSnapshotEspnow().sinal; }\n' +
+        'String _bloquin_espnowRemetente() {\n' +
+        '  char _buf[18];\n' +
+        '  snprintf(_buf, sizeof(_buf), "%02X:%02X:%02X:%02X:%02X:%02X",\n' +
+        '    _espnow_remetente[0], _espnow_remetente[1], _espnow_remetente[2],\n' +
+        '    _espnow_remetente[3], _espnow_remetente[4], _espnow_remetente[5]);\n' +
+        '  return String(_buf);\n' +
+        '}\n' +
         '\nvoid _bloquin_marcarEspnowLido() {\n' +
         '  portENTER_CRITICAL(&_espnow_mux);\n' +
         '  _espnow_geracaoLida = _espnow_geracaoConsultada;\n' +
@@ -609,46 +760,105 @@ export const generateCode = (
         '  return recebeu ? (millis() - ultimo > limite) : (millis() > limite);\n' +
         '}\n';
     }
-    if (targetBoard !== 'esp32') {
-      espNowHeader += '#error "Os blocos ESP-NOW exigem uma placa ESP32."\n';
-    }
     espNowHeader += '\n';
   }
 
+  // ── Wi-Fi (rede comum) ───────────────────────────────────────────────────
+  let wifiHeader = '';
+  if (needsGenericWifi && targetBoard !== 'esp32') {
+    wifiHeader = '#error "Os blocos de Wi-Fi exigem uma placa ESP32."\n\n';
+  }
+  const needsWifiInclude = (needsEspNow || needsGenericWifi) && targetBoard === 'esp32';
+  const networkHeader = needsWifiInclude ? '#include <WiFi.h>\n\n' : '';
+
+  // ── Bluetooth (clássico, BluetoothSerial) ────────────────────────────────
+  const needsBluetooth = hasBlock(
+    'bt_iniciar',
+    'bt_disponivel',
+    'bt_ler_texto',
+    'bt_enviar_texto',
+    'bt_conectado',
+  );
+  let bluetoothHeader = '';
+  if (needsBluetooth && targetBoard !== 'esp32') {
+    bluetoothHeader = '#error "Os blocos de Bluetooth exigem uma placa ESP32."\n\n';
+  } else if (needsBluetooth) {
+    bluetoothHeader = '#include <BluetoothSerial.h>\n\nBluetoothSerial _bloquinBT;\n\n';
+    if (hasBlock('bt_ler_texto')) {
+      bluetoothHeader +=
+        'String _bloquin_lerBluetooth() {\n' +
+        '  String _txt = "";\n' +
+        '  while (_bloquinBT.available() > 0) {\n' +
+        '    _txt += (char)_bloquinBT.read();\n' +
+        '  }\n' +
+        '  return _txt;\n' +
+        '}\n\n';
+    }
+  }
+
   // ── MPU-6050 ─────────────────────────────────────────────────────────────
-  const needsMPU = hasBlock('mpu_iniciar', 'mpu_ler_pitch', 'mpu_ler_roll');
+  const needsMPU = hasBlock(
+    'mpu_iniciar',
+    'mpu_ler_pitch',
+    'mpu_ler_roll',
+    'mpu_ler_aceleracao_x',
+    'mpu_ler_aceleracao_y',
+    'mpu_ler_aceleracao_z',
+    'mpu_ler_giro_x',
+    'mpu_ler_giro_y',
+    'mpu_ler_giro_z',
+    'mpu_ler_temperatura',
+  );
 
   let mpuHeader = '';
   if (needsMPU) {
+    const mpuInitBlock = allBlocks.find((block) => block.type === 'mpu_iniciar');
+    const mpuAddr = mpuInitBlock ? (mpuInitBlock.getFieldValue('ADDR') || '0x68') : '0x68';
     mpuHeader =
       '#include <Wire.h>\n\n' +
-      'const int _MPU_ADDR = 0x68;\n' +
+      `const int _MPU_ADDR = ${mpuAddr};\n` +
       'static unsigned long _mpu_lastRead = 0;\n' +
+      'static float _mpu_accelX = 0.0f, _mpu_accelY = 0.0f, _mpu_accelZ = 0.0f;\n' +
+      'static float _mpu_gyroX = 0.0f, _mpu_gyroY = 0.0f, _mpu_gyroZ = 0.0f;\n' +
+      'static float _mpu_tempC = 0.0f;\n' +
       'static float _mpu_pitchCache = 0.0f, _mpu_rollCache = 0.0f;\n\n' +
-      'static void _bloquin_lerAngulos() {\n' +
+      // Um único burst de 14 bytes (0x3B..0x48) cobre acelerômetro, temperatura
+      // e giroscópio — o mesmo layout de registrador documentado pelo MPU-6050,
+      // lido uma vez e cacheado por 10 ms para todos os blocos de leitura.
+      'static void _bloquin_lerMPU() {\n' +
       '  if (millis() - _mpu_lastRead < 10) return;\n' +
       '  _mpu_lastRead = millis();\n' +
       '  Wire.beginTransmission(_MPU_ADDR);\n' +
       '  Wire.write(0x3B);\n' +
       '  if (Wire.endTransmission(false) != 0) return;\n' +
-      '  if (Wire.requestFrom(_MPU_ADDR, 6, true) != 6) return;\n' +
-      '  if (Wire.available() < 6) return;\n' +
+      '  if (Wire.requestFrom(_MPU_ADDR, 14, true) != 14) return;\n' +
+      '  if (Wire.available() < 14) return;\n' +
       '  int16_t ax = Wire.read() << 8 | Wire.read();\n' +
       '  int16_t ay = Wire.read() << 8 | Wire.read();\n' +
       '  int16_t az = Wire.read() << 8 | Wire.read();\n' +
-      '  float accelX = ax / 16384.0f;\n' +
-      '  float accelY = ay / 16384.0f;\n' +
-      '  float accelZ = az / 16384.0f;\n' +
-      '  // Correcao de eixo: MPU montado na luva com orientacao rotacionada 90 graus\n' +
-      '  // sensorRoll fisico  -> pitch do carrinho (frente/re)\n' +
-      '  // sensorPitch fisico -> roll do carrinho (direita/esq, invertido)\n' +
-      '  float sensorPitch = atan2f(-accelX, sqrtf(accelY*accelY + accelZ*accelZ)) * 180.0f / PI;\n' +
-      '  float sensorRoll  = atan2f(accelY, accelZ) * 180.0f / PI;\n' +
-      '  _mpu_pitchCache = sensorRoll;\n' +
-      '  _mpu_rollCache  = -sensorPitch;\n' +
+      '  int16_t rawTemp = Wire.read() << 8 | Wire.read();\n' +
+      '  int16_t gx = Wire.read() << 8 | Wire.read();\n' +
+      '  int16_t gy = Wire.read() << 8 | Wire.read();\n' +
+      '  int16_t gz = Wire.read() << 8 | Wire.read();\n' +
+      '  _mpu_accelX = ax / 16384.0f;\n' +
+      '  _mpu_accelY = ay / 16384.0f;\n' +
+      '  _mpu_accelZ = az / 16384.0f;\n' +
+      '  _mpu_gyroX = gx / 131.0f;\n' +
+      '  _mpu_gyroY = gy / 131.0f;\n' +
+      '  _mpu_gyroZ = gz / 131.0f;\n' +
+      '  _mpu_tempC = rawTemp / 340.0f + 36.53f;\n' +
+      '  _mpu_pitchCache = atan2f(-_mpu_accelX, sqrtf(_mpu_accelY*_mpu_accelY + _mpu_accelZ*_mpu_accelZ)) * 180.0f / PI;\n' +
+      '  _mpu_rollCache  = atan2f(_mpu_accelY, _mpu_accelZ) * 180.0f / PI;\n' +
       '}\n' +
-      'float _bloquin_lerPitch() { _bloquin_lerAngulos(); return _mpu_pitchCache; }\n' +
-      'float _bloquin_lerRoll()  { _bloquin_lerAngulos(); return _mpu_rollCache;  }\n\n';
+      'float _bloquin_lerPitch() { _bloquin_lerMPU(); return _mpu_pitchCache; }\n' +
+      'float _bloquin_lerRoll()  { _bloquin_lerMPU(); return _mpu_rollCache;  }\n' +
+      'float _bloquin_lerAcelX() { _bloquin_lerMPU(); return _mpu_accelX; }\n' +
+      'float _bloquin_lerAcelY() { _bloquin_lerMPU(); return _mpu_accelY; }\n' +
+      'float _bloquin_lerAcelZ() { _bloquin_lerMPU(); return _mpu_accelZ; }\n' +
+      'float _bloquin_lerGiroX() { _bloquin_lerMPU(); return _mpu_gyroX; }\n' +
+      'float _bloquin_lerGiroY() { _bloquin_lerMPU(); return _mpu_gyroY; }\n' +
+      'float _bloquin_lerGiroZ() { _bloquin_lerMPU(); return _mpu_gyroZ; }\n' +
+      'float _bloquin_lerTemperaturaMPU() { _bloquin_lerMPU(); return _mpu_tempC; }\n\n';
   }
 
   // ── Ponte H L298N ─────────────────────────────────────────────────────────
@@ -932,7 +1142,8 @@ export const generateCode = (
     }
   }
 
-  const prefix = musicaHeader + mathHeader + espNowHeader + mpuHeader + l298nHeader
+  const prefix = musicaHeader + mathHeader + networkHeader + espNowHeader + wifiHeader
+    + bluetoothHeader + mpuHeader + l298nHeader
     + servoHeader + helperLer + helperEntre + helperPerto
     + (needsUltrass ? '\n' : '');
   return prefix + mainCode;
