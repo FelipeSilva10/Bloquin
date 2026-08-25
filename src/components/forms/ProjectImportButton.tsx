@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { FileUp } from 'lucide-react';
 import { isTauriRuntime, openLocalProjectFile } from '../../services/localProjectService';
 import {
   MAX_PROJECT_FILE_BYTES,
@@ -56,7 +57,7 @@ export function ProjectImportButton({ onSelected, onError, disabled = false, cla
   return (
     <>
       <button type="button" className={className} onClick={() => void chooseFile()} disabled={disabled || opening} aria-busy={opening}>
-        <span aria-hidden="true">↥</span> {opening ? 'Lendo projeto…' : 'Importar projeto'}
+        <FileUp aria-hidden="true" /> {opening ? 'Lendo projeto…' : 'Importar projeto'}
       </button>
       <input
         ref={inputRef}

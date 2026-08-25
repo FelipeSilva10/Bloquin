@@ -38,11 +38,11 @@ test('mantém a falha de exclusão visível dentro do diálogo aberto', () => {
   assert.match(libraryScreenSource, /id="library-delete-error" className="form-error" role="alert">\{error\}/);
 });
 
-test('mural abre a imagem ou PDF principal direto do card, sem esconder a mídia atrás de uma introdução', () => {
-  assert.match(libraryScreenSource, /onOpenMainMaterial=\{\(attachmentId\) => openReadingPost\(post, attachmentId\)\}/);
+test('mural sempre abre a publicação completa a partir do card, nunca direto num anexo', () => {
+  assert.match(libraryScreenSource, /className="library-card-surface"[\s\S]*?onClick=\{onOpen\}/);
+  assert.match(libraryScreenSource, /aria-label=\{`Abrir publicação \$\{post\.titulo\}`\}/);
   assert.match(libraryScreenSource, /const mainMaterial = post\.anexos\.find\(/);
   assert.match(libraryScreenSource, /attachment\.tipo === 'image' \|\| attachment\.tipo === 'pdf'/);
-  assert.match(libraryScreenSource, /className="library-card-cover-action"/);
-  assert.match(libraryScreenSource, /opensMaterial \? 'Abrir material' : 'Ver publicação'/);
-  assert.match(libraryScreenSource, /mode === 'teacher' && post\.status === 'archived'/);
+  assert.match(libraryScreenSource, /\{mode === 'teacher' && \(/);
+  assert.match(libraryScreenSource, /\{post\.status === 'archived' \? \(/);
 });

@@ -6,10 +6,11 @@ import { downloadLibraryFile } from '../services/libraryDownloadService';
 import { openLibraryExternalUrl } from '../services/libraryNavigationService';
 import { normalizeExternalLink, sanitizeRichText } from '../services/libraryMediaService';
 import { signLibraryPostContent } from '../services/libraryService';
+import { markLibraryPostAsRead } from '../services/libraryReadService';
 import { MAX_OPEN_TABS, useTabs } from '../state/tabsStore';
 import type { LibraryAttachment, LibraryPost } from '../types/library';
 
-export function LibraryResourceScreen({ tabId }: { tabId?: string } = {}) {
+export function LibraryResourceScreen({ tabId, mode }: { tabId?: string; mode: 'teacher' | 'student' }) {
   const navigate = useNavigate();
   const { tabs, activeTab: currentActiveTab, activateTab, openLibrary, openLibraryResource, updateTab } = useTabs();
   const activeTab = tabId ? tabs.find((tab) => tab.id === tabId) ?? currentActiveTab : currentActiveTab;
@@ -61,6 +62,17 @@ export function LibraryResourceScreen({ tabId }: { tabId?: string } = {}) {
     updateTab(activeTab.id, { libraryViewState: nextState });
   }, [activeTab.id, updateTab]);
 
+  const markedReadForRef = useRef<string | null>(null);
+  useEffect(() => {
+    // A publicação completa é sempre a primeira tela ao abrir um card (ver
+    // LibraryScreen). É esse ponto de entrada garantido que registra a
+    // leitura — abrir um anexo específico depois não precisa marcar de novo.
+    if (mode !== 'student' || !post || attachment) return;
+    if (markedReadForRef.current === post.id) return;
+    markedReadForRef.current = post.id;
+    void markLibraryPostAsRead(post.id, post.atualizado_em);
+  }, [mode, post, attachment]);
+
   if (activeTab.type !== 'library-resource' || !post) return <Navigate to="/biblioteca" replace />;
 
   const backToLibrary = () => {
@@ -78,6 +90,16 @@ export function LibraryResourceScreen({ tabId }: { tabId?: string } = {}) {
     const openedId = openLibraryResource({ post, attachmentId: item.id });
     if (!openedId) {
       setError(`Você atingiu o limite de ${MAX_OPEN_TABS} abas. Feche uma aba para abrir este material.`);
+      return;
+    }
+    navigate('/biblioteca/leitura', { state: { workspaceTabId: openedId } });
+  };
+
+  const openPostOverview = () => {
+    setError('');
+    const openedId = openLibraryResource({ post });
+    if (!openedId) {
+      setError(`Você atingiu o limite de ${MAX_OPEN_TABS} abas. Feche uma aba para abrir esta publicação.`);
       return;
     }
     navigate('/biblioteca/leitura', { state: { workspaceTabId: openedId } });
@@ -122,6 +144,13 @@ export function LibraryResourceScreen({ tabId }: { tabId?: string } = {}) {
   const kindLabel = attachment?.tipo === 'pdf' ? 'Documento PDF' : attachment?.tipo === 'image' ? 'Imagem' : 'Publicação';
   const title = attachment?.titulo?.trim() || post.titulo;
 
+  // Apenas imagens e PDFs abrem em uma aba de leitura; são esses que formam a
+  // sequência de "materiais irmãos" navegável a partir do cabeçalho.
+  const openableMaterials = post.anexos.filter((item) => item.tipo === 'image' || item.tipo === 'pdf');
+  const siblingIndex = attachment ? openableMaterials.findIndex((item) => item.id === attachment.id) : -1;
+  const previousSibling = siblingIndex > 0 ? openableMaterials[siblingIndex - 1] : undefined;
+  const nextSibling = siblingIndex >= 0 && siblingIndex < openableMaterials.length - 1 ? openableMaterials[siblingIndex + 1] : undefined;
+
   return (
     <main className={`library-resource-page library-resource-${attachment?.tipo ?? 'post'}`}>
       <header className="library-resource-header">
@@ -130,11 +159,23 @@ export function LibraryResourceScreen({ tabId }: { tabId?: string } = {}) {
           <div>
             <span className="library-section-kicker">{kindLabel}</span>
             <h1>{title}</h1>
-            {attachment && <p>{post.titulo} · publicado por {post.autor_nome}</p>}
+            {attachment && (
+              <p className="library-resource-breadcrumb">
+                <button type="button" className="library-resource-breadcrumb-link" onClick={openPostOverview}>{post.titulo}</button>
+                <span aria-hidden="true"> · </span>publicado por {post.autor_nome}
+              </p>
+            )}
           </div>
         </div>
         <div className="library-resource-actions">
           {refreshing && <span className="library-refreshing" role="status"><span className="library-spinner" aria-hidden="true" /> Preparando material…</span>}
+          {attachment && openableMaterials.length > 1 && (
+            <div className="library-resource-siblings" role="group" aria-label="Navegar entre materiais desta publicação">
+              <button type="button" className="library-sibling-nav" onClick={() => previousSibling && openAttachment(previousSibling)} disabled={!previousSibling} aria-label="Material anterior" title="Material anterior">‹</button>
+              <span className="library-sibling-count">{siblingIndex + 1} de {openableMaterials.length}</span>
+              <button type="button" className="library-sibling-nav" onClick={() => nextSibling && openAttachment(nextSibling)} disabled={!nextSibling} aria-label="Próximo material" title="Próximo material">›</button>
+            </div>
+          )}
           {attachment && (
             <button type="button" className="btn-ghost library-open-external" onClick={() => void handleOpenExternally()} disabled={openingExternal || refreshing || !(attachment.download_url ?? attachment.content_url)}>
               <span>{openingExternal ? 'Abrindo…' : 'Nova aba'}</span> <span aria-hidden="true">↗</span>
@@ -215,13 +256,13 @@ function LibraryPostReader({ post, onOpenAttachment }: { post: LibraryPost; onOp
           event.preventDefault();
           void openExternal(anchor.href);
         }} dangerouslySetInnerHTML={{ __html: content }} />
-        : <p className="library-muted-label library-post-no-text">Esta publicação é composta pelos materiais abaixo.</p>}
+        : <p className="library-muted-label library-post-no-text"></p>}
 
       {post.anexos.length > 0 && (
         <section className="library-post-materials" aria-labelledby="library-materials-title">
           {externalError && <div className="library-inline-error" role="alert">{externalError}</div>}
           <div className="library-post-materials-heading">
-            <div><span className="library-section-kicker">Materiais da aula</span><h2 id="library-materials-title">Abra o que você precisa</h2></div>
+            <div><span className="library-section-kicker">Anexos</span></div>
             <span>{post.anexos.length} {post.anexos.length === 1 ? 'item' : 'itens'}</span>
           </div>
           <div className="library-material-list">
@@ -229,17 +270,22 @@ function LibraryPostReader({ post, onOpenAttachment }: { post: LibraryPost; onOp
               if (item.tipo === 'image' || item.tipo === 'pdf') {
                 return (
                   <article className={`library-material-card library-material-${item.tipo}`} key={item.id}>
-                    <button type="button" className="library-material-preview" onClick={() => onOpenAttachment(item)} aria-label={`Abrir ${item.titulo ?? (item.tipo === 'pdf' ? 'PDF' : 'imagem')} em uma nova aba`}>
-                      {item.thumbnail_url
-                        ? <img src={item.thumbnail_url} alt="" loading="lazy" decoding="async" />
-                        : <span className="library-material-placeholder" aria-hidden="true">{item.tipo === 'pdf' ? 'PDF' : '▧'}</span>}
+                    <button
+                      type="button"
+                      className="library-material-surface"
+                      onClick={() => onOpenAttachment(item)}
+                      aria-label={`Abrir ${item.titulo ?? (item.tipo === 'pdf' ? 'PDF' : 'imagem')} em uma nova aba`}
+                    >
+                      <div className="library-material-preview-wrap">
+                        {item.thumbnail_url
+                          ? <img src={item.thumbnail_url} alt="" loading="lazy" decoding="async" />
+                          : <div className="library-material-placeholder" aria-hidden="true">{item.tipo === 'pdf' ? 'PDF' : '▧'}</div>}
+                        <span className="library-material-type">{item.tipo === 'pdf' ? `${item.quantidade_paginas ?? '—'} páginas` : 'Imagem'}</span>
+                      </div>
+                      <div className="library-material-copy">
+                        <h3>{item.titulo ?? (item.tipo === 'pdf' ? 'Documento PDF' : 'Imagem da publicação')}</h3>
+                      </div>
                     </button>
-                    <div className="library-material-copy">
-                      <span className="library-material-type">{item.tipo === 'pdf' ? `${item.quantidade_paginas ?? '—'} páginas` : 'Imagem'}</span>
-                      <h3>{item.titulo ?? (item.tipo === 'pdf' ? 'Documento PDF' : 'Imagem da publicação')}</h3>
-                      {item.descricao && <p>{item.descricao}</p>}
-                      <button type="button" className="btn-primary" onClick={() => onOpenAttachment(item)}>Abrir em nova aba <span aria-hidden="true">↗</span></button>
-                    </div>
                   </article>
                 );
               }

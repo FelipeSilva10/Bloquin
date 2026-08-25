@@ -87,6 +87,12 @@ export interface ComponentConnection {
   readonly description: string;
 }
 
+/** Um pedaço nomeado do componente físico (perna, chip, antena etc.). */
+export interface ComponentPart {
+  readonly label: string;
+  readonly description: string;
+}
+
 /** Texto curto para a primeira leitura do aluno. Detalhes ficam nos blocos abaixo. */
 export interface ComponentStudentContent {
   readonly whatIs: string;
@@ -115,6 +121,11 @@ export interface ComponentCatalogItem {
   readonly summary: string;
   readonly purpose: string;
   readonly student: ComponentStudentContent;
+  /** Explicação curta do princípio físico por trás da peça, em linguagem simples. */
+  readonly howItWorks: string;
+  /** O que acontece "por dentro" quando os blocos relacionados rodam. */
+  readonly codeLogic: string;
+  readonly parts: readonly ComponentPart[];
   readonly tags: readonly string[];
   readonly specifications: readonly string[];
   readonly pins: readonly ComponentPin[];

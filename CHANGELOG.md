@@ -33,6 +33,23 @@ BREAKING CHANGE: apenas Arduino Uno R3+ é suportado a partir desta versão.
 
 <!-- Histórico de versões -->
 
+## [2.3.0] — 24/08/2026
+
+### Novas funcionalidades
+
+- Adicionada a página **Documentação de blocos**, com referência pesquisável para todos os blocos e exemplos vinculados da IDE.
+- Ampliado o catálogo de Componentes com detalhes técnicos, orientações de uso e integração com os blocos correspondentes.
+- Alunos agora veem o estado de leitura das publicações da Biblioteca — nova, atualizada ou já lida — com rastreamento seguro por usuário.
+
+### Melhorias de interface e distribuição
+
+- Renovadas as marcas e os ícones do aplicativo para desktop e dispositivos móveis; o instalador agora se apresenta como **Bloquin IDE**.
+- Refinadas a navegação interna, o tutorial e as telas de Biblioteca, dashboards e IDE para acomodar os novos fluxos.
+
+### Qualidade
+
+- Adicionadas validações automatizadas para a documentação de blocos e para as políticas de rastreamento de leitura da Biblioteca.
+
 ## [2.2.0] — 13/08/2026
 
 ### Novas funcionalidades

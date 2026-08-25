@@ -3,7 +3,8 @@ import { MAX_OPEN_TABS, useTabs } from '../state/tabsStore';
 import { MAX_PROJECT_FILE_BYTES, parseProjectFileContents } from '../types/project';
 import { isTauriRuntime, openLocalProjectFile } from '../services/localProjectService';
 import { EntryBackButton } from '../components/EntryBackButton';
-import { Cpu, FolderOpen, Plus } from 'lucide-react';
+import TutorialModal from '../components/modals/TutorialModal';
+import { Cpu, FolderOpen, GraduationCap, Plus } from 'lucide-react';
 
 interface VisitorDashboardProps {
   onExitVisitor: () => void;
@@ -15,6 +16,7 @@ export function VisitorDashboard({ onExitVisitor, onOpenProject, onOpenComponent
   const { tabs, openProject, activateTab } = useTabs();
   const [error, setError] = useState('');
   const [isOpening, setIsOpening] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const createProject = () => {
@@ -72,10 +74,12 @@ export function VisitorDashboard({ onExitVisitor, onOpenProject, onOpenComponent
           <button type="button" className="project-card new-project-card" onClick={createProject}><Plus aria-hidden="true" /><span>Novo projeto</span></button>
           <button type="button" className="project-card new-project-card" onClick={openNativeFile} disabled={isOpening}><FolderOpen aria-hidden="true" /><span>{isOpening ? 'Abrindo…' : 'Abrir arquivo JSON'}</span></button>
           <button type="button" className="project-card new-project-card" onClick={onOpenComponents}><Cpu aria-hidden="true" /><span>Componentes</span></button>
+          <button type="button" className="project-card new-project-card" onClick={() => setShowTutorial(true)}><GraduationCap aria-hidden="true" /><span>Tutorial</span></button>
           {tabs.filter((tab) => tab.type === 'project').map((tab) => <button type="button" className="project-card" key={tab.id} onClick={() => { activateTab(tab.id); onOpenProject(tab.id); }}><strong>{tab.dirty ? '● ' : ''}{tab.title}</strong><small>Projeto local da sessão</small></button>)}
         </div>
         {error && <p role="alert" style={{ color: 'var(--danger)', fontWeight: 700 }}>{error}</p>}
       </div>
+      {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} audience="visitor" />}
       <input
         ref={inputRef}
         className="visually-hidden-file"

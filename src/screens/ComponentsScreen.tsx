@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  Braces,
   Check,
   CircleAlert,
   Cpu,
   ImagePlus,
+  Lightbulb,
+  Puzzle,
   Search,
   Wrench,
 } from 'lucide-react';
@@ -20,6 +23,7 @@ import {
   type ComponentId,
   type ComponentIllustrationId,
   type ComponentMediaImage,
+  type ComponentPart,
 } from '../features/components';
 import './ComponentsScreen.css';
 
@@ -64,6 +68,174 @@ function ComponentIllustration({ kind }: { kind: ComponentIllustrationId }) {
     case 'board':
       return <div className="component-illustration component-illustration--board"><span>DEV</span><i /><i /><i /></div>;
   }
+}
+
+/** Kinds com desenho de anatomia numerado; os demais caem na grade simples de partes. */
+type AnatomyKind = 'led' | 'resistor' | 'button' | 'buzzer' | 'ldr';
+
+const ANATOMY_VIEWBOX: Record<AnatomyKind, string> = {
+  led: '0 0 220 210',
+  resistor: '0 0 220 150',
+  button: '0 0 220 180',
+  buzzer: '0 0 220 200',
+  ldr: '0 0 220 190',
+};
+
+/** Cada marcador aponta para um ponto do desenho e se liga ao `parts[partIndex]` do componente. */
+const ANATOMY_MARKERS: Record<AnatomyKind, ReadonlyArray<{ x: number; y: number; partIndex: number }>> = {
+  led: [
+    { x: 110, y: 50, partIndex: 0 },
+    { x: 146, y: 160, partIndex: 1 },
+    { x: 66, y: 140, partIndex: 2 },
+    { x: 52, y: 111, partIndex: 3 },
+  ],
+  resistor: [
+    { x: 70, y: 58, partIndex: 0 },
+    { x: 132, y: 58, partIndex: 1 },
+    { x: 28, y: 88, partIndex: 2 },
+    { x: 192, y: 88, partIndex: 2 },
+  ],
+  button: [
+    { x: 60, y: 30, partIndex: 0 },
+    { x: 110, y: 46, partIndex: 1 },
+    { x: 78, y: 163, partIndex: 2 },
+    { x: 142, y: 163, partIndex: 3 },
+  ],
+  buzzer: [
+    { x: 152, y: 42, partIndex: 0 },
+    { x: 82, y: 92, partIndex: 1 },
+    { x: 74, y: 184, partIndex: 2 },
+    { x: 150, y: 170, partIndex: 3 },
+  ],
+  ldr: [
+    { x: 146, y: 62, partIndex: 0 },
+    { x: 156, y: 116, partIndex: 1 },
+    { x: 74, y: 166, partIndex: 2 },
+    { x: 146, y: 166, partIndex: 2 },
+  ],
+};
+
+function isAnatomyKind(kind: ComponentIllustrationId): kind is AnatomyKind {
+  return kind === 'led' || kind === 'resistor' || kind === 'button' || kind === 'buzzer' || kind === 'ldr';
+}
+
+function AnatomyMarker({ x, y, n }: { x: number; y: number; n: number }) {
+  return (
+    <g className="component-anatomy-marker">
+      <circle cx={x} cy={y} r="12" />
+      <text x={x} y={y} dy="0.35em">{n}</text>
+    </g>
+  );
+}
+
+function AnatomyArtwork({ kind }: { kind: AnatomyKind }) {
+  switch (kind) {
+    case 'led':
+      return (
+        <>
+          <defs>
+            <radialGradient id="anatomy-led-dome" cx="38%" cy="28%" r="75%">
+              <stop offset="0%" stopColor="#ffe4e1" />
+              <stop offset="35%" stopColor="#ff7280" />
+              <stop offset="100%" stopColor="#e43853" />
+            </radialGradient>
+          </defs>
+          <path d="M85,78 C85,38 135,38 135,78 Z" fill="url(#anatomy-led-dome)" stroke="#b82743" strokeWidth="3" />
+          <rect x="85" y="76" width="50" height="42" fill="url(#anatomy-led-dome)" stroke="#b82743" strokeWidth="3" />
+          <ellipse cx="110" cy="119" rx="36" ry="7" fill="#a5243d" />
+          <path d="M76,119 L92,119" stroke="#7a1f34" strokeWidth="7" strokeLinecap="round" />
+          <line x1="95" y1="119" x2="95" y2="155" stroke="#5b6672" strokeWidth="6" strokeLinecap="round" />
+          <line x1="125" y1="119" x2="125" y2="175" stroke="#5b6672" strokeWidth="6" strokeLinecap="round" />
+        </>
+      );
+    case 'resistor':
+      return (
+        <>
+          <line x1="8" y1="75" x2="70" y2="75" stroke="#8a9dad" strokeWidth="6" strokeLinecap="round" />
+          <line x1="150" y1="75" x2="212" y2="75" stroke="#8a9dad" strokeWidth="6" strokeLinecap="round" />
+          <rect x="70" y="50" width="80" height="50" rx="14" fill="#deb17b" stroke="#9a5429" strokeWidth="4" />
+          <rect x="84" y="50" width="8" height="50" fill="#7a4a1e" />
+          <rect x="98" y="50" width="8" height="50" fill="#d04537" />
+          <rect x="112" y="50" width="8" height="50" fill="#f1cd92" />
+          <rect x="126" y="50" width="8" height="50" fill="#5c80a2" />
+        </>
+      );
+    case 'button':
+      return (
+        <>
+          <rect x="55" y="40" width="110" height="80" rx="16" fill="#eef2f5" stroke="#576d81" strokeWidth="4" />
+          <ellipse cx="110" cy="76" rx="27" ry="18" fill="#ffba4d" stroke="#6e8192" strokeWidth="4" />
+          <line x1="72" y1="120" x2="72" y2="150" stroke="#687987" strokeWidth="6" strokeLinecap="round" />
+          <line x1="88" y1="120" x2="88" y2="150" stroke="#687987" strokeWidth="6" strokeLinecap="round" />
+          <line x1="132" y1="120" x2="132" y2="150" stroke="#687987" strokeWidth="6" strokeLinecap="round" />
+          <line x1="148" y1="120" x2="148" y2="150" stroke="#687987" strokeWidth="6" strokeLinecap="round" />
+        </>
+      );
+    case 'buzzer':
+      return (
+        <>
+          <defs>
+            <radialGradient id="anatomy-buzzer-disc" cx="50%" cy="45%" r="65%">
+              <stop offset="0%" stopColor="#5d7990" />
+              <stop offset="60%" stopColor="#3b5872" />
+              <stop offset="100%" stopColor="#203448" />
+            </radialGradient>
+          </defs>
+          <circle cx="110" cy="95" r="58" fill="#25394e" stroke="#152634" strokeWidth="4" />
+          <circle cx="110" cy="95" r="34" fill="url(#anatomy-buzzer-disc)" />
+          <circle cx="110" cy="95" r="10" fill="#25394e" />
+          <line x1="95" y1="150" x2="95" y2="180" stroke="#d1b35c" strokeWidth="6" strokeLinecap="round" />
+          <line x1="125" y1="150" x2="125" y2="170" stroke="#d1b35c" strokeWidth="6" strokeLinecap="round" />
+        </>
+      );
+    case 'ldr':
+      return (
+        <>
+          <circle cx="110" cy="95" r="50" fill="#efc179" stroke="#a06a36" strokeWidth="5" />
+          <path d="M76,95 L90,72 L100,108 L112,68 L124,108 L134,78 L144,95" fill="none" stroke="#7a4a1e" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+          <line x1="90" y1="140" x2="90" y2="172" stroke="#6f7982" strokeWidth="5" strokeLinecap="round" />
+          <line x1="130" y1="140" x2="130" y2="172" stroke="#6f7982" strokeWidth="5" strokeLinecap="round" />
+        </>
+      );
+  }
+}
+
+function ComponentAnatomyDiagram({ kind, parts }: { kind: AnatomyKind; parts: readonly ComponentPart[] }) {
+  return (
+    <div className="component-anatomy">
+      <svg className="component-anatomy-figure" viewBox={ANATOMY_VIEWBOX[kind]} role="img" aria-label="Desenho com as partes numeradas da peça">
+        <AnatomyArtwork kind={kind} />
+        {ANATOMY_MARKERS[kind].map((marker, index) => <AnatomyMarker key={index} x={marker.x} y={marker.y} n={marker.partIndex + 1} />)}
+      </svg>
+      <ol className="component-anatomy-legend component-connections">
+        {parts.map((part, index) => (
+          <li key={part.label}>
+            <span aria-hidden="true">{index + 1}</span>
+            <div><strong>{part.label}</strong><p>{part.description}</p></div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function ComponentPartsGrid({ parts }: { parts: readonly ComponentPart[] }) {
+  return (
+    <div className="component-parts-grid">
+      {parts.map((part, index) => (
+        <article className="component-part-card" key={part.label}>
+          <span aria-hidden="true">{index + 1}</span>
+          <div><strong>{part.label}</strong><p>{part.description}</p></div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ComponentPartsSection({ component }: { component: ComponentCatalogItem }) {
+  return isAnatomyKind(component.illustration)
+    ? <ComponentAnatomyDiagram kind={component.illustration} parts={component.parts} />
+    : <ComponentPartsGrid parts={component.parts} />;
 }
 
 function getMedia(item: ComponentCatalogItem, role: MediaRole): ComponentMediaImage | undefined {
@@ -310,6 +482,22 @@ function ComponentDetail({
           <p>{component.student.usefulFor}</p>
         </section>
 
+        <section className="component-detail-card component-detail-card--wide component-detail-card--howitworks">
+          <div className="component-section-heading">
+            <div><span className="component-detail-card__label">Como funciona</span><h2>Por dentro da peça</h2></div>
+            <Lightbulb aria-hidden="true" />
+          </div>
+          <p>{component.howItWorks}</p>
+        </section>
+
+        <section className="component-detail-card component-detail-card--wide">
+          <div className="component-section-heading">
+            <div><span className="component-detail-card__label">Partes da peça</span><h2>Aprenda os nomes antes de montar</h2></div>
+            <Puzzle aria-hidden="true" />
+          </div>
+          <ComponentPartsSection component={component} />
+        </section>
+
         <section className="component-detail-media" aria-label={`Imagens de apoio para ${component.name}`}>
           <ComponentMediaSlot component={component} role="main" />
           <ComponentMediaSlot component={component} role="pinout" />
@@ -364,6 +552,7 @@ function ComponentDetail({
             <div><span className="component-detail-card__label">No Bloquin</span><h2>{component.student.bloquinExample}</h2></div>
             <Wrench aria-hidden="true" />
           </div>
+          <p className="component-code-logic"><Braces aria-hidden="true" /> {component.codeLogic}</p>
           <div className="component-block-list">
             {component.relatedBlocks.map((block) => (
               <RelatedBlock key={block.blockType} block={block} component={component} onOpen={onOpenBlocklyBlock} />

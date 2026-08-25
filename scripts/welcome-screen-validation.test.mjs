@@ -13,6 +13,7 @@ const splashCss = readFileSync(new URL('../src/components/SplashScreen.css', imp
 const tutorialSource = readFileSync(new URL('../src/components/modals/TutorialModal.tsx', import.meta.url), 'utf8');
 const tutorialCss = readFileSync(new URL('../src/components/modals/TutorialModal.css', import.meta.url), 'utf8');
 const visitorSource = readFileSync(new URL('../src/screens/VisitorDashboard.tsx', import.meta.url), 'utf8');
+const studentDashboardSource = readFileSync(new URL('../src/screens/StudentDashboard.tsx', import.meta.url), 'utf8');
 const welcomeSource = readFileSync(new URL('../src/screens/WelcomeScreen.tsx', import.meta.url), 'utf8');
 const welcomeCss = readFileSync(new URL('../src/screens/WelcomeScreen.css', import.meta.url), 'utf8');
 const creatorPortfolioSource = readFileSync(new URL('../src/services/creatorPortfolioService.ts', import.meta.url), 'utf8');
@@ -283,15 +284,25 @@ test('layout inicial fica preso à área útil sem scroll e reduz a escala respo
   assert.match(reducedMotion, /\.welcome-button\s*\{[\s\S]*?transition-duration:\s*0\.01ms/);
 });
 
-test('tutorial fullscreen tem cinco etapas curtas com os controles reais da IDE e a11y', () => {
+test('tutorial fullscreen tem nove etapas curtas com os controles reais da IDE e a11y', () => {
   const overlayRule = balancedBlock(tutorialCss, '.bloquin-tutorial-overlay {');
   const tutorialRule = balancedBlock(tutorialCss, '.bloquin-tutorial {');
   const contentRule = balancedBlock(tutorialCss, '.bloquin-tutorial-content {');
   const stepperRule = balancedBlock(tutorialCss, '.bloquin-tutorial-stepper {');
   const focusRule = balancedBlock(tutorialCss, '.bloquin-tutorial button:focus-visible {');
-  const steps = [...tutorialSource.matchAll(
+  const stepMatches = [...tutorialSource.matchAll(
     /\{\s*id:\s*'([^']+)',\s*label:\s*'([^']+)',\s*eyebrow:\s*'([^']+)',\s*title:\s*'([^']+)',\s*description:\s*'([^']+)',/g,
-  )].map(([, id, label, eyebrow, title, description]) => ({ id, label, eyebrow, title, description }));
+  )];
+  const steps = stepMatches.map(([, id, label, eyebrow, title, description], index) => {
+    // Isola só o trecho deste passo (até o início do próximo, ou o fim do
+    // arquivo) para checar seu próprio campo `audience` sem vazar para o
+    // objeto seguinte do array STEPS.
+    const bodyStart = stepMatches[index].index;
+    const bodyEnd = stepMatches[index + 1]?.index ?? tutorialSource.length;
+    const body = tutorialSource.slice(bodyStart, bodyEnd);
+    const audience = /audience:\s*'student'/.test(body) ? 'student' : undefined;
+    return { id, label, eyebrow, title, description, audience };
+  });
 
   assert.match(tutorialSource, /import logoSimples from '\.\.\/\.\.\/assets\/LogoSimples\.png';/);
   assert.match(tutorialSource, /useModalA11y<HTMLDivElement>\(onClose\)/);
@@ -306,7 +317,7 @@ test('tutorial fullscreen tem cinco etapas curtas com os controles reais da IDE 
   assert.match(tutorialSource, /aria-current=\{index === stepIndex \? 'step' : undefined\}/);
   assert.match(tutorialSource, /<main className="bloquin-tutorial-content" aria-live="polite">/);
 
-  assert.equal(steps.length, 5, 'O guia deve manter somente cinco etapas.');
+  assert.equal(steps.length, 9, 'O guia deve manter nove etapas (5 originais + 4 novas).');
   assert.deepEqual(
     steps.map(({ id, label }) => ({ id, label })),
     [
@@ -315,16 +326,31 @@ test('tutorial fullscreen tem cinco etapas curtas com os controles reais da IDE 
       { id: 'blocos', label: 'Blocos' },
       { id: 'enviar', label: 'Enviar' },
       { id: 'salvar', label: 'Salvar' },
+      { id: 'importar', label: 'Importar' },
+      { id: 'meus-projetos', label: 'Projetos' },
+      { id: 'documentacao', label: 'Ajuda' },
+      { id: 'biblioteca', label: 'Biblioteca' },
     ],
   );
   assert.ok(
     steps.every(({ description }) => description.length <= 90),
     'Cada etapa deve explicar uma única ideia em uma frase curta.',
   );
-  for (const controlLabel of ['Novo projeto', 'PREPARAR', 'AGIR', 'Porta USB', 'Enviar', 'Salvar']) {
+  for (const controlLabel of ['Novo projeto', 'PREPARAR', 'AGIR', 'Porta USB', 'Enviar', 'Salvar', 'Importar projeto', 'Documentação', 'Biblioteca']) {
     assert.match(tutorialSource, new RegExp(controlLabel));
   }
-  assert.match(tutorialSource, /Etapa \{stepIndex \+ 1\} de \{STEPS\.length\}/);
+  assert.match(tutorialSource, /Etapa \{stepIndex \+ 1\} de \{visibleSteps\.length\}/);
+
+  // Passos exclusivos de quem tem conta (importar/meus-projetos/biblioteca) ficam
+  // de fora quando o Tutorial é aberto pelo visitante — ver VisitorDashboard.tsx.
+  const studentOnlyIds = new Set(['importar', 'meus-projetos', 'biblioteca']);
+  for (const step of steps) {
+    assert.equal(
+      step.audience === 'student',
+      studentOnlyIds.has(step.id),
+      `audience da etapa "${step.id}" não corresponde ao esperado (deve ser 'student' só para ${[...studentOnlyIds].join(', ')}).`,
+    );
+  }
 
   assert.match(overlayRule, /position:\s*fixed/);
   assert.match(overlayRule, /inset:\s*0/);
@@ -335,7 +361,20 @@ test('tutorial fullscreen tem cinco etapas curtas com os controles reais da IDE 
   assert.match(tutorialRule, /min-height:\s*0/);
   assert.match(tutorialRule, /grid-template-rows:\s*auto auto minmax\(0, 1fr\) auto/);
   assert.match(contentRule, /overflow:\s*auto/);
-  assert.match(stepperRule, /grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(stepperRule, /grid-template-columns:\s*repeat\(var\(--tutorial-step-count, 5\), minmax\(0, 1fr\)\)/);
   assert.match(focusRule, /outline:\s*3px solid var\(--primary\)/);
   assert.doesNotMatch(tutorialCss, /max-width:\s*580px|\.tutorial-modal/);
+});
+
+test('visitante e aluno reabrem o mesmo Tutorial, sem uma segunda implementação', () => {
+  assert.match(loginSource, /import TutorialModal from "\.\.\/components\/modals\/TutorialModal";/);
+  assert.match(visitorSource, /import TutorialModal from '\.\.\/components\/modals\/TutorialModal';/);
+  assert.match(studentDashboardSource, /import TutorialModal from '\.\.\/components\/modals\/TutorialModal';/);
+
+  assert.match(visitorSource, /<TutorialModal onClose=\{\(\) => setShowTutorial\(false\)\} audience="visitor" \/>/);
+  assert.match(studentDashboardSource, /<TutorialModal onClose=\{\(\) => setShowTutorial\(false\)\} \/>/);
+
+  for (const source of [visitorSource, studentDashboardSource]) {
+    assert.match(source, /const \[showTutorial, setShowTutorial\] = useState\(false\);/);
+  }
 });

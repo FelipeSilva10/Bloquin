@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as Blockly from 'blockly/core';
 import 'blockly/blocks';
 import * as PtBr from 'blockly/msg/pt-br';
 import {
+  BookOpen,
+  Check,
   Code2,
+  Copy,
   Ellipsis,
   FileJson,
   LogOut,
@@ -27,7 +31,7 @@ import { ResponsiveToolbarButton } from '../components/ResponsiveToolbarButton';
 import { BloquinSelect } from '../components/forms/BloquinSelect';
 import logoSimples from '../assets/LogoSimples.png';
 import LZString from 'lz-string';
-import { useTabs } from '../state/tabsStore';
+import { MAX_OPEN_TABS, useTabs } from '../state/tabsStore';
 import { useSetup } from '../state/setupStore';
 import { createProjectFile } from '../types/project';
 import { exportLocalProjectFile, saveLocalProjectFile } from '../services/localProjectService';
@@ -35,6 +39,7 @@ import { exportLocalProjectFile, saveLocalProjectFile } from '../services/localP
 import { type BoardKey, BOARD_UNSET, BOARDS } from '../blockly/boards';
 import { auditSerializedWorkspace, auditWorkspace } from '../blockly/audit';
 import { BLOCK_NAMES, getToolboxConfig } from '../blockly/toolbox';
+import { bloquinTheme } from '../blockly/theme';
 
 Blockly.setLocale(PtBr as any);
 
@@ -55,12 +60,6 @@ function bindBundledBlocklyControlSprites(container: HTMLElement) {
     image.setAttributeNS(xlinkNamespace, 'href', blocklyControlsSpriteUrl);
   }
 }
-
-const bloquinTheme = Blockly.Theme.defineTheme('bloquinTheme', {
-  name: 'bloquinTheme', base: Blockly.Themes.Classic,
-  blockStyles: { colour_blocks: { colourPrimary: '#ef9f4b', colourSecondary: '#d4891f', colourTertiary: '#b87219' }, list_blocks: { colourPrimary: '#4cd137', colourSecondary: '#3bac29', colourTertiary: '#2e8a1f' }, logic_blocks: { colourPrimary: '#6c5ce7', colourSecondary: '#5a4ed4', colourTertiary: '#473dbf' }, loop_blocks: { colourPrimary: '#00b894', colourSecondary: '#00a381', colourTertiary: '#008068' }, math_blocks: { colourPrimary: '#0984e3', colourSecondary: '#0773c9', colourTertiary: '#0562af' }, procedure_blocks: { colourPrimary: '#fd79a8', colourSecondary: '#e46d96', colourTertiary: '#cc6284' }, text_blocks: { colourPrimary: '#fdcb6e', colourSecondary: '#e4b55b', colourTertiary: '#cb9e48' }, variable_blocks: { colourPrimary: '#e17055', colourSecondary: '#c85f42', colourTertiary: '#b04e30' }, variable_dynamic_blocks: { colourPrimary: '#e17055', colourSecondary: '#c85f42', colourTertiary: '#b04e30' }, hat_blocks: { colourPrimary: '#a29bfe', colourSecondary: '#9085e3', colourTertiary: '#7e71c8' } },
-  componentStyles: { workspaceBackgroundColour: '#eef2f7', toolboxBackgroundColour: '#1a2035', toolboxForegroundColour: '#ffffff', flyoutBackgroundColour: '#242c42', flyoutForegroundColour: '#ffffff', flyoutOpacity: 0.98, scrollbarColour: '#00a8ff', scrollbarOpacity: 0.5, insertionMarkerColour: '#00a8ff', insertionMarkerOpacity: 0.6, markerColour: '#ffffff', cursorColour: '#d0d0d0' },
-});
 
 function BoardBadge({ boardKey }: { boardKey: BoardKey }) {
   const colorMap: Record<BoardKey, string> = { uno: '#0984e3', nano: '#ff00d0', esp32: '#e17055' };
@@ -83,7 +82,17 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
   const codeGeneratorRef = useRef<any>(null);
   const codeGenerationFrame = useRef<number | null>(null);
   const workspaceAuditTimer = useRef<number | null>(null);
-  const { activeTab, updateTab } = useTabs();
+  const { activeTab, updateTab, openInternalPage } = useTabs();
+  const navigate = useNavigate();
+
+  const openDocumentation = () => {
+    const id = openInternalPage('documentation');
+    if (!id) {
+      window.alert(`Você atingiu o limite de ${MAX_OPEN_TABS} abas abertas. Feche uma aba para continuar.`);
+      return;
+    }
+    navigate('/documentacao', { state: { workspaceTabId: id } });
+  };
   const dirtyRef = useRef(activeTab.dirty);
   const workspaceLoadFailedRef = useRef(false);
   const setup = useSetup();
@@ -950,6 +959,14 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
 
             <div className="ide-toolbar-essential-actions">
               <ResponsiveToolbarButton
+                icon={<BookOpen className="ide-action-icon" />}
+                label="Documentação"
+                tooltip="Documentação dos blocos"
+                variant="secondary"
+                onClick={openDocumentation}
+                className="ide-toolbar-docs-action"
+              />
+              <ResponsiveToolbarButton
                 icon={<MessageCircle className="ide-action-icon" />}
                 label={isSerialOpen ? (readOnly ? 'Parar monitor' : 'Parar chat') : isSerialStarting ? 'Conectando…' : readOnly ? 'Monitorar' : 'Chat'}
                 tooltip={isSerialOpen ? (readOnly ? 'Parar monitor' : 'Parar chat') : isSerialStarting ? 'Conectando ao robô' : readOnly ? 'Monitorar' : 'Chat'}
@@ -995,6 +1012,9 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
                     <FileJson className="ide-action-icon" aria-hidden="true" /> {isExporting ? 'Exportando…' : 'Exportar JSON…'}
                   </button>
                   )}
+                  <button className="ide-more-mobile-action" type="button" onClick={() => { closeMoreMenu(true); openDocumentation(); }}>
+                    <BookOpen className="ide-action-icon" aria-hidden="true" /> Documentação
+                  </button>
                   <button className="ide-more-mobile-action" type="button" onClick={() => { closeMoreMenu(true); void handleToggleSerial(); }}>
                     <MessageCircle className="ide-action-icon" aria-hidden="true" /> {isSerialOpen ? (readOnly ? 'Parar monitor' : 'Parar chat') : isSerialStarting ? 'Conectando…' : readOnly ? 'Monitorar' : 'Chat'}
                   </button>
@@ -1026,11 +1046,11 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
               
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button type="button"
-                  className={`btn-action ${copied ? "btn-send" : ""}`} 
+                  className={`btn-action ${copied ? "btn-send" : ""}`}
                   onClick={handleCopyCode}
                   style={{ padding: '6px 12px', fontSize: '0.85rem' }}
                 >
-                  {copied ? '✅ Copiado!' : '📋 Copiar'}
+                  {copied ? <><Check size={16} aria-hidden="true" /> Copiado!</> : <><Copy size={16} aria-hidden="true" /> Copiar</>}
                 </button>
                 
                 <button type="button" aria-label={isFullscreenCode ? 'Reduzir painel de código' : 'Expandir painel de código'} onClick={() => setIsFullscreenCode(!isFullscreenCode)} className="code-fullscreen-btn">

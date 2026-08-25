@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { archiveLibraryPost, fetchLibraryClasses, fetchLibraryPosts, permanentlyDeleteLibraryPost, refreshLibraryPostPreviews, restoreLibraryPost } from '../services/libraryService';
+import { fetchLibraryReadStates, type LibraryReadState } from '../services/libraryReadService';
 import type { LibraryAttachmentType, LibraryClass, LibraryPost, LibraryPostStatus } from '../types/library';
 import { LibraryComposer } from '../components/library/LibraryComposer';
 import { BloquinSelect } from '../components/forms/BloquinSelect';
 import { MAX_OPEN_TABS, useTabs } from '../state/tabsStore';
 import { useModalA11y } from '../hooks/useModalA11y';
-import { Plus, RefreshCw } from 'lucide-react';
+import { MoreVertical, Plus, RefreshCw } from 'lucide-react';
 
 interface LibraryScreenProps {
   userId: string;
@@ -36,6 +37,7 @@ export function LibraryScreen({ userId, mode }: LibraryScreenProps) {
   const scrollTopRef = useRef(savedViewRef.current.scrollTop);
   const scrollRestoredRef = useRef(false);
   const [posts, setPosts] = useState<LibraryPost[]>([]);
+  const [readStates, setReadStates] = useState<Record<string, LibraryReadState>>({});
   const [classes, setClasses] = useState<LibraryClass[]>([]);
   const [sessionUserId, setSessionUserId] = useState(userId);
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -139,6 +141,11 @@ export function LibraryScreen({ userId, mode }: LibraryScreenProps) {
         : nextPosts);
       setClasses(nextClasses);
       if (mode === 'teacher') classesLoadedRef.current = true;
+      if (mode === 'student' && nextPosts.length > 0) {
+        void fetchLibraryReadStates(nextPosts.map((post) => post.id)).then((states) => {
+          if (requestId === loadRequestRef.current) setReadStates((current) => ({ ...current, ...states }));
+        });
+      }
       setOffset(nextOffset + nextPosts.length);
       setHasMore(pagePosts.length > pageSize);
       lastLoadedAtRef.current = Date.now();
@@ -405,7 +412,7 @@ export function LibraryScreen({ userId, mode }: LibraryScreenProps) {
       ) : (
         <main className="library-feed" aria-label="Publicações da Biblioteca">
           {posts.map((post) => (
-            <LibraryCard key={post.id} post={post} mode={mode} classes={classes} onOpen={() => openReadingPost(post)} onOpenMainMaterial={(attachmentId) => openReadingPost(post, attachmentId)} onEdit={() => setEditingPost(post)} onDelete={() => requestArchive(post)} onRestore={() => void handleRestore(post)} onPermanentlyDelete={() => requestPermanentDelete(post)} deleting={deletingPostId === post.id} restoring={restoringPostId === post.id} purging={purgingPostId === post.id} />
+            <LibraryCard key={post.id} post={post} mode={mode} classes={classes} readState={readStates[post.id]} onOpen={() => openReadingPost(post)} onEdit={() => setEditingPost(post)} onDelete={() => requestArchive(post)} onRestore={() => void handleRestore(post)} onPermanentlyDelete={() => requestPermanentDelete(post)} deleting={deletingPostId === post.id} restoring={restoringPostId === post.id} purging={purgingPostId === post.id} />
           ))}
           {hasMore && <button type="button" className="library-load-more btn-secondary" onClick={() => void load(offset, true)} disabled={loadingMore}>{loadingMore ? 'Carregando…' : 'Carregar mais publicações'}</button>}
         </main>
@@ -459,12 +466,12 @@ function LibraryDeleteDialog({ intent, busy, error, onCancel, onConfirm }: {
   );
 }
 
-function LibraryCard({ post, mode, classes, onOpen, onOpenMainMaterial, onEdit, onDelete, onRestore, onPermanentlyDelete, deleting, restoring, purging }: {
+function LibraryCard({ post, mode, classes, readState, onOpen, onEdit, onDelete, onRestore, onPermanentlyDelete, deleting, restoring, purging }: {
   post: LibraryPost;
   mode: 'teacher' | 'student';
   classes: LibraryClass[];
+  readState?: LibraryReadState;
   onOpen: () => void;
-  onOpenMainMaterial: (attachmentId?: string) => void;
   onEdit: () => void;
   onDelete: () => void;
   onRestore: () => void;
@@ -473,55 +480,103 @@ function LibraryCard({ post, mode, classes, onOpen, onOpenMainMaterial, onEdit, 
   restoring: boolean;
   purging: boolean;
 }) {
-  // Imagens e PDFs podem abrir diretamente no leitor. Vídeos e links continuam
-  // abrindo a publicação para não criar uma tela vazia para esses formatos.
+  // A capa segue mostrando o material principal da publicação, mas o clique no
+  // card sempre abre a publicação completa — os materiais são abertos de lá.
   const mainMaterial = post.anexos.find((attachment) => attachment.id === post.capa_anexo_id && (attachment.tipo === 'image' || attachment.tipo === 'pdf'))
     ?? post.anexos.find((attachment) => attachment.tipo === 'image' || attachment.tipo === 'pdf');
   const cover = (mainMaterial?.thumbnail_url ? mainMaterial : undefined)
     ?? post.anexos.find((attachment) => attachment.id === post.capa_anexo_id && attachment.thumbnail_url)
     ?? post.anexos.find((attachment) => attachment.thumbnail_url);
-  const opensMaterial = Boolean(mainMaterial);
-  const openMain = () => onOpenMainMaterial(mainMaterial?.id);
-  const excerpt = post.conteudo_texto.length > 190 ? `${post.conteudo_texto.slice(0, 190).trim()}…` : post.conteudo_texto;
   const classNames = post.turma_ids.map((id) => classes.find((classroom) => classroom.id === id)?.nome).filter(Boolean);
   const attachmentTypes = [...new Set(post.anexos.map((attachment) => attachment.tipo))];
   const typeLabel = attachmentTypes.length === 0 ? 'Texto' : attachmentTypes.map(getAttachmentTypeLabel).join(' · ');
   const authorInitial = post.autor_nome.trim().charAt(0).toUpperCase() || 'P';
+  const studentReadState = mode === 'student' ? getPostReadState(post, readState) : null;
+  const isNewForStudent = studentReadState === 'new';
+  const isUpdatedForStudent = studentReadState === 'updated';
+  const isUpdatedForTeacher = mode === 'teacher' && isPostUpdated(post);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [menuOpen]);
+
+  const runMenuAction = (action: () => void) => {
+    setMenuOpen(false);
+    action();
+  };
 
   return (
-    <article className={`library-card library-card-${post.anexos[0]?.tipo ?? 'text'}`}>
-      <div className="library-card-cover-wrap">
-        {cover?.thumbnail_url ? <img className="library-card-cover" src={cover.thumbnail_url} alt="" loading="lazy" decoding="async" /> : <div className="library-card-cover-placeholder" aria-hidden="true"><span>{getAttachmentIcon(post.anexos[0]?.tipo)}</span><small>Material de leitura</small></div>}
-        <span className="library-card-kind">{typeLabel}</span>
-        <button
-          type="button"
-          className="library-card-cover-action"
-          onClick={opensMaterial ? openMain : onOpen}
-          aria-label={opensMaterial ? `Abrir ${mainMaterial?.titulo ?? 'material principal'}` : `Abrir ${post.titulo}`}
-        >
-          {opensMaterial ? 'Abrir material' : 'Ver publicação'}
-        </button>
-      </div>
-      <div className="library-card-body">
-        <div className="library-card-meta">
-          <span className="library-card-author"><span className="library-avatar" aria-hidden="true">{authorInitial}</span><strong>{post.autor_nome}</strong></span>
-          <time dateTime={post.publicado_em ?? post.criado_em}>{formatDate(post.publicado_em ?? post.criado_em)}</time>
-          {post.status === 'draft' && <span className="library-status library-status-draft">Rascunho</span>}
-          {post.status === 'archived' && <span className="library-status library-status-archived">Arquivada</span>}
-          {isPostUpdated(post) && <span className="library-updated-label">Atualizada</span>}
+    <article className={`library-card library-card-${post.anexos[0]?.tipo ?? 'text'}${isNewForStudent ? ' library-card-new' : ''}`}>
+      <button
+        type="button"
+        className="library-card-surface"
+        onClick={onOpen}
+        aria-label={`Abrir publicação ${post.titulo}`}
+      >
+        <div className="library-card-cover-wrap">
+          {cover?.thumbnail_url ? <img className="library-card-cover" src={cover.thumbnail_url} alt="" loading="lazy" decoding="async" /> : <div className="library-card-cover-placeholder" aria-hidden="true"><span>{getAttachmentIcon(post.anexos[0]?.tipo)}</span><small>Material de leitura</small></div>}
+          <span className="library-card-kind">{typeLabel}</span>
         </div>
-        <h2>{post.titulo}</h2>
-        {excerpt && <p>{excerpt}</p>}
-        <div className="library-card-footer">
-          <span className="library-card-material-count"><span aria-hidden="true">▧</span> {post.anexos.length > 0 ? `${post.anexos.length} ${post.anexos.length === 1 ? 'material' : 'materiais'}` : 'Publicação de texto'}</span>
-          {mode === 'teacher' && classNames.length > 0 && <span className="library-class-chip">{classNames.length === 1 ? classNames[0] : `${classNames.length} turmas`}</span>}
+        <div className="library-card-body">
+          <div className="library-card-meta">
+            <span className="library-card-author"><span className="library-avatar" aria-hidden="true">{authorInitial}</span><strong>{post.autor_nome}</strong></span>
+            <time dateTime={post.publicado_em ?? post.criado_em}>{formatDate(post.publicado_em ?? post.criado_em)}</time>
+          </div>
+          <h2>{post.titulo}</h2>
+          <p className="library-card-hint">{post.anexos.length > 0 ? `${post.anexos.length} ${post.anexos.length === 1 ? 'material' : 'materiais'} nesta publicação` : 'Publicação de texto'}</p>
+          {(post.status !== 'published' || isNewForStudent || isUpdatedForStudent || isUpdatedForTeacher || (mode === 'teacher' && classNames.length > 0)) && (
+            <div className="library-card-tags">
+              {isNewForStudent && <span className="library-badge-new">Novo</span>}
+              {post.status === 'draft' && <span className="library-status library-status-draft">Rascunho</span>}
+              {post.status === 'archived' && <span className="library-status library-status-archived">Arquivada</span>}
+              {(isUpdatedForStudent || isUpdatedForTeacher) && <span className="library-updated-label">Atualizada</span>}
+              {mode === 'teacher' && classNames.length > 0 && <span className="library-class-chip">{classNames.length === 1 ? classNames[0] : `${classNames.length} turmas`}</span>}
+            </div>
+          )}
         </div>
-        <div className="library-card-actions">
-          <button type="button" className="btn-primary library-card-open" onClick={opensMaterial ? openMain : onOpen}>{opensMaterial ? 'Abrir material' : 'Ver publicação'} <span aria-hidden="true">→</span></button>
-          {opensMaterial && post.anexos.length > 1 && <button type="button" className="btn-text library-card-all-materials" onClick={onOpen}>Ver todos</button>}
-          {mode === 'teacher' && post.status === 'archived' ? <><button type="button" className="btn-secondary library-card-secondary-action" onClick={onRestore} disabled={restoring || purging}>{restoring ? 'Restaurando…' : 'Restaurar'}</button><button type="button" className="btn-ghost library-card-icon-action library-delete-button" onClick={onPermanentlyDelete} disabled={restoring || purging} aria-label="Excluir definitivamente" title="Excluir definitivamente">{purging ? '…' : '×'}</button></> : mode === 'teacher' && <><button type="button" className="btn-ghost library-card-secondary-action" onClick={onEdit}>Editar</button><button type="button" className="btn-ghost library-card-icon-action library-delete-button" onClick={onDelete} disabled={deleting} aria-label="Arquivar publicação" title="Arquivar publicação">{deleting ? '…' : '⌫'}</button></>}
+      </button>
+
+      {mode === 'teacher' && (
+        <div className="library-card-menu" ref={menuRef}>
+          <button
+            type="button"
+            className="library-card-menu-trigger"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={`Mais ações para ${post.titulo}`}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <MoreVertical aria-hidden="true" size={18} />
+          </button>
+          {menuOpen && (
+            <div className="library-card-menu-list" role="menu">
+              {post.status === 'archived' ? (
+                <>
+                  <button type="button" role="menuitem" onClick={() => runMenuAction(onRestore)} disabled={restoring || purging}>{restoring ? 'Restaurando…' : 'Restaurar'}</button>
+                  <button type="button" role="menuitem" className="library-card-menu-danger" onClick={() => runMenuAction(onPermanentlyDelete)} disabled={restoring || purging}>{purging ? 'Excluindo…' : 'Excluir definitivamente'}</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" role="menuitem" onClick={() => runMenuAction(onEdit)}>Editar</button>
+                  <button type="button" role="menuitem" className="library-card-menu-danger" onClick={() => runMenuAction(onDelete)} disabled={deleting}>{deleting ? 'Arquivando…' : 'Arquivar'}</button>
+                </>
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      )}
     </article>
   );
 }
@@ -555,6 +610,11 @@ function formatDate(value: string): string {
 
 function isPostUpdated(post: LibraryPost): boolean {
   return new Date(post.atualizado_em).getTime() - new Date(post.criado_em).getTime() > 1000;
+}
+
+function getPostReadState(post: LibraryPost, readState: LibraryReadState | undefined): 'new' | 'updated' | 'normal' {
+  if (!readState) return 'new';
+  return new Date(post.atualizado_em).getTime() > new Date(readState.visto_atualizado_em).getTime() ? 'updated' : 'normal';
 }
 
 interface LibraryViewPreferences {

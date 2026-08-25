@@ -43,6 +43,16 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'Os pinos do ESP32 não aceitam 5 V.',
       bloquinExample: 'Faça um sensor mandar um aviso sem fio.',
     },
+    howItWorks: 'Dentro da placa mora um chip minúsculo, o ESP32, que funciona como um cérebro programável: ele lê os comandos do seu código milhões de vezes por segundo e decide o que fazer, ligando ou desligando pinos entre 0 V e 3,3 V. O rádio Wi‑Fi/Bluetooth embutido transforma esses sinais elétricos em ondas de rádio, permitindo conversar com o celular ou a internet sem nenhum fio.',
+    codeLogic: 'Todo programa começa configurando cada pino como entrada ou saída. Depois, dentro do laço que se repete sem parar, o código lê os pinos de entrada (sensores) e usa blocos de lógica para decidir o que escrever nos pinos de saída (atuadores). Quando você usa Wi‑Fi, um bloco liga o rádio uma única vez, e os blocos seguintes enviam ou recebem mensagens usando essa conexão já pronta.',
+    parts: [
+      { label: 'Chip ESP32', description: 'O quadrado metálico no meio da placa. É o cérebro: roda o seu programa e controla tudo.' },
+      { label: 'Antena Wi‑Fi/Bluetooth', description: 'O desenho serpenteado perto de uma ponta da placa. Envia e recebe sinal sem fio.' },
+      { label: 'Porta USB', description: 'Onde o cabo entra. Serve para carregar o programa e também pode alimentar a placa.' },
+      { label: 'Botões EN e BOOT', description: 'EN reinicia a placa. BOOT ajuda a colocá-la em modo de gravação quando necessário.' },
+      { label: 'Fileiras de pinos (GPIO)', description: 'As duas fileiras de furos nas bordas. Cada furo é uma porta numerada para ligar sensores e peças.' },
+      { label: 'Regulador de tensão', description: 'Um pequeno componente perto da USB que transforma a energia recebida em 3,3 V estáveis para o chip.' },
+    ],
     tags: ['ESP32', 'Wi‑Fi', 'Bluetooth', '3,3 V'],
     specifications: ['Lógica de 3,3 V', 'Wi‑Fi e Bluetooth integrados', 'GPIOs digitais, analógicos e PWM', 'Conversor analógico de até 12 bits (0–4095 no Bloquin)'],
     pins: [
@@ -79,6 +89,16 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'Motor não liga direto na placa.',
       bloquinExample: 'Faça um LED piscar.',
     },
+    howItWorks: 'O coração do Uno é o chip ATmega328P: ele guarda o seu programa em uma memória interna e o executa sem parar, como uma receita lida em looping. A cada passo, ele confere os pinos configurados como entrada e muda os pinos de saída entre 0 V e 5 V — é essa troca rápida de tensão que acende LEDs, toca sons e lê sensores.',
+    codeLogic: 'O código do Arduino sempre tem uma parte que roda uma vez, para configurar os pinos, e depois entra em um laço que se repete sem parar. Um bloco de ler pino digital pergunta ao chip se há 0 V ou 5 V naquele fio; um bloco de escrever pino faz o oposto, obrigando o pino a virar 0 V ou 5 V. Já os blocos de PWM ligam e desligam o pino muitas vezes por segundo, tão rápido que o LED ou motor parece receber um valor intermediário de força.',
+    parts: [
+      { label: 'Chip ATmega328P', description: 'O componente preto retangular com várias perninhas. É o microcontrolador que executa o seu código.' },
+      { label: 'Porta USB tipo B', description: 'Onde o cabo do computador entra para carregar o programa e alimentar a placa.' },
+      { label: 'Botão de reset', description: 'Reinicia o programa do começo sem precisar tirar a energia da placa.' },
+      { label: 'Fileiras de pinos digitais e analógicos', description: 'Os furos numerados nas bordas (0–13 digitais, A0–A5 analógicos) onde tudo é conectado.' },
+      { label: 'LED embutido (pino 13)', description: 'Uma luzinha já ligada na placa, útil para testar se o código está rodando.' },
+      { label: 'Conector de alimentação', description: 'Entrada redonda para ligar uma fonte externa quando o projeto não usa USB.' },
+    ],
     tags: ['Arduino', 'ATmega328P', '5 V', 'iniciante'],
     specifications: ['Lógica de 5 V', '14 pinos digitais, sendo 6 com PWM', '6 entradas analógicas (A0–A5)', 'Leitura analógica de 0–1023 no Bloquin'],
     pins: [
@@ -115,6 +135,14 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'Sempre use resistor.',
       bloquinExample: 'Acenda a luz quando apertar um botão.',
     },
+    howItWorks: 'Um LED é feito de dois pedacinhos de material semicondutor colados um no outro. Quando a corrente elétrica entra pelo lado certo (ânodo) e sai pelo outro (cátodo), os elétrons "pulam" de um pedaço para o outro e, ao pousar, soltam a energia extra em forma de luz — quase sem esquentar, diferente de uma lâmpada antiga.',
+    codeLogic: 'O bloco de colocar pino em estado manda o pino para 5 V (ou 3,3 V no ESP32), o que empurra corrente pelo resistor e pelo LED, acendendo-o; mandar o mesmo pino para 0 V apaga a luz. Já o bloco de PWM liga e desliga o pino centenas de vezes por segundo: quanto mais tempo ligado em cada ciclo, mais brilhante o LED parece, mesmo sem mudar a voltagem.',
+    parts: [
+      { label: 'Cúpula (lente)', description: 'A parte de plástico colorido e arredondada no topo. Espalha a luz que sai de dentro.' },
+      { label: 'Perna longa — Ânodo (+)', description: 'A perna mais comprida. É por onde a corrente entra; liga no resistor e no pino de saída.' },
+      { label: 'Perna curta — Cátodo (−)', description: 'A perna mais curta, do lado achatado da base. É por onde a corrente sai; liga ao GND.' },
+      { label: 'Lado achatado da base', description: 'Uma marca reta na borda perto da perna curta — ajuda a identificar o cátodo mesmo se as pernas forem cortadas.' },
+    ],
     tags: ['luz', 'saída', 'polaridade', '220 Ω'],
     specifications: ['Possui polaridade', 'Use resistor em série', 'Corrente típica: cerca de 10–20 mA', 'Cores diferentes têm quedas de tensão diferentes'],
     pins: [
@@ -148,6 +176,13 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'Ele não tem lado certo.',
       bloquinExample: 'Monte uma luz segura com resistor de 220 Ω.',
     },
+    howItWorks: 'Por dentro, um resistor tem uma fina camada de carbono que dificulta a passagem dos elétrons — parecido com um cano mais estreito dificultando a passagem de água. Quanto maior o valor em ohms, mais "apertado" fica esse caminho e menos corrente passa por ele; é assim que ele protege o LED de receber corrente demais.',
+    codeLogic: 'O resistor não aparece diretamente em nenhum bloco — ele é só fiação —, mas está por trás de tudo: quando você usa ler pino analógico em um sensor como o LDR, é a dupla resistor + sensor que transforma luz em uma tensão, e essa tensão vira um número de 0 a 1023 (Arduino) ou 0 a 4095 (ESP32) para o bloco usar.',
+    parts: [
+      { label: 'Corpo cerâmico', description: 'O cilindro bege no meio. Guarda o material que resiste à passagem da corrente.' },
+      { label: 'Faixas coloridas', description: 'As listras pintadas no corpo. Cada cor é um número — juntas, formam o valor em ohms (Ω).' },
+      { label: 'Terminais', description: 'Os dois fios metálicos nas pontas. Não têm lado certo: o resistor funciona igual dos dois jeitos.' },
+    ],
     tags: ['220 Ω', '10 kΩ', 'sem polaridade', 'corrente'],
     specifications: ['Não possui polaridade', 'Valor em ohms (Ω)', '220 Ω a 330 Ω é comum com LEDs', '10 kΩ é comum em botões e divisores'],
     pins: [
@@ -179,6 +214,14 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'Confira a posição no protoboard antes de ligar.',
       bloquinExample: 'Aperte para ligar um LED.',
     },
+    howItWorks: 'Dentro da capa de metal existe uma pequena cúpula elástica. Quando você aperta, ela se achata e toca dois contatos por baixo, fechando o circuito como se fosse uma pontezinha; quando solta, a cúpula volta ao formato original e separa os contatos de novo.',
+    codeLogic: 'Com configurar pino como entrada com pull-up, o pino fica em 5 V (ou 3,3 V) sempre que o botão está solto. Ao apertar, o botão liga o pino direto ao GND, e o bloco de ler pino digital passa a devolver 0 (LOW) — por isso, no Bloquin, "botão apertado" costuma significar "ler falso/0", o que confunde no início mas fica automático depois de um projeto ou dois.',
+    parts: [
+      { label: 'Capa metálica', description: 'A tampinha prateada no topo. Protege a cúpula interna e é onde seu dedo aperta.' },
+      { label: 'Cúpula interna', description: 'Uma peça elástica escondida dentro do botão. Dobra ao ser apertada e liga os contatos.' },
+      { label: 'Pernas do lado A', description: 'As duas pernas de um lado, já ligadas entre si por dentro.' },
+      { label: 'Pernas do lado B', description: 'As duas pernas do outro lado — o outro contato, também ligado por dentro.' },
+    ],
     tags: ['entrada', 'digital', 'pull-up', 'interruptor'],
     specifications: ['Normalmente aberto (NA)', 'Não possui polaridade', 'As duas pernas de cada lado já são conectadas internamente', 'Pode usar resistor externo ou INPUT_PULLUP'],
     pins: [
@@ -212,6 +255,14 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'Buzzer ativo não toca notas do mesmo jeito.',
       bloquinExample: 'Toque uma nota ao apertar o botão.',
     },
+    howItWorks: 'Dentro do buzzer existe um disco fino de cerâmica piezoelétrica colado a um disco metálico. Cada pulso elétrico que chega faz esse disco se curvar um pouquinho; ligando e desligando o pulso muitas vezes por segundo (em uma frequência), o disco vibra para frente e para trás e empurra o ar, criando o som que você ouve. Frequências diferentes tocam notas diferentes.',
+    codeLogic: 'Os blocos de tocar som e tocar música pronta escondem uma sequência de frequências (em hertz) e durações. Para cada nota, o Bloquin manda o pino ligar e desligar naquela frequência exata por um tempo determinado, e é essa vibração controlada do disco piezoelétrico que gera o som — trocar a frequência muda a altura da nota (agudo ou grave), e trocar a duração muda quanto tempo ela dura.',
+    parts: [
+      { label: 'Case plástico', description: 'A caixinha preta que protege as peças internas e direciona o som para fora.' },
+      { label: 'Disco piezoelétrico', description: 'O disco metálico escondido dentro, que vibra quando recebe pulsos elétricos.' },
+      { label: 'Terminal + (positivo)', description: 'Costuma ter marca ou perna mais longa; liga ao pino de saída.' },
+      { label: 'Terminal − (negativo)', description: 'A outra perna; liga ao GND.' },
+    ],
     tags: ['som', 'saída', 'tom', 'piezo'],
     specifications: ['Normalmente possui marcação + e −', 'Controlado por frequência', 'Compatível com os blocos de tocar som', 'Consumo baixo em comparação a motores'],
     pins: [
@@ -244,6 +295,13 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'Ele precisa de um resistor para medir direito.',
       bloquinExample: 'Acenda uma luz quando escurecer.',
     },
+    howItWorks: 'O LDR é feito de um material sensível à luz: quanto mais fótons (partículas de luz) batem nele, mais fácil fica para a corrente elétrica atravessá-lo — ou seja, sua resistência cai. No escuro, o material dificulta a passagem de corrente e a resistência sobe bastante. É essa mudança que a placa consegue enxergar através do divisor de tensão.',
+    codeLogic: 'O bloco de ler pino analógico não lê o LDR sozinho: ele lê a tensão no meio do divisor formado por LDR + resistor. Quando está claro, o LDR deixa passar mais corrente e o número lido muda em um sentido; no escuro, muda no sentido oposto. Um bloco de se... então compara esse número com um valor de referência para decidir, por exemplo, quando acender uma luz.',
+    parts: [
+      { label: 'Trilha sensível à luz', description: 'O desenho em zigue-zague na frente do sensor — é a parte que reage à luz.' },
+      { label: 'Corpo de resina', description: 'A camada transparente que protege a trilha da poeira e da umidade.' },
+      { label: 'Terminais', description: 'Os dois fios metálicos, sem polaridade — podem ser ligados em qualquer ordem no divisor de tensão.' },
+    ],
     tags: ['luz', 'analógico', 'fotoresistor', 'divisor de tensão'],
     specifications: ['Não possui polaridade', 'Precisa de resistor fixo para leitura analógica', 'Resposta gradual à luz', 'Leitura depende do ambiente e da montagem'],
     pins: [
@@ -277,6 +335,14 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'No ESP32, proteja o pino ECHO de 5 V.',
       bloquinExample: 'Pare o robô quando algo chegar perto.',
     },
+    howItWorks: 'O sensor tem dois "olhos" cilíndricos: um fala (emissor) e o outro escuta (receptor). Quando a placa manda um pulso curto no TRIG, o emissor solta um estouro de som muito agudo — ultrassom, que nossos ouvidos não conseguem escutar — várias vezes seguidas. O som viaja pelo ar, bate em um objeto na frente e volta como eco. O receptor escuta esse eco, e o sensor mantém o pino ECHO em nível alto durante todo o tempo em que o som estava viajando de ida e volta: quanto mais longe o objeto, mais tempo o ECHO fica ligado.',
+    codeLogic: 'O bloco de ler distância esconde uma sequência: primeiro coloca o TRIG em nível alto por 10 microssegundos exatos (rápido demais para perceber, mas suficiente para o sensor disparar o som). Depois, ele mede quantos microssegundos o ECHO fica em nível alto e faz uma continha: como o som viaja a uma velocidade conhecida no ar, dividir esse tempo por dois (ida e volta) e multiplicar pela velocidade do som dá a distância em centímetros. O bloco de objeto está perto? só compara esse resultado com um número que você escolhe.',
+    parts: [
+      { label: 'Emissor (T)', description: 'O cilindro marcado com "T" de Transmitter — solta o som ultrassônico.' },
+      { label: 'Receptor (R)', description: 'O cilindro marcado com "R" de Receiver — escuta o eco que volta.' },
+      { label: 'Placa de circuito', description: 'A base verde com o chip que controla o tempo dos pulsos e calcula o eco.' },
+      { label: 'Pinos VCC, TRIG, ECHO, GND', description: 'As quatro conexões: energia, disparo, retorno e terra, na ordem impressa na placa.' },
+    ],
     tags: ['distância', 'ultrassom', 'TRIG', 'ECHO'],
     specifications: ['Alimentação típica: 5 V', 'Faixa típica: cerca de 2 cm a 4 m', 'Usa um pino de disparo e um de eco', 'O ECHO de módulos comuns é nível lógico de 5 V'],
     pins: [
@@ -312,6 +378,14 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'Veja na placa se ela usa 3,3 V ou 5 V.',
       bloquinExample: 'Incline para virar o robô.',
     },
+    howItWorks: 'Dentro do chip existem estruturas microscópicas que se movem ligeiramente quando o sensor acelera ou gira — parecido com sentir o corpo ser empurrado para o lado em um carro fazendo curva. O acelerômetro mede essa força em três direções (X, Y, Z), e o giroscópio mede a velocidade de rotação nos mesmos três eixos. O chip transforma esses movimentos minúsculos em números elétricos e os envia pela conexão I²C sempre que a placa pergunta.',
+    codeLogic: 'O bloco de iniciar acelerômetro conversa com o chip pela primeira vez e confere se ele respondeu no endereço esperado (0x68). Depois, ler inclinação frente/trás e ler inclinação lateral pedem ao chip os números mais recentes de aceleração em cada eixo e fazem, por trás dos panos, uma continha de trigonometria para transformá-los em um ângulo de inclinação em graus — bem mais fácil de usar em um bloco de se... então do que os valores brutos do sensor.',
+    parts: [
+      { label: 'Chip MPU6050', description: 'O quadradinho preto no centro da placa — é onde moram o acelerômetro e o giroscópio, juntos no mesmo chip.' },
+      { label: 'Pinos SDA e SCL', description: 'As duas linhas de comunicação I²C: uma carrega os dados, a outra marca o ritmo (clock).' },
+      { label: 'Pino AD0', description: 'Muda o endereço I²C do módulo (0x68 normalmente, 0x69 se ligado a VCC) — útil com dois sensores no mesmo barramento.' },
+      { label: 'Furos de fixação', description: 'Os pequenos furos nos cantos da placa, para parafusá-la firme no robô e evitar leituras tremidas.' },
+    ],
     tags: ['I²C', 'acelerômetro', 'giroscópio', 'inclinação'],
     specifications: ['Comunicação I²C', 'Acelerômetro de 3 eixos', 'Giroscópio de 3 eixos', 'Endereço I²C normalmente 0x68'],
     pins: [
@@ -347,6 +421,14 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'A bateria do motor vai no driver, não na placa.',
       bloquinExample: 'Faça o robô andar para frente.',
     },
+    howItWorks: 'Por dentro, o L298N tem duas "pontes H" — um conjunto de quatro chaves eletrônicas para cada motor, organizadas em formato de H. Ligando pares diferentes dessas chaves, a corrente pode atravessar o motor em um sentido ou no outro, fazendo-o girar para frente ou para trás. O pino de habilitação (EN) liga e desliga essas chaves rapidamente (PWM) para controlar a velocidade média, mesmo a corrente sendo sempre "tudo ou nada" em cada instante.',
+    codeLogic: 'O bloco de configurar motor DC define quais pinos da placa vão para IN1–IN4 e ENA/ENB. Para girar, mover robô ou girar motor individual escrevem o par certo de HIGH/LOW nos pinos IN daquele motor (por exemplo, IN1=HIGH e IN2=LOW para frente) e mandam um valor de PWM no pino EN correspondente — quanto maior o valor, mais rápido o motor gira. O bloco de parar motores simplesmente coloca os dois pinos IN em LOW ou o EN em 0, cortando o movimento.',
+    parts: [
+      { label: 'Chip L298N', description: 'O componente preto retangular com aletas de metal — é a ponte H que aguenta a corrente dos motores.' },
+      { label: 'Dissipador de calor', description: 'A peça de metal encaixada no chip. Ele esquenta trabalhando, e o dissipador ajuda a esfriar.' },
+      { label: 'Bornes de parafuso', description: 'Os conectores verdes onde entram a bateria dos motores e saem os fios para cada motor.' },
+      { label: 'Jumper de 5 V', description: 'Um pino removível que, quando presente, gera 5 V para alimentar a placa a partir da bateria dos motores.' },
+    ],
     tags: ['ponte H', 'motor', 'PWM', 'driver'],
     specifications: ['Controla dois motores DC', 'Entradas IN1–IN4 definem o sentido', 'ENA e ENB recebem PWM para velocidade', 'Tem queda de tensão relativamente alta em comparação a drivers modernos'],
     pins: [
@@ -383,6 +465,15 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogItem[] = [
       attention: 'Nunca ligue motor direto em um pino.',
       bloquinExample: 'Gire uma roda pelo driver.',
     },
+    howItWorks: 'Dentro do motor há um ímã fixo (o estator) e uma bobina de fio que gira no meio (o rotor). Quando a corrente passa pela bobina, ela vira um ímã temporário; os polos desse ímã temporário são empurrados e puxados pelos polos do ímã fixo, fazendo o rotor girar. Uma peça chamada comutador troca a direção da corrente na bobina a cada meia-volta, exatamente no momento certo, para que o empurrão continue sempre no mesmo sentido e o motor não trave.',
+    codeLogic: 'O motor em si não entende blocos — quem entende é o driver (L298N). Mas o resultado do código aparece nele: quando mover robô manda mais PWM para um lado, mais corrente média passa pelo motor daquele lado, girando mais rápido; e quando o driver troca IN1/IN2, ele inverte a corrente que chega aos dois terminais do motor, fazendo o comutador interno trocar o sentido do giro.',
+    parts: [
+      { label: 'Carcaça com ímãs', description: 'A parte externa do motor. Dentro dela ficam os ímãs fixos que não se movem.' },
+      { label: 'Rotor (bobina)', description: 'A parte que gira dentro da carcaça, enrolada com fio de cobre.' },
+      { label: 'Comutador e escovas', description: 'Pequenos contatos que trocam o sentido da corrente na bobina a cada meia-volta, mantendo o giro.' },
+      { label: 'Eixo', description: 'A haste de metal que sai do motor e gira junto com o rotor — é onde se encaixa a roda ou hélice.' },
+      { label: 'Dois terminais', description: 'Os fios por onde a corrente entra e sai; trocar a ordem inverte o sentido do giro.' },
+    ],
     tags: ['movimento', 'corrente contínua', 'ponte H', 'robótica'],
     specifications: ['Dois terminais', 'Sentido muda ao inverter a polaridade', 'Velocidade pode ser controlada por PWM via driver', 'Tem corrente de partida maior que a corrente em movimento'],
     pins: [

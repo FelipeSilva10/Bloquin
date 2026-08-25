@@ -5,6 +5,7 @@ import {
   LOOP_TYPES,
 } from './contracts';
 import { synchronizeVariableTypes } from './variableTypes';
+import { BLOCK_DOC_REGISTRY } from '../features/blockDocs/registry';
 export { BOARDS, BOARD_UNSET } from './boards';
 export type { BoardKey } from './boards';
 
@@ -126,23 +127,23 @@ export function initBlocks() {
 
   const customBlocks = [
     // ── ESTRUTURA
-    { type: 'bloco_setup', colour: 290, helpUrl: '', message0: 'PREPARAR (Roda 1 vez) %1', args0: [{ type: 'input_statement', name: 'DO' }], tooltip: 'Código inicial.' },
-    { type: 'bloco_loop', colour: 260, helpUrl: '', message0: 'AGIR (Roda para sempre) %1', args0: [{ type: 'input_statement', name: 'DO' }], tooltip: 'Repetição principal.' },
+    { type: 'bloco_setup', colour: 290, helpUrl: '', message0: 'PREPARAR (Roda 1 vez) %1', args0: [{ type: 'input_statement', name: 'DO' }] },
+    { type: 'bloco_loop', colour: 260, helpUrl: '', message0: 'AGIR (Roda para sempre) %1', args0: [{ type: 'input_statement', name: 'DO' }] },
 
     // ── PINOS
     { type: 'configurar_pino', colour: 165, message0: '⚡ Configurar pino %1 como %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }, { type: 'field_dropdown', name: 'MODE', options: [['Saída (Enviar sinal)', 'OUTPUT'], ['Entrada (Ler sensor)', 'INPUT'], ['Entrada com redutor de energia', 'INPUT_PULLUP']] }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
     { type: 'escrever_pino', colour: 165, message0: 'Colocar pino %1 em estado %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }, { type: 'field_dropdown', name: 'STATE', options: [['Ligado (HIGH)', 'HIGH'], ['Desligado (LOW)', 'LOW']] }], previousStatement: null, nextStatement: null },
-    { type: 'escrever_pino_booleano', colour: 165, message0: 'Colocar pino %1 conforme %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }, { type: 'input_value', name: 'STATE', check: 'Boolean' }], inputsInline: true, previousStatement: null, nextStatement: null, tooltip: 'Liga o pino quando a condição for verdadeira e desliga quando for falsa.' },
-    { type: 'ler_pino_digital', colour: 165, message0: 'Ler pino digital %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], output: ['Number', 'Boolean'], tooltip: 'Retorna 1/verdadeiro para HIGH e 0/falso para LOW.' },
+    { type: 'escrever_pino_booleano', colour: 165, message0: 'Colocar pino %1 conforme %2', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }, { type: 'input_value', name: 'STATE', check: 'Boolean' }], inputsInline: true, previousStatement: null, nextStatement: null },
+    { type: 'ler_pino_digital', colour: 165, message0: 'Ler pino digital %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentBoardPins }], output: ['Number', 'Boolean'] },
     { type: 'escrever_pino_pwm', colour: 165, message0: 'Força do pino %1 → %2 (0 a 255)', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentPwmPins }, { type: 'input_value', name: 'VALOR', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },
     { type: 'ler_pino_analogico', colour: 165, message0: 'Ler sensor analógico no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentAnalogPins }], output: 'Number' }, // C6
 
     // ── CONTROLE
     { type: 'esperar', colour: 120, message0: 'Esperar %1 milissegundos', args0: [{ type: 'field_number', name: 'TIME', value: 1000, min: 0, precision: 1 }], previousStatement: null, nextStatement: null },
-    { type: 'esperar_duracao', colour: 120, message0: 'Esperar %1 milissegundos', args0: [{ type: 'input_value', name: 'TIME', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null, tooltip: 'Espera pelo tempo calculado por outro bloco.' },
+    { type: 'esperar_duracao', colour: 120, message0: 'Esperar %1 milissegundos', args0: [{ type: 'input_value', name: 'TIME', check: 'Number' }], inputsInline: true, previousStatement: null, nextStatement: null },
     { type: 'repetir_vezes', colour: 120, message0: 'Repetir %1 vezes %2 %3', args0: [{ type: 'field_number', name: 'TIMES', value: 5, min: 1, precision: 1 }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null },
-    { type: 'repetir_quantidade', colour: 120, message0: 'Repetir %1 vezes %2 %3', args0: [{ type: 'input_value', name: 'TIMES', check: 'Number' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null, tooltip: 'Repete pela quantidade calculada por outro bloco.' },
-    { type: 'a_cada_x_ms', colour: 120, message0: '⏳ A cada %1 ms fazer %2 %3', args0: [{ type: 'field_number', name: 'MS', value: 1000, min: 1 }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null, tooltip: 'Temporizador sem travar o robô (substitui delay).' }, // Eixo 6
+    { type: 'repetir_quantidade', colour: 120, message0: 'Repetir %1 vezes %2 %3', args0: [{ type: 'input_value', name: 'TIMES', check: 'Number' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null },
+    { type: 'a_cada_x_ms', colour: 120, message0: '⏳ A cada %1 ms fazer %2 %3', args0: [{ type: 'field_number', name: 'MS', value: 1000, min: 1 }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null }, // Eixo 6
     { type: 'enquanto_verdadeiro', colour: 120, message0: 'Enquanto %1 fizer %2 %3', args0: [{ type: 'input_value', name: 'CONDICAO', check: 'Boolean' }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], previousStatement: null, nextStatement: null },
     { type: 'parar_repeticao', colour: 120, message0: '⛔ Parar repetição', args0: [], previousStatement: null, nextStatement: null, extensions: ['validacao_repeticao_ext'] },
 
@@ -153,8 +154,8 @@ export function initBlocks() {
     { type: 'e_ou_logico', colour: 210, message0: '%1 %2 %3', args0: [{ type: 'input_value', name: 'A', check: 'Boolean' }, { type: 'field_dropdown', name: 'OP', options: [['E', '&&'], ['OU', '||']] }, { type: 'input_value', name: 'B', check: 'Boolean' }], inputsInline: true, output: 'Boolean' },
     { type: 'nao_logico', colour: 210, message0: 'NÃO %1', args0: [{ type: 'input_value', name: 'VALOR', check: 'Boolean' }], inputsInline: true, output: 'Boolean' },
     { type: 'valor_booleano_fixo', colour: 210, message0: '%1', args0: [{ type: 'field_dropdown', name: 'VALOR', options: [['verdadeiro', 'true'], ['falso', 'false']] }], output: 'Boolean' },
-    { type: 'numero_para_booleano', colour: 210, message0: '%1 é diferente de zero?', args0: [{ type: 'input_value', name: 'VALOR', check: 'Number' }], inputsInline: true, output: 'Boolean', tooltip: 'Converte zero em falso e qualquer outro número em verdadeiro.' },
-    { type: 'booleano_para_numero', colour: 210, message0: 'Converter %1 para número', args0: [{ type: 'input_value', name: 'VALOR', check: 'Boolean' }], inputsInline: true, output: 'Number', tooltip: 'Converte falso em 0 e verdadeiro em 1.' },
+    { type: 'numero_para_booleano', colour: 210, message0: '%1 é diferente de zero?', args0: [{ type: 'input_value', name: 'VALOR', check: 'Number' }], inputsInline: true, output: 'Boolean' },
+    { type: 'booleano_para_numero', colour: 210, message0: 'Converter %1 para número', args0: [{ type: 'input_value', name: 'VALOR', check: 'Boolean' }], inputsInline: true, output: 'Number' },
 
     // ── MATEMÁTICA
     { type: 'numero_fixo', colour: 255, message0: '%1', args0: [{ type: 'field_number', name: 'VALOR', value: 10 }], output: 'Number' }, // C6
@@ -207,7 +208,6 @@ export function initBlocks() {
     ]},
   ],
   previousStatement: null, nextStatement: null,
-  tooltip: 'Toca uma melodia completa no buzzer. O programa fica parado até a música terminar.',
 },
     { type: 'buzzer_tocar_tempo', colour: 75, message0: '🔊 Tocar som: pino %1 frequência %2 Hz por %3 ms', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }, { type: 'field_number', name: 'FREQ', value: 440, min: 31 }, { type: 'field_number', name: 'DUR', value: 500, min: 1 }], previousStatement: null, nextStatement: null },
     { type: 'buzzer_parar', colour: 75, message0: '🔇 Parar som no pino %1', args0: [{ type: 'field_dropdown', name: 'PIN', options: () => currentOutputPins }], previousStatement: null, nextStatement: null },
@@ -224,7 +224,7 @@ export function initBlocks() {
     { type: 'espnow_ler_roll', colour: 300, message0: 'Inclinação esq/dir recebida', output: 'Number' }, // C6
     { type: 'espnow_ler_flag_parar', colour: 300, message0: 'Comando "parar" recebido?', output: 'Boolean' }, // C6
     { type: 'espnow_timeout_ms', colour: 300, message0: 'Sem sinal da luva por mais de %1 ms?', args0: [{ type: 'field_number', name: 'MS', value: 600, min: 100 }], output: 'Boolean' },
-    { type: 'espnow_marcar_lido', colour: 300, message0: '✅ Marcar mensagem como lida', args0: [], previousStatement: null, nextStatement: null, tooltip: 'Reseta o flag de dados novos. Coloque como primeiro bloco dentro de "SE Chegou mensagem da luva?".' },
+    { type: 'espnow_marcar_lido', colour: 300, message0: '✅ Marcar mensagem como lida', args0: [], previousStatement: null, nextStatement: null },
 
     // ── MPU-6050
     { type: 'mpu_iniciar', colour: 310, message0: '🧭 Iniciar Acelerômetro (SDA %1 SCL %2)', args0: [{ type: 'field_dropdown', name: 'SDA', options: () => currentI2cSdaPins }, { type: 'field_dropdown', name: 'SCL', options: () => currentI2cSclPins }], previousStatement: null, nextStatement: null, extensions: ['validacao_setup_ext'] },
@@ -244,9 +244,16 @@ export function initBlocks() {
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(120);
-      this.setTooltip('Para os dois motores do robô imediatamente.');
+      this.setTooltip(BLOCK_DOC_REGISTRY.l298n_parar?.summary ?? 'Para os dois motores do robô imediatamente.');
       this.setHelpUrl('');
     },
   };
-  Blockly.defineBlocksWithJsonArray(customBlocks);
+  // O registro central de documentação (src/features/blockDocs) é a única
+  // fonte do texto de tooltip — nenhum bloco define `tooltip` diretamente
+  // aqui, evitando descrição duplicada espalhada pelos blocos individuais.
+  const documentedBlocks = customBlocks.map((definition) => ({
+    ...definition,
+    tooltip: BLOCK_DOC_REGISTRY[definition.type]?.summary ?? '',
+  }));
+  Blockly.defineBlocksWithJsonArray(documentedBlocks);
 }

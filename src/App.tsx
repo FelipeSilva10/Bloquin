@@ -18,6 +18,7 @@ import { WelcomeScreen } from './screens/WelcomeScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { LibraryResourceScreen } from './screens/LibraryResourceScreen';
 import { ComponentsScreen } from './screens/ComponentsScreen';
+import { DocumentationScreen } from './screens/DocumentationScreen';
 import { SagScreen } from './screens/SagScreen';
 import { SetupProvider, useSetup } from './state/setupStore';
 import { MAX_OPEN_TABS, TabsProvider, useTabs, type ProjectTab } from './state/tabsStore';
@@ -144,10 +145,11 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
   const logoutCleanupRef = useRef<Promise<void>>(Promise.resolve());
   const navigate = useNavigate();
   const location = useLocation();
-  const { tabs, activeTab, openInternalPage, openLibrary, openProject, activateTab, resetTabs } = useTabs();
+  const { tabs, activeTab, openInternalPage, openLibrary, openProject, activateTab, updateTab, resetTabs } = useTabs();
   const libraryTabIsOpen = tabs.some((tab) => tab.type === 'library');
   const componentsTabIsOpen = tabs.some((tab) => tab.type === 'components');
   const sagTabIsOpen = tabs.some((tab) => tab.type === 'sag');
+  const documentationTabIsOpen = tabs.some((tab) => tab.type === 'documentation');
   const keptLibraryResourceTabId = activeTab.type === 'library-resource' ? activeTab.id : lastLibraryResourceTabId;
   const requestedWorkspaceTabId = getRequestedWorkspaceTabId(location.state);
 
@@ -236,8 +238,10 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
       ? 'components'
       : location.pathname === '/sag'
         ? 'sag'
-        : null;
-    const canOpenRequestedPage = requestedInternalPage === 'components'
+        : location.pathname === '/documentacao'
+          ? 'documentation'
+          : null;
+    const canOpenRequestedPage = requestedInternalPage === 'components' || requestedInternalPage === 'documentation'
       ? role === 'teacher' || role === 'student' || role === 'visitor'
       : requestedInternalPage === 'sag'
         ? role === 'teacher'
@@ -338,6 +342,16 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
     navigate('/sag', { state: { workspaceTabId: id } });
   };
 
+  const handleOpenBlockDocumentation = (blockType: string) => {
+    const id = openInternalPage('documentation');
+    if (!id) {
+      window.alert(`Você atingiu o limite de ${MAX_OPEN_TABS} abas abertas. Feche uma aba para continuar.`);
+      return;
+    }
+    updateTab(id, { focusBlockType: blockType });
+    navigate('/documentacao', { state: { workspaceTabId: id } });
+  };
+
   const openIde = (projectId: string, viewOnly: boolean) => {
     const id = openProject({
       projectId,
@@ -368,12 +382,17 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
           )}
           {(role === 'teacher' || role === 'student') && keptLibraryResourceTabId && tabs.some((tab) => tab.id === keptLibraryResourceTabId) && (
             <div className="workspace-keepalive" hidden={location.pathname !== '/biblioteca/leitura'}>
-              <LibraryResourceScreen key={keptLibraryResourceTabId} tabId={keptLibraryResourceTabId} />
+              <LibraryResourceScreen key={keptLibraryResourceTabId} tabId={keptLibraryResourceTabId} mode={role as 'teacher' | 'student'} />
             </div>
           )}
           {(role === 'teacher' || role === 'student' || role === 'visitor') && componentsTabIsOpen && (
             <div className="workspace-keepalive" hidden={location.pathname !== '/componentes'}>
-              <ComponentsScreen />
+              <ComponentsScreen onOpenBlocklyBlock={(block) => handleOpenBlockDocumentation(block.blockType)} />
+            </div>
+          )}
+          {(role === 'teacher' || role === 'student' || role === 'visitor') && documentationTabIsOpen && (
+            <div className="workspace-keepalive" hidden={location.pathname !== '/documentacao'}>
+              <DocumentationScreen focusBlockType={tabs.find((tab) => tab.type === 'documentation')?.focusBlockType} />
             </div>
           )}
           {role === 'teacher' && sagTabIsOpen && (
@@ -480,6 +499,15 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
           path="/sag"
           element={
             role === 'teacher'
+              ? null
+              : <Navigate to="/dashboard" replace />
+          }
+        />
+
+        <Route
+          path="/documentacao"
+          element={
+            role === 'teacher' || role === 'student' || role === 'visitor'
               ? null
               : <Navigate to="/dashboard" replace />
           }
@@ -599,7 +627,9 @@ function WorkspaceTabs({ role }: { role: UserRole }) {
                   ? '◈ '
                   : tab.type === 'sag'
                     ? '▤ '
-                    : tab.type === 'library-resource'
+                    : tab.type === 'documentation'
+                      ? '❖ '
+                      : tab.type === 'library-resource'
                       ? `${tab.libraryResourceKind === 'pdf' ? 'PDF' : tab.libraryResourceKind === 'image' ? '▧' : '✦'} `
                       : tab.source === 'memory' ? '👤 ' : ''}
             {tab.dirty ? '● ' : ''}{tab.title}
@@ -625,6 +655,7 @@ function getWorkspaceTabPath(tab?: ProjectTab): string {
   if (tab?.type === 'library-resource') return '/biblioteca/leitura';
   if (tab?.type === 'components') return '/componentes';
   if (tab?.type === 'sag') return '/sag';
+  if (tab?.type === 'documentation') return '/documentacao';
   if (tab?.type === 'dashboard' || !tab) return '/dashboard';
   return '/ide';
 }

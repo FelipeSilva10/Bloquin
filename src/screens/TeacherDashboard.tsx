@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import logoSimples from '../assets/LogoSimples.png';
 import { BOARD_UNSET } from '../blockly/boards';
@@ -501,8 +502,8 @@ export function TeacherDashboard({ userId, onLogout, onOpenOwnProject, onInspect
       {activeTab === 'projetos' && (
         <main>
           <div className="dashboard-project-actions">
-            <button className="btn-primary" style={{ padding: '12px 25px', fontSize: '1.1rem' }} onClick={openCreateModal} disabled={loadingTurmas}>
-              {loadingTurmas ? 'Carregando turmas…' : '+ Novo Projeto'}
+            <button type="button" className="btn-primary" onClick={openCreateModal} disabled={loadingTurmas}>
+              <Plus aria-hidden="true" /> {loadingTurmas ? 'Carregando turmas…' : 'Novo Projeto'}
             </button>
             <ProjectImportButton
               onSelected={prepareProjectImport}

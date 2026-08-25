@@ -2,10 +2,10 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 import type { BoardKey } from '../blockly/boards';
 import type { LibraryPost } from '../types/library';
 
-export type TabType = 'dashboard' | 'library' | 'library-resource' | 'components' | 'sag' | 'project';
+export type TabType = 'dashboard' | 'library' | 'library-resource' | 'components' | 'sag' | 'documentation' | 'project';
 export type ProjectSource = 'remote' | 'memory' | 'local-file';
 export type LibraryResourceKind = 'post' | 'image' | 'pdf';
-export type InternalPageType = 'library' | 'components' | 'sag';
+export type InternalPageType = 'library' | 'components' | 'sag' | 'documentation';
 export const MAX_OPEN_TABS = 8;
 
 export interface ProjectTab {
@@ -25,6 +25,8 @@ export interface ProjectTab {
     page?: number;
     zoom?: number;
   };
+  /** Usado só pela aba de Documentação, para abrir já focada num bloco específico. */
+  focusBlockType?: string;
   dirty: boolean;
 }
 
@@ -37,6 +39,7 @@ const INTERNAL_PAGE_TITLES: Record<InternalPageType, string> = {
   library: 'Biblioteca',
   components: 'Componentes',
   sag: 'SAG',
+  documentation: 'Documentação',
 };
 
 interface TabsContextValue {

@@ -20,6 +20,7 @@ export {
   type ComponentMedia,
   type ComponentMediaImage,
   type ComponentMediaRole,
+  type ComponentPart,
   type ComponentPin,
   type ComponentStudentContent,
 } from './types';

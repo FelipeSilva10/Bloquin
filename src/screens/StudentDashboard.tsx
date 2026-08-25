@@ -1,5 +1,6 @@
 // src/screens/StudentDashboard.tsx
 import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import logoSimples from '../assets/LogoSimples.png';
 import { BOARD_UNSET } from '../blockly/boards';
@@ -9,6 +10,7 @@ import type { BloquinProjectFile } from '../types/project';
 import { ProjectImportButton } from '../components/forms/ProjectImportButton';
 import { ProjectBoardBadge } from '../components/ProjectBoardBadge';
 import ProjectModal from "../components/modals/ProjectModal";
+import TutorialModal from '../components/modals/TutorialModal';
 
 interface StudentDashboardProps {
   userId: string;
@@ -47,6 +49,9 @@ export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary, o
 
   // Modal de detalhes / edição de meta
   const [selectedProject, setSelectedProject] = useState<Projeto | null>(null);
+
+  // Guia rápido (Tutorial)
+  const [showTutorial, setShowTutorial] = useState(false);
 
   // ─── Carrega projetos ──────────────────────────────────────────────────────
   const fetchProjects = async () => {
@@ -223,18 +228,15 @@ export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary, o
         <div className="dashboard-topbar-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button className="btn-secondary dashboard-library-button" onClick={onOpenLibrary}>Biblioteca</button>
           <button className="btn-secondary" onClick={onOpenComponents}>Componentes</button>
+          <button className="btn-secondary" onClick={() => setShowTutorial(true)}>Tutorial</button>
           <button className="btn-outline" onClick={onLogout} style={{ padding: '10px 20px' }}>Sair</button>
         </div>
       </header>
 
       {/* CONTROLES */}
       <div className="dashboard-project-actions">
-        <button
-          className="btn-primary"
-          style={{ padding: '12px 25px', fontSize: '1.1rem' }}
-          onClick={() => setShowModal(true)}
-        >
-          + Novo Projeto
+        <button type="button" className="btn-primary" onClick={() => setShowModal(true)}>
+          <Plus aria-hidden="true" /> Novo Projeto
         </button>
         <ProjectImportButton
           onSelected={handleImportProject}
@@ -428,6 +430,8 @@ export function StudentDashboard({ userId, onLogout, onOpenIde, onOpenLibrary, o
           onClose={() => setSelectedProject(null)}
         />
       )}
+
+      {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
 
     </div>
   );

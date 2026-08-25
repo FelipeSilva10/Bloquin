@@ -1,6 +1,6 @@
 {
-  "productName": "bloquin",
-  "version": "2.2.0",
+  "productName": "Bloquin",
+  "version": "2.3.0",
   "identifier": "com.bloquin.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -25,6 +25,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "appimage"],
+    "publisher": "Felipe da Conceição Silva",
+    "shortDescription": "Bloquin IDE",
+    "longDescription": "Ambiente visual de programação para Arduino e ESP32 voltado para o ensino.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

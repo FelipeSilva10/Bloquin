@@ -105,7 +105,7 @@
 
 .bloquin-tutorial-stepper {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--tutorial-step-count, 5), minmax(0, 1fr));
   gap: 7px;
 }
 
@@ -148,7 +148,7 @@
 
 .bloquin-tutorial-stepper button:hover { background: #eaf7ff; color: #23638c; }
 .bloquin-tutorial-stepper button.is-complete > span { background: var(--secondary); color: #fff; }
-.bloquin-tutorial-stepper button.is-active { border-color: color-mix(in srgb, var(--tutorial-accent) 35%, #fff); background: #fff; color: var(--dark); }
+.bloquin-tutorial-stepper button.is-active { border-color: var(--tutorial-accent); border-color: color-mix(in srgb, var(--tutorial-accent) 35%, #fff); background: #fff; color: var(--dark); }
 .bloquin-tutorial-stepper button.is-active > span { background: var(--tutorial-accent); color: #fff; }
 
 .bloquin-tutorial-content {
@@ -197,6 +197,7 @@
   border: 2px solid rgba(255, 255, 255, 0.75);
   border-radius: 18px;
   background: var(--tutorial-accent);
+  box-shadow: 0 6px 0 var(--tutorial-accent);
   box-shadow: 0 6px 0 color-mix(in srgb, var(--tutorial-accent) 70%, #34495e);
   color: #fff;
 }
@@ -283,6 +284,24 @@
 
 .tutorial-demo-board img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
 .tutorial-demo-board strong { color: var(--dark); font-size: clamp(0.82rem, 1.5vw, 0.98rem); font-weight: 900; text-align: center; }
+.tutorial-demo-board small { display: block; margin-top: -3px; color: var(--text-muted); font-size: 0.72rem; font-weight: 750; text-align: center; }
+
+.tutorial-demo-file-icon,
+.tutorial-demo-project-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  margin-inline: auto;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--primary);
+  color: #fff;
+}
+.tutorial-demo-file-icon svg,
+.tutorial-demo-project-icon svg { width: 22px; height: 22px; }
+
+.tutorial-demo-badge-new { justify-self: center; padding: 3px 9px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 0.66rem; font-weight: 900; }
+.tutorial-demo-badge-updated { justify-self: center; color: var(--library-blue, #23638c); font-size: 0.72rem; font-weight: 800; }
 
 .tutorial-demo--workspace {
   display: grid;
@@ -424,12 +443,13 @@
   min-width: 120px;
   padding: 9px 14px;
   background: var(--tutorial-accent);
+  box-shadow: 0 5px 0 var(--tutorial-accent);
   box-shadow: 0 5px 0 color-mix(in srgb, var(--tutorial-accent) 70%, #34495e);
   color: #fff;
 }
 
 .bloquin-tutorial-next:hover { filter: brightness(1.04); }
-.bloquin-tutorial-next:active { transform: translateY(3px); box-shadow: 0 2px 0 color-mix(in srgb, var(--tutorial-accent) 70%, #34495e); }
+.bloquin-tutorial-next:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--tutorial-accent); box-shadow: 0 2px 0 color-mix(in srgb, var(--tutorial-accent) 70%, #34495e); }
 .bloquin-tutorial button:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
 
 @media (max-width: 720px) {
