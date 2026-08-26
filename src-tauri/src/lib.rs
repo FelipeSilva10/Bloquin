@@ -1340,31 +1340,7 @@ fn dispose_sag(
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-/// No AppImage empacotado (Mesa/EGL de ~2022, vindo do runner ubuntu-22.04 do
-/// CI), a plataforma EGL-Wayland nativa falha ao inicializar em compositores
-/// mais novos que já não expõem o protocolo legado `wl_drm` que esse Mesa
-/// antigo usa para negociar o GBM (visto no Hyprland: `Could not create
-/// default EGL display: EGL_BAD_PARAMETER. Aborting...`, processo morre antes
-/// de abrir qualquer janela). Forçar o GTK a rodar via XWayland em vez do
-/// backend Wayland nativo contorna esse caminho quebrado — é a mesma técnica
-/// usada por outros apps GTK/Electron para evitar esse tipo de instabilidade
-/// entre versões de Mesa e protocolos de compositor. Só define a variável se
-/// o usuário não tiver escolhido um backend explicitamente.
-#[cfg(target_os = "linux")]
-fn force_x11_backend_for_wayland_egl_compat() {
-    if env::var_os("GDK_BACKEND").is_none() {
-        // SAFETY: chamado no início de `run()`, antes de qualquer thread
-        // adicional ser criada e antes do GTK/WebKit lerem o ambiente.
-        unsafe {
-            env::set_var("GDK_BACKEND", "x11");
-        }
-    }
-}
-
 pub fn run() {
-    #[cfg(target_os = "linux")]
-    force_x11_backend_for_wayland_egl_compat();
-
     let app_state = AppState {
         is_reading_serial: Arc::new(AtomicBool::new(false)),
         serial_generation: Arc::new(AtomicU64::new(0)),

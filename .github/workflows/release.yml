@@ -337,6 +337,45 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: npm run tauri build -- --bundles appimage
 
+      - name: Corrigir AppImage — remove libs Wayland empacotadas
+        # WebKitGTK tenta inicializar EGL pela plataforma Wayland só porque as
+        # libs libwayland-* estão presentes no bundle — mesmo em sessão X11 —
+        # e trava antes de qualquer fallback: "Could not create default EGL
+        # display: EGL_BAD_PARAMETER. Aborting...", matando o app assim que
+        # abre em qualquer Wayland cujo Mesa deste runner ubuntu-22.04 não
+        # negocie certo (reproduzido em Hyprland). GDK_BACKEND=x11 (que o
+        # linuxdeploy-plugin-gtk já exporta) não evita isso, porque a falha é
+        # do WebKit tentando Wayland diretamente, não da escolha de backend do
+        # GTK. Remover as libs faz o WebKit cair pro caminho X11/GLX, que
+        # funciona — confirmado ao vivo, e documentado em
+        # https://github.com/tauri-apps/tauri/issues/11994.
+        env:
+          ARCH: x86_64
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          set -euo pipefail
+          appimage="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          if [[ -z "$appimage" ]]; then
+            echo "::error::AppImage não encontrada para corrigir."
+            exit 1
+          fi
+          appimage_abs="$(realpath "$appimage")"
+
+          workdir="$(mktemp -d)"
+          pushd "$workdir" >/dev/null
+          "$appimage_abs" --appimage-extract >/dev/null
+          rm -f squashfs-root/usr/lib/*wayland*
+          "$HOME/.cache/tauri/linuxdeploy-plugin-appimage.AppImage" --appdir=squashfs-root
+          new_appimage="$(find . -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          if [[ -z "$new_appimage" ]]; then
+            echo "::error::Reempacotamento do AppImage falhou."
+            exit 1
+          fi
+          mv "$new_appimage" "$appimage_abs"
+          chmod 0755 "$appimage_abs"
+          popd >/dev/null
+          rm -rf "$workdir"
+
       - name: Preparar AppImage para publicação
         id: rename
         shell: bash
