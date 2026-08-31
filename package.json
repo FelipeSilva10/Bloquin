@@ -14,10 +14,14 @@
     "test:components": "node --test scripts/components-validation.test.mjs",
     "test:sag": "node --test scripts/sag-integration.test.mjs",
     "test:version": "node --experimental-strip-types --test scripts/version-validation.test.mjs",
+    "test:installer": "node --test scripts/windows-installer-validation.test.mjs",
+    "test:local-projects": "node --test scripts/local-project-persistence-validation.test.mjs",
+    "test:project-date": "node --experimental-strip-types --test scripts/project-date-validation.test.mjs",
+    "test:project-ux": "node --test scripts/project-card-ux-validation.test.mjs",
     "test:blocks": "node scripts/run-blockly-audit.mjs",
     "test:blocks:compile": "node scripts/run-blockly-audit.mjs --compile",
     "test:block-docs": "node --test scripts/block-docs-validation.test.mjs",
-    "test": "npm run test:library && npm run test:projects && npm run test:sessions && npm run test:welcome && npm run test:layout && npm run test:components && npm run test:sag && npm run test:version && npm run test:blocks && npm run test:block-docs",
+    "test": "npm run test:library && npm run test:projects && npm run test:sessions && npm run test:welcome && npm run test:layout && npm run test:components && npm run test:sag && npm run test:version && npm run test:installer && npm run test:local-projects && npm run test:project-date && npm run test:project-ux && npm run test:blocks && npm run test:block-docs",
     "test:hardware": "npm run test:blocks:compile",
     "audit:blocks": "node scripts/run-blockly-audit.mjs",
     "audit:supabase-baseline": "node scripts/supabase-baseline-audit.mjs",
@@ -26,6 +30,7 @@
     "preview": "vite preview",
     "supabase": "supabase",
     "tauri": "tauri",
+    "tauri:windows": "tauri build --bundles nsis && node scripts/rename-windows-installer.mjs",
     "icons:generate": "tauri icon src/assets/LogoSimples.png"
   },
   "dependencies": {
