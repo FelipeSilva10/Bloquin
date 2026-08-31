@@ -46,15 +46,20 @@ Desenvolvido e mantido por Felipe da Conceição Silva (https://www.linkedin.com
 
 | Plataforma | Link |
 |---|---|
-| **Windows 10/11** (64-bit) | [Bloquin-Setup-Windows.exe](https://github.com/FelipeSilva10/Bloquin/releases/latest/download/Bloquin-Setup-Windows.exe) |
+| **Windows 10/11** (64-bit) | [Baixar a versão mais recente](https://github.com/FelipeSilva10/Bloquin/releases/latest) — arquivo `BloquinIDE_<versão>.exe` |
 
 > **Windows SmartScreen:** o instalador é assinado digitalmente. Se aparecer aviso, clique em **"Mais informações" → "Executar assim mesmo"**.
 
-### Links permanentes (sempre apontam para a última versão estável)
+Cada release do Windows usa o nome `BloquinIDE_<versão>.exe`, por exemplo
+`BloquinIDE_2.5.0.exe`. Como o nome agora inclui a versão, use a página da
+[última release](https://github.com/FelipeSilva10/Bloquin/releases/latest) para
+um link que sempre acompanha a versão estável atual.
 
-```
-Windows: https://github.com/FelipeSilva10/Bloquin/releases/latest/download/Bloquin-Setup-Windows.exe
-```
+> **Placa não aparece na lista de portas?** O Bloquin ainda não empacota o
+> driver USB-UART CP210x (motivo em [docs/windows-installer.md](docs/windows-installer.md)).
+> Na maioria dos Windows 10/11 com internet, ele é instalado sozinho pelo
+> Windows Update ao conectar a placa. Se isso não acontecer, baixe-o
+> diretamente da Silicon Labs: https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers
 
 ---
 
@@ -93,7 +98,12 @@ npm run tauri dev
 ```bash
 npm run tauri build
 # Outputs: src-tauri/target/release/bundle/
+
+# Windows/NSIS: produz BloquinIDE_<versão-do-package.json>.exe
+npm run tauri:windows
 ```
+
+Veja também [a documentação do instalador Windows](docs/windows-installer.md).
 
 ---
 

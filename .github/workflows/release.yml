@@ -25,11 +25,6 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
-  # ─────────────────────────────────────────────────────────
-  # NOME FIXO DO ASSET — NUNCA altere sem atualizar o site.
-  # Garante o link permanente /releases/latest/download/...
-  # ─────────────────────────────────────────────────────────
-  ASSET_WINDOWS: "Bloquin-Setup-Windows.exe"
   ASSET_LINUX: "Bloquin-Linux-x86_64.AppImage"
 
   # Versão e hashes do arduino-cli — altere conscientemente e em conjunto.
@@ -52,6 +47,7 @@ jobs:
       prerelease: ${{ steps.parse.outputs.prerelease }}
       is_stable:  ${{ steps.parse.outputs.is_stable }}
       canal:      ${{ steps.parse.outputs.canal }}
+      windows_asset: ${{ steps.parse.outputs.windows_asset }}
 
     steps:
       - name: Parsear tag e classificar canal
@@ -61,6 +57,7 @@ jobs:
           TAG="${{ github.ref_name }}"
           VERSION="${TAG#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "windows_asset=BloquinIDE_${VERSION}.exe" >> $GITHUB_OUTPUT
 
           if [[ "$TAG" == *"-beta."* ]]; then
             echo "prerelease=true"  >> $GITHUB_OUTPUT
@@ -176,7 +173,7 @@ jobs:
           Write-Host "Certificado importado."
 
       - name: Build Tauri (Windows — NSIS)
-        run: npm run tauri build -- --bundles nsis
+        run: npm run tauri:windows
 
       - name: Assinar instalador NSIS
         shell: powershell
@@ -194,16 +191,15 @@ jobs:
           }
           Write-Host "Usando: $signtool"
 
-          $installer = Get-ChildItem `
-            -Path "src-tauri/target/release/bundle/nsis" `
-            -Filter "*.exe" |
-            Select-Object -First 1
+          $installer = Join-Path `
+            "src-tauri/target/release/bundle/nsis" `
+            "${{ needs.metadata.outputs.windows_asset }}"
 
-          if (-not $installer) {
-            Write-Error "Instalador NSIS não encontrado!"
+          if (-not (Test-Path $installer)) {
+            Write-Error "Instalador NSIS não encontrado: $installer"
             exit 1
           }
-          Write-Host "Assinando: $($installer.FullName)"
+          Write-Host "Assinando: $installer"
 
           & $signtool sign `
             /n "Bloquin" `
@@ -211,21 +207,23 @@ jobs:
             /d "Bloquin IDE" `
             /du "https://github.com/${{ github.repository }}" `
             /t "http://timestamp.digicert.com" `
-            $installer.FullName
+            $installer
 
-          Write-Host "✅ Assinado: $($installer.FullName)"
+          Write-Host "✅ Assinado: $installer"
 
       - name: Renomear instalador para nome fixo
         id: rename
         shell: powershell
         run: |
-          $installer = Get-ChildItem `
-            -Path "src-tauri/target/release/bundle/nsis" `
-            -Filter "*.exe" |
-            Select-Object -First 1
+          $installer = Join-Path `
+            "src-tauri/target/release/bundle/nsis" `
+            "${{ needs.metadata.outputs.windows_asset }}"
+          if (-not (Test-Path $installer)) {
+            throw "Instalador NSIS não encontrado: $installer"
+          }
 
-          $dest = Join-Path $env:RUNNER_TEMP $env:ASSET_WINDOWS
-          Copy-Item $installer.FullName $dest
+          $dest = Join-Path $env:RUNNER_TEMP "${{ needs.metadata.outputs.windows_asset }}"
+          Copy-Item $installer $dest
           $sizeMB = [Math]::Round((Get-Item $dest).Length / 1MB, 2)
           Write-Host "Asset final: $dest ($sizeMB MB)"
           echo "path=$dest" >> $env:GITHUB_OUTPUT
@@ -431,7 +429,7 @@ jobs:
         run: |
           echo "Assets prontos:"
           ls -lh ./dist/
-          [ -f "dist/$ASSET_WINDOWS" ] || { echo "::error::$ASSET_WINDOWS ausente!"; exit 1; }
+          [ -f "dist/${{ needs.metadata.outputs.windows_asset }}" ] || { echo "::error::${{ needs.metadata.outputs.windows_asset }} ausente!"; exit 1; }
           [ -f "dist/$ASSET_LINUX" ] || { echo "::error::$ASSET_LINUX ausente!"; exit 1; }
 
       # ─────────────────────────────────────────────────────
@@ -458,7 +456,7 @@ jobs:
       - name: Montar corpo final da release
         run: |
           cd dist
-          sha256sum "$ASSET_WINDOWS" "$ASSET_LINUX" > SHA256SUMS.txt
+          sha256sum "${{ needs.metadata.outputs.windows_asset }}" "$ASSET_LINUX" > SHA256SUMS.txt
           cd ..
 
           REPO="${{ github.repository }}"
@@ -471,13 +469,11 @@ jobs:
 
           | Plataforma | Arquivo |
           |---|---|
-          | Windows 10/11 (64-bit) | \`$ASSET_WINDOWS\` |
+          | Windows 10/11 (64-bit) | \`${{ needs.metadata.outputs.windows_asset }}\` |
           | Linux x86_64 | \`$ASSET_LINUX\` |
 
-          **Link permanente (última versão estável):**
-          \`\`\`
-          https://github.com/$REPO/releases/latest/download/$ASSET_WINDOWS
-          \`\`\`
+          **Última versão estável:**
+          https://github.com/$REPO/releases/latest
 
           **Linux x86_64:**
           \`\`\`
@@ -509,7 +505,7 @@ jobs:
           prerelease: ${{ needs.metadata.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.metadata.outputs.is_stable == 'true' }}
           files: |
-            dist/${{ env.ASSET_WINDOWS }}
+            dist/${{ needs.metadata.outputs.windows_asset }}
             dist/${{ env.ASSET_LINUX }}
             dist/SHA256SUMS.txt
           fail_on_unmatched_files: true
@@ -547,5 +543,5 @@ jobs:
           echo "| Release | [ver no GitHub](https://github.com/$REPO/releases/tag/$TAG) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Link permanente:**" >> $GITHUB_STEP_SUMMARY
-          echo "- [Bloquin-Setup-Windows.exe](https://github.com/$REPO/releases/latest/download/Bloquin-Setup-Windows.exe)" >> $GITHUB_STEP_SUMMARY
+          echo "- [${{ needs.metadata.outputs.windows_asset }}](https://github.com/$REPO/releases/tag/$TAG)" >> $GITHUB_STEP_SUMMARY
           echo "- [Bloquin-Linux-x86_64.AppImage](https://github.com/$REPO/releases/latest/download/Bloquin-Linux-x86_64.AppImage)" >> $GITHUB_STEP_SUMMARY
