@@ -277,10 +277,10 @@ function ComponentMediaSlot({ component, role }: { component: ComponentCatalogIt
   }, [media?.src, role]);
 
   return (
-    <figure className="component-media-slot">
+    <figure className={`component-media-slot component-media-slot--${role}`}>
       <figcaption>
         <strong>{copy.title}</strong>
-        <span>{copy.hint}</span>
+        <span>{media?.caption ?? copy.hint}</span>
       </figcaption>
       {media && !imageFailed ? (
         <img src={media.src} alt={media.alt} draggable="false" onError={() => setImageFailed(true)} />

@@ -342,6 +342,8 @@
 .component-media-slot figcaption strong { color: #31556d; font-size: 0.84rem; font-weight: 950; }
 .component-media-slot figcaption span { color: #718797; font-size: 0.72rem; font-weight: 700; line-height: 1.35; }
 .component-media-slot > img { width: 100%; min-height: 0; height: 100%; object-fit: contain; padding: 13px; background: #f6fafc; }
+.component-media-slot--pinout { grid-column: span 2; }
+.component-media-slot--pinout > img { padding: 8px; }
 
 .component-media-placeholder {
   display: grid;
@@ -464,6 +466,7 @@
   .component-visual--detail { min-height: 175px; }
   .component-detail-media { grid-template-columns: minmax(0, 1fr); }
   .component-media-slot { min-height: 215px; }
+  .component-media-slot--pinout { grid-column: auto; }
   .component-anatomy { grid-template-columns: minmax(0, 1fr); }
   .component-anatomy-figure { max-width: 260px; margin: 0 auto; }
 }
