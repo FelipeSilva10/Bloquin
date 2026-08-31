@@ -9,6 +9,8 @@ import {
   FileUp,
   FolderKanban,
   Library,
+  MessageCircle,
+  MoreVertical,
   Plus,
   RefreshCw,
   Save,
@@ -106,6 +108,22 @@ function UploadVisual() {
   );
 }
 
+function SerialVisual() {
+  return (
+    <div className="tutorial-demo tutorial-demo--serial" aria-label="Exemplo do monitor serial, o chat com a placa">
+      <div className="tutorial-demo-serial-header">
+        <span className="tutorial-demo-serial-dot" aria-hidden="true" />
+        <span>Robô conectado</span>
+      </div>
+      <div className="tutorial-demo-serial-body" aria-hidden="true">
+        <span>Sensor de distância: 32 cm</span>
+        <span>Sensor de distância: 12 cm</span>
+        <span>Objeto perto! Parando o motor…</span>
+      </div>
+    </div>
+  );
+}
+
 function SaveVisual() {
   return (
     <div className="tutorial-demo tutorial-demo--save" aria-label="Exemplo de salvar um projeto">
@@ -116,6 +134,34 @@ function SaveVisual() {
       <div className="tutorial-demo-save-action">
         <span>Fez uma mudança?</span>
         <span className="tutorial-demo-primary-control"><Save aria-hidden="true" /> Salvar</span>
+      </div>
+    </div>
+  );
+}
+
+function LocalProjectsVisual() {
+  const thumbColours = ['#6d5ba5', '#5ba55b', '#a55b80'];
+  const menuActions: Array<{ label: string; danger?: boolean }> = [
+    { label: 'Abrir' },
+    { label: 'Renomear' },
+    { label: 'Duplicar' },
+    { label: 'Exportar JSON' },
+    { label: 'Excluir', danger: true },
+  ];
+
+  return (
+    <div className="tutorial-demo tutorial-demo--local-projects" aria-label="Exemplo de um projeto salvo com miniatura, data e o menu de ações">
+      <div className="tutorial-demo-local-card">
+        <span className="tutorial-demo-thumb" aria-hidden="true">
+          {thumbColours.map((colour) => <span key={colour} style={{ background: colour }} />)}
+        </span>
+        <strong>Robô Dançarino</strong>
+        <small>Editado hoje às 14:32</small>
+      </div>
+      <div className="tutorial-demo-local-menu" aria-hidden="true">
+        {menuActions.map((action) => (
+          <span key={action.label} className={action.danger ? 'is-danger' : undefined}>{action.label}</span>
+        ))}
       </div>
     </div>
   );
@@ -162,6 +208,26 @@ function DocumentationVisual() {
       <span className="tutorial-demo-icon-control"><BookOpen aria-hidden="true" /><span>Documentação</span></span>
       <span className="tutorial-demo-icon-control"><Blocks aria-hidden="true" /><span>Ver Código</span></span>
       <span className="tutorial-demo-send-control"><Upload aria-hidden="true" /> Enviar</span>
+    </div>
+  );
+}
+
+function ComponentsVisual() {
+  const items = [
+    { name: 'Sensor Ultrassônico', hint: 'Mede distância' },
+    { name: 'Motor DC + L298N', hint: 'Liga e gira' },
+    { name: 'LED RGB', hint: 'Muda de cor' },
+  ];
+
+  return (
+    <div className="tutorial-demo tutorial-demo--boards" aria-label="Exemplo do catálogo de Componentes">
+      {items.map((item) => (
+        <article key={item.name} className="tutorial-demo-board">
+          <span className="tutorial-demo-project-icon" aria-hidden="true"><Cpu /></span>
+          <strong>{item.name}</strong>
+          <small>{item.hint}</small>
+        </article>
+      ))}
     </div>
   );
 }
@@ -229,6 +295,16 @@ const STEPS: readonly TutorialStep[] = [
     visual: <UploadVisual />,
   },
   {
+    id: 'monitor',
+    label: 'Chat',
+    eyebrow: 'VEJA A PLACA FALAR',
+    title: 'Converse com a placa',
+    description: 'Depois de enviar, toque em Chat para ver o que a placa está dizendo.',
+    accent: '#00a8ff',
+    icon: <MessageCircle />,
+    visual: <SerialVisual />,
+  },
+  {
     id: 'salvar',
     label: 'Salvar',
     eyebrow: 'GUARDE SEU TRABALHO',
@@ -237,6 +313,16 @@ const STEPS: readonly TutorialStep[] = [
     accent: '#2daa53',
     icon: <Save />,
     visual: <SaveVisual />,
+  },
+  {
+    id: 'projetos-locais',
+    label: 'Salvos',
+    eyebrow: 'SEU ESPAÇO NO COMPUTADOR',
+    title: 'Cuide dos seus projetos salvos',
+    description: 'Cada card mostra os blocos usados e a data. Os três pontinhos abrem mais ações.',
+    accent: '#0984e3',
+    icon: <MoreVertical />,
+    visual: <LocalProjectsVisual />,
   },
   {
     id: 'importar',
@@ -254,7 +340,7 @@ const STEPS: readonly TutorialStep[] = [
     label: 'Projetos',
     eyebrow: 'SEU ESPAÇO',
     title: 'Volte quando quiser',
-    description: 'Seus projetos ficam guardados em Meus Projetos, prontos para continuar.',
+    description: 'Projetos da sua conta ficam guardados em Meus Projetos, prontos para continuar.',
     accent: '#fd79a8',
     icon: <FolderKanban />,
     visual: <ProjectsVisual />,
@@ -269,6 +355,16 @@ const STEPS: readonly TutorialStep[] = [
     accent: '#3742fa',
     icon: <BookOpen />,
     visual: <DocumentationVisual />,
+  },
+  {
+    id: 'componentes',
+    label: 'Peças',
+    eyebrow: 'CONHEÇA O HARDWARE',
+    title: 'Descubra cada componente',
+    description: 'Toque em Componentes para ver fotos, pinagem e como ligar cada peça.',
+    accent: '#23638c',
+    icon: <Cpu />,
+    visual: <ComponentsVisual />,
   },
   {
     id: 'biblioteca',

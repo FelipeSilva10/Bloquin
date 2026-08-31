@@ -393,6 +393,45 @@
 .tutorial-demo-icon-control span { font-size: 0.75rem; }
 .tutorial-demo-send-control { border-color: var(--secondary); background: var(--secondary); box-shadow: 0 5px 0 #3bac29; color: #fff; }
 
+/* Ecoa a paleta real do monitor serial (App.css: .serial-monitor usa o
+   mesmo #1a2035, que também é o toolboxBackgroundColour do tema Blockly). */
+.tutorial-demo--serial {
+  display: flex;
+  min-height: 200px;
+  flex-direction: column;
+  background: #1a2035;
+  color: #fff;
+}
+
+.tutorial-demo-serial-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, #00a8ff22, #00a8ff11);
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.tutorial-demo-serial-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--secondary);
+  box-shadow: 0 0 8px var(--secondary);
+}
+
+.tutorial-demo-serial-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: clamp(16px, 3vw, 24px) 18px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
 .tutorial-demo--save { display: grid; min-height: 230px; grid-template-rows: auto 1fr; }
 
 .tutorial-demo-tabs {
@@ -430,6 +469,50 @@
   font-weight: 850;
 }
 
+/* Card + menu de um projeto salvo localmente — mesma dupla coluna de
+   .tutorial-demo--project (marca | ação), mas card de projeto | menu de
+   ações, ecoando o layout real (WelcomeScreen.css: project-card-thumb-chip
+   e project-card-menu-list). */
+.tutorial-demo--local-projects {
+  display: grid;
+  min-height: 220px;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.62fr);
+  align-items: stretch;
+}
+
+.tutorial-demo-local-card {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: clamp(20px, 4vw, 30px);
+  background: linear-gradient(140deg, #fff 45%, #eaf4fb);
+}
+
+.tutorial-demo-thumb { display: flex; gap: 4px; }
+.tutorial-demo-thumb span { width: 16px; height: 10px; border-radius: 3px 5px 3px 5px; }
+
+.tutorial-demo-local-card strong { color: var(--dark); font-size: clamp(0.98rem, 1.8vw, 1.1rem); font-weight: 900; }
+.tutorial-demo-local-card small { color: var(--text-muted); font-size: 0.78rem; font-weight: 750; }
+
+.tutorial-demo-local-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 12px;
+  border-left: 1px solid #d9e5ec;
+  background: #f8fafc;
+}
+
+.tutorial-demo-local-menu span {
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--dark);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.tutorial-demo-local-menu span.is-danger { color: var(--danger); }
+
 .bloquin-tutorial-footer {
   padding-top: 12px;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
@@ -459,6 +542,9 @@
   .tutorial-demo--project { grid-template-columns: 1fr; }
   .tutorial-demo-project-brand { min-height: 130px; padding: 20px; }
   .tutorial-demo-project-action { min-height: 120px; padding: 22px; }
+  .tutorial-demo--local-projects { grid-template-columns: 1fr; }
+  .tutorial-demo-local-card { min-height: 110px; padding: 20px; }
+  .tutorial-demo-local-menu { border-left: 0; border-top: 1px solid #d9e5ec; }
   .tutorial-demo--workspace { min-height: 270px; grid-template-columns: 112px minmax(0, 1fr); }
   .tutorial-demo-toolbox { padding: 13px 9px; }
   .tutorial-demo-toolbox span { padding: 7px; font-size: 0.65rem; }
