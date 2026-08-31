@@ -329,7 +329,7 @@ test('blocos decorativos do herói somem em janelas estreitas, pra nunca sobrepo
   assert.match(welcomeCss, /@media \(prefers-reduced-motion: reduce\) \{\s*\.welcome-hero-block \{ animation: none; \}/);
 });
 
-test('tutorial fullscreen tem nove etapas curtas com os controles reais da IDE e a11y', () => {
+test('tutorial fullscreen tem doze etapas curtas com os controles reais da IDE e a11y', () => {
   const overlayRule = balancedBlock(tutorialCss, '.bloquin-tutorial-overlay {');
   const tutorialRule = balancedBlock(tutorialCss, '.bloquin-tutorial {');
   const contentRule = balancedBlock(tutorialCss, '.bloquin-tutorial-content {');
@@ -362,7 +362,7 @@ test('tutorial fullscreen tem nove etapas curtas com os controles reais da IDE e
   assert.match(tutorialSource, /aria-current=\{index === stepIndex \? 'step' : undefined\}/);
   assert.match(tutorialSource, /<main className="bloquin-tutorial-content" aria-live="polite">/);
 
-  assert.equal(steps.length, 9, 'O guia deve manter nove etapas (5 originais + 4 novas).');
+  assert.equal(steps.length, 12, 'O guia deve manter doze etapas (9 anteriores + chat serial, projetos locais e componentes).');
   assert.deepEqual(
     steps.map(({ id, label }) => ({ id, label })),
     [
@@ -370,10 +370,13 @@ test('tutorial fullscreen tem nove etapas curtas com os controles reais da IDE e
       { id: 'placa', label: 'Placa' },
       { id: 'blocos', label: 'Blocos' },
       { id: 'enviar', label: 'Enviar' },
+      { id: 'monitor', label: 'Chat' },
       { id: 'salvar', label: 'Salvar' },
+      { id: 'projetos-locais', label: 'Salvos' },
       { id: 'importar', label: 'Importar' },
       { id: 'meus-projetos', label: 'Projetos' },
       { id: 'documentacao', label: 'Ajuda' },
+      { id: 'componentes', label: 'Peças' },
       { id: 'biblioteca', label: 'Biblioteca' },
     ],
   );
@@ -381,13 +384,17 @@ test('tutorial fullscreen tem nove etapas curtas com os controles reais da IDE e
     steps.every(({ description }) => description.length <= 90),
     'Cada etapa deve explicar uma única ideia em uma frase curta.',
   );
-  for (const controlLabel of ['Novo projeto', 'PREPARAR', 'AGIR', 'Porta USB', 'Enviar', 'Salvar', 'Importar projeto', 'Documentação', 'Biblioteca']) {
+  for (const controlLabel of [
+    'Novo projeto', 'PREPARAR', 'AGIR', 'Porta USB', 'Enviar', 'Salvar', 'Importar projeto', 'Documentação', 'Biblioteca',
+    'Robô conectado', 'Exportar JSON', 'Componentes',
+  ]) {
     assert.match(tutorialSource, new RegExp(controlLabel));
   }
   assert.match(tutorialSource, /Etapa \{stepIndex \+ 1\} de \{visibleSteps\.length\}/);
 
   // Passos exclusivos de quem tem conta (importar/meus-projetos/biblioteca) ficam
   // de fora quando o Tutorial é aberto pela tela inicial — ver WelcomeScreen.tsx.
+  // monitor/projetos-locais/componentes são universais (visíveis sem conta também).
   const studentOnlyIds = new Set(['importar', 'meus-projetos', 'biblioteca']);
   for (const step of steps) {
     assert.equal(

@@ -316,7 +316,12 @@
   gap: 0.38rem;
   width: 100%;
   min-height: 150px;
-  justify-content: flex-end;
+  /* Início do bloco de texto ancorado no topo (logo após a miniatura de
+     altura fixa) em vez de flex-end: com ancoragem pelo rodapé, a altura
+     total do conteúdo — miniatura presente/ausente, nome em 1 ou 2 linhas —
+     empurrava o grupo inteiro para cima por quantidades diferentes, e o
+     título de cada card acabava começando em uma altura diferente. */
+  justify-content: flex-start;
   text-align: left;
   padding: 18px 16px 15px;
   border: 1px solid #dce8ee;
@@ -354,7 +359,37 @@
 .project-card-surface small { color: var(--text-muted); font-weight: 700; }
 .project-card-surface:disabled { opacity: 0.65; cursor: wait; }
 
-.project-card-surface--session { --project-tone: var(--btn-primary-bg); }
+/* Miniatura: mosaico das cores de categoria dos blocos do projeto (ver
+   src/blockly/blockThumbnail.ts) — cada "chip" ecoa o formato de bloquinho
+   já usado nos cantos decorativos dos cards. Altura fixa e pequena para não
+   engordar o card nem competir com nome/placa/data. */
+.project-card-thumb {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  height: 12px;
+  margin-bottom: 2px;
+  overflow: hidden;
+}
+
+.project-card-thumb-chip {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 10px;
+  border-radius: 3px 5px 3px 5px;
+}
+
+.project-card-thumb--empty .project-card-thumb-chip {
+  background: transparent;
+  border: 1.5px dashed color-mix(in srgb, var(--project-tone, var(--primary)) 35%, #cfd8de);
+  opacity: 0.6;
+}
+
+/* Cards de sessão (memória, sem conta) não têm miniatura nem passam por
+   LocalProjectCard — mantém a ancoragem pelo rodapé que já tinham, já que a
+   troca acima é só para alinhar o bloco de texto quando existe miniatura. */
+.project-card-surface--session { --project-tone: var(--btn-primary-bg); justify-content: flex-end; }
 
 .project-card-surface--renaming { cursor: default; }
 
@@ -407,6 +442,11 @@
   background: var(--white);
   box-shadow: var(--shadow-lg);
 }
+
+/* Aplicada via JS (LocalProjectCard mede a viewport antes de pintar) quando
+   o menu não cabe abaixo do gatilho — abre para cima em vez de ser cortado
+   pela borda inferior da janela. */
+.project-card-menu-list--up { top: auto; bottom: 32px; }
 
 .project-card-menu-list button {
   padding: 9px 10px;
@@ -491,7 +531,7 @@
 
 .welcome-secondary-card--neutral {
   --card-visual: #e9f8ff;
-  --card-shape: #9bdcf7;
+  --card-shape: transparent;
   --card-label: #167fb9;
   --card-shadow: #86c9ec;
   background: #fff;
@@ -501,7 +541,7 @@
 
 .welcome-secondary-card--library {
   --card-visual: #fff0f4;
-  --card-shape: #f7b9cb;
+  --card-shape: transparent;
   --card-label: #c82f59;
   --card-shadow: #e691ad;
   background: linear-gradient(155deg, #fff 40%, #fbe1e9 165%);
@@ -511,13 +551,23 @@
 
 .welcome-secondary-card--components {
   --card-visual: #eaf4f8;
-  --card-shape: #add1e4;
+  --card-shape: transparent;
   --card-label: #23638c;
   --card-shadow: #94c1d9;
   background: linear-gradient(155deg, #fff 40%, #dfebf5 165%);
   border-color: #d6e6ee;
 }
 .welcome-secondary-card--components .welcome-secondary-card-icon { background: var(--btn-secondary-bg); }
+
+/* As três variantes agora mostram uma foto/arte real (via style inline no
+   componente) no lugar do fundo liso; as formas decorativas herdadas
+   (::before/::after) somem sozinhas porque usam --card-shape, já zerado
+   acima em cada variante. */
+.welcome-secondary-card-visual {
+  background-size: cover;
+  background-position: center 42%;
+  background-repeat: no-repeat;
+}
 
 .welcome-footer-line {
   margin-top: 32px;
