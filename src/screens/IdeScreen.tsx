@@ -34,7 +34,8 @@ import LZString from 'lz-string';
 import { MAX_OPEN_TABS, useTabs } from '../state/tabsStore';
 import { useSetup } from '../state/setupStore';
 import { createProjectFile } from '../types/project';
-import { exportLocalProjectFile, saveLocalProjectFile } from '../services/localProjectService';
+import { exportLocalProjectFile, isTauriRuntime, saveLocalProjectFile } from '../services/localProjectService';
+import { writeLocalProject } from '../services/localProjectStore';
 
 import { type BoardKey, BOARD_UNSET, BOARDS } from '../blockly/boards';
 import { auditSerializedWorkspace, auditWorkspace } from '../blockly/audit';
@@ -72,7 +73,7 @@ function BoardBadge({ boardKey }: { boardKey: BoardKey }) {
   );
 }
 
-interface IdeScreenProps { role: 'student' | 'teacher' | 'visitor'; userId?: string; readOnly?: boolean; onBack: () => void; projectId?: string; initialWorkspaceData?: Record<string, unknown>; initialBoard?: BoardKey | null; }
+interface IdeScreenProps { role: 'student' | 'teacher' | 'guest'; userId?: string; readOnly?: boolean; onBack: () => void; projectId?: string; initialWorkspaceData?: Record<string, unknown>; initialBoard?: BoardKey | null; }
 type BoardLoadState = 'resolving' | 'selecting' | 'ready' | 'error';
 const TOP_LEVEL_BLOCK_TYPES = new Set(['bloco_setup', 'bloco_loop', 'declarar_variavel_global', 'definir_funcao', 'definir_funcao_retorno']);
 
@@ -82,6 +83,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
   const codeGeneratorRef = useRef<any>(null);
   const codeGenerationFrame = useRef<number | null>(null);
   const workspaceAuditTimer = useRef<number | null>(null);
+  const autosaveTimer = useRef<number | null>(null);
   const { activeTab, updateTab, openInternalPage } = useTabs();
   const navigate = useNavigate();
 
@@ -94,6 +96,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
     navigate('/documentacao', { state: { workspaceTabId: id } });
   };
   const dirtyRef = useRef(activeTab.dirty);
+  const projectNameRef = useRef(activeTab.title || 'Projeto');
   const workspaceLoadFailedRef = useRef(false);
   const setup = useSetup();
 
@@ -275,6 +278,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
 
   useEffect(() => {
     dirtyRef.current = isDirty;
+    projectNameRef.current = projectName;
     updateTab(activeTab.id, { dirty: isDirty, title: projectName || activeTab.title, board });
   }, [activeTab.id, activeTab.title, isDirty, projectName, board, updateTab]);
 
@@ -396,6 +400,32 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
         workspaceAuditTimer.current = null;
         runWorkspaceAudit();
       }, 220);
+
+      // Projeto local (sem conta) grava sozinho em disco — ninguém precisa
+      // lembrar de clicar em Salvar. 1.8s de espera evita gravar a cada
+      // pequeno movimento de bloco.
+      if (!projectId && activeTab.source === 'local-file' && activeTab.filePath && isTauriRuntime()) {
+        const filePath = activeTab.filePath;
+        if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = window.setTimeout(() => {
+          autosaveTimer.current = null;
+          if (!workspace.current) return;
+          const file = createProjectFile({
+            name: projectNameRef.current || 'Meu projeto',
+            targetBoard: board,
+            workspace: Blockly.serialization.workspaces.save(workspace.current) as Record<string, unknown>,
+          });
+          writeLocalProject(filePath, file)
+            .then(() => {
+              dirtyRef.current = false;
+              setIsDirty(false);
+            })
+            .catch(() => {
+              // Falha silenciosa: o botão Salvar continua disponível e o
+              // indicador de alterações não salvas permanece ativo.
+            });
+        }, 1800);
+      }
     });
 
     const ensureRootBlocks = () => {
@@ -455,6 +485,10 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
         window.clearTimeout(workspaceAuditTimer.current);
         workspaceAuditTimer.current = null;
       }
+      if (autosaveTimer.current !== null) {
+        window.clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = null;
+      }
       trackChanges.current = false;
       if (workspace.current) {
         if (!workspaceLoadFailedRef.current) {
@@ -464,6 +498,16 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
             board,
             dirty: dirtyRef.current,
           });
+          // Troca de aba/fechamento não deve esperar o debounce: grava agora
+          // se havia alterações pendentes.
+          if (!projectId && activeTab.source === 'local-file' && activeTab.filePath && dirtyRef.current && isTauriRuntime()) {
+            const file = createProjectFile({
+              name: projectNameRef.current || 'Meu projeto',
+              targetBoard: board,
+              workspace: workspaceData,
+            });
+            void writeLocalProject(activeTab.filePath, file);
+          }
         }
         workspace.current.dispose();
         workspace.current = null;
@@ -837,7 +881,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
   const projectTitle = activeTab.type === 'project'
     ? projectId
       ? readOnly ? `Inspecionando: ${projectName}` : `Meu Projeto: ${projectName}`
-      : `Projeto visitante: ${projectName}`
+      : `Meu projeto: ${projectName}`
     : '';
 
   return (
@@ -864,7 +908,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
                     aria-label="Nome do projeto"
                     value={projectName}
                     onChange={(event) => setProjectName(event.target.value)}
-                    onBlur={() => setProjectName((name) => name.trim() || 'Projeto visitante')}
+                    onBlur={() => setProjectName((name) => name.trim() || 'Meu projeto')}
                     className="ide-project-name-input"
                   />
                 ) : <span>{projectTitle}</span>}

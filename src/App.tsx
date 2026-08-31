@@ -13,10 +13,10 @@ import { useInactivity } from './hooks/useInactivity';
 import { LoginScreen }      from './screens/LoginScreen';
 import { TeacherDashboard } from './screens/TeacherDashboard';
 import { StudentDashboard } from './screens/StudentDashboard';
-import { VisitorDashboard } from './screens/VisitorDashboard';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { LibraryResourceScreen } from './screens/LibraryResourceScreen';
+import { PublicLibraryScreen } from './screens/PublicLibraryScreen';
 import { ComponentsScreen } from './screens/ComponentsScreen';
 import { DocumentationScreen } from './screens/DocumentationScreen';
 import { SagScreen } from './screens/SagScreen';
@@ -42,7 +42,7 @@ import './App.css';
 
 const IdeScreen = lazy(() => import('./screens/IdeScreen').then(({ IdeScreen: screen }) => ({ default: screen })));
 
-export type UserRole = 'guest' | 'student' | 'teacher' | 'visitor';
+export type UserRole = 'guest' | 'student' | 'teacher';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipos do setup
@@ -137,7 +137,9 @@ function InactivityGuard({
 // Rotas do app
 // ─────────────────────────────────────────────────────────────────────────────
 function AppRoutes({ installedVersion }: { installedVersion: string }) {
-  // A entrada padrão apresenta as opções de login e acesso local como visitante.
+  // guest é o estado padrão e permanente de quem não fez login escolar — não
+  // um placeholder transitório. A tela local (WelcomeScreen) já é totalmente
+  // funcional nesse estado.
   const [role, setRole]     = useState<UserRole>('guest');
   const [userId, setUserId] = useState<string | null>(null);
   const [lastLibraryResourceTabId, setLastLibraryResourceTabId] = useState<string | null>(null);
@@ -163,18 +165,13 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
     navigate('/dashboard');
   };
 
-  const handleVisitorEntry = () => {
-    logoutInProgressRef.current = false;
-    // A dashboard visitante começa sem projetos persistidos. A aba de projeto
-    // só é criada quando o usuário escolher criar, importar ou abrir um item.
-    resetTabs();
-    setRole('visitor');
-    setUserId(null);
-    // A sessão visitante é local/offline e nunca herda autenticação anterior.
-    // Guardar a promise também impede que um login iniciado logo depois passe
-    // à frente dessa limpeza assíncrona.
+  // O estado local (guest) nunca herda autenticação anterior. Rodar essa
+  // limpeza uma vez no boot — em vez de só ao clicar em "visitante", como
+  // antes — garante que ela já esteja resolvida se o usuário for para
+  // /login logo em seguida (beforeLogin aguarda essa promise).
+  useEffect(() => {
     logoutCleanupRef.current = signOutLocalSafely();
-  };
+  }, []);
 
   const handleLogout = () => {
     if (logoutInProgressRef.current) return;
@@ -211,8 +208,6 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
   }, [activeTab, lastLibraryResourceTabId, tabs]);
 
   useEffect(() => {
-    if (role === 'guest') return;
-
     const requestedTab = requestedWorkspaceTabId
       ? tabs.find((tab) => tab.id === requestedWorkspaceTabId)
       : undefined;
@@ -225,7 +220,7 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
       return;
     }
 
-    if (location.pathname === '/biblioteca' && (role === 'teacher' || role === 'student')) {
+    if (location.pathname === '/biblioteca' && (role === 'teacher' || role === 'student' || role === 'guest')) {
       const libraryId = openLibrary();
       if (!libraryId) {
         activateTab('dashboard');
@@ -242,7 +237,7 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
           ? 'documentation'
           : null;
     const canOpenRequestedPage = requestedInternalPage === 'components' || requestedInternalPage === 'documentation'
-      ? role === 'teacher' || role === 'student' || role === 'visitor'
+      ? role === 'teacher' || role === 'student' || role === 'guest'
       : requestedInternalPage === 'sag'
         ? role === 'teacher'
         : false;
@@ -373,11 +368,16 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
       onLogout={handleLogout}
     >
       <div className="workspace-shell">
-        <WorkspaceTabs role={role} />
-        <div className={`workspace-viewport${location.pathname.startsWith('/ide') ? ' workspace-viewport--ide' : ''}${location.pathname === '/sag' ? ' workspace-viewport--sag' : ''}${role === 'guest' && (location.pathname === '/' || location.pathname === '/login') ? ' workspace-viewport--entry' : ''}`}>
+        <WorkspaceTabs />
+        <div className={`workspace-viewport${location.pathname.startsWith('/ide') ? ' workspace-viewport--ide' : ''}${location.pathname === '/sag' ? ' workspace-viewport--sag' : ''}${location.pathname === '/login' ? ' workspace-viewport--entry' : ''}`}>
           {(role === 'teacher' || role === 'student') && libraryTabIsOpen && (
             <div className="workspace-keepalive" hidden={location.pathname !== '/biblioteca'}>
               <LibraryScreen userId={userId ?? ''} mode={role} />
+            </div>
+          )}
+          {role === 'guest' && libraryTabIsOpen && (
+            <div className="workspace-keepalive" hidden={location.pathname !== '/biblioteca'}>
+              <PublicLibraryScreen />
             </div>
           )}
           {(role === 'teacher' || role === 'student') && keptLibraryResourceTabId && tabs.some((tab) => tab.id === keptLibraryResourceTabId) && (
@@ -385,12 +385,12 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
               <LibraryResourceScreen key={keptLibraryResourceTabId} tabId={keptLibraryResourceTabId} mode={role as 'teacher' | 'student'} />
             </div>
           )}
-          {(role === 'teacher' || role === 'student' || role === 'visitor') && componentsTabIsOpen && (
+          {(role === 'teacher' || role === 'student' || role === 'guest') && componentsTabIsOpen && (
             <div className="workspace-keepalive" hidden={location.pathname !== '/componentes'}>
               <ComponentsScreen onOpenBlocklyBlock={(block) => handleOpenBlockDocumentation(block.blockType)} />
             </div>
           )}
-          {(role === 'teacher' || role === 'student' || role === 'visitor') && documentationTabIsOpen && (
+          {(role === 'teacher' || role === 'student' || role === 'guest') && documentationTabIsOpen && (
             <div className="workspace-keepalive" hidden={location.pathname !== '/documentacao'}>
               <DocumentationScreen focusBlockType={tabs.find((tab) => tab.type === 'documentation')?.focusBlockType} />
             </div>
@@ -407,8 +407,13 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
             role === 'guest'
               ? (
                 <WelcomeScreen
-                  onEnter={() => navigate('/login')}
-                  onVisitor={handleVisitorEntry}
+                  onLoginEscolar={() => navigate('/login')}
+                  onOpenProject={(tabId) => {
+                    activateTab(tabId);
+                    navigate('/ide', { state: { readOnly: false, workspaceTabId: tabId } });
+                  }}
+                  onOpenComponents={handleOpenComponents}
+                  onOpenLibrary={handleOpenLibrary}
                   version={installedVersion}
                 />
               )
@@ -453,15 +458,6 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
                 onOpenLibrary={handleOpenLibrary}
                 onOpenComponents={handleOpenComponents}
               />
-            ) : role === 'visitor' ? (
-              <VisitorDashboard
-                onExitVisitor={handleLogout}
-                onOpenProject={(tabId) => {
-                  activateTab(tabId);
-                  navigate('/ide', { state: { readOnly: false, workspaceTabId: tabId } });
-                }}
-                onOpenComponents={handleOpenComponents}
-              />
             ) : (
               <Navigate to="/" replace />
             )
@@ -471,7 +467,7 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
         <Route
           path="/biblioteca"
           element={
-            role === 'teacher' || role === 'student'
+            role === 'teacher' || role === 'student' || role === 'guest'
               ? null
               : <Navigate to="/dashboard" replace />
           }
@@ -489,7 +485,7 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
         <Route
           path="/componentes"
           element={
-            role === 'teacher' || role === 'student' || role === 'visitor'
+            role === 'teacher' || role === 'student' || role === 'guest'
               ? null
               : <Navigate to="/dashboard" replace />
           }
@@ -507,7 +503,7 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
         <Route
           path="/documentacao"
           element={
-            role === 'teacher' || role === 'student' || role === 'visitor'
+            role === 'teacher' || role === 'student' || role === 'guest'
               ? null
               : <Navigate to="/dashboard" replace />
           }
@@ -516,9 +512,7 @@ function AppRoutes({ installedVersion }: { installedVersion: string }) {
         <Route
           path="/ide/:projectId?"
           element={
-              role !== 'guest'
-              ? <IdeScreenWrapper role={role} userId={userId ?? undefined} onBack={handleBackToDashboard} />
-              : <Navigate to="/" replace />
+            <IdeScreenWrapper role={role} userId={userId ?? undefined} onBack={handleBackToDashboard} />
           }
         />
           </Routes>
@@ -553,7 +547,7 @@ function IdeScreenWrapper({
   userId,
   onBack,
 }: {
-  role: Exclude<UserRole, 'guest'>;
+  role: UserRole;
   userId?: string;
   onBack: () => void;
 }) {
@@ -581,12 +575,13 @@ function IdeScreenWrapper({
   );
 }
 
-function WorkspaceTabs({ role }: { role: UserRole }) {
+function WorkspaceTabs() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { tabs, activeTabId, activateTab, closeTab } = useTabs();
   const [pendingClose, setPendingClose] = useState<{ id: string; title: string } | null>(null);
 
-  if (role === 'guest') return null;
+  if (location.pathname === '/login') return null;
 
   const handleActivate = (id: string) => {
     activateTab(id);

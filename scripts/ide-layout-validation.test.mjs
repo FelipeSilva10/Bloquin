@@ -32,7 +32,7 @@ function cssRule(selector, occurrence = 0) {
 
 test('shell desconta a barra de abas pelo fluxo flexível, sem repetir a altura do viewport', () => {
   const shellStart = appSource.indexOf('<div className="workspace-shell">');
-  const tabsPosition = appSource.indexOf('<WorkspaceTabs role={role} />', shellStart);
+  const tabsPosition = appSource.indexOf('<WorkspaceTabs />', shellStart);
   const viewportPosition = appSource.indexOf('className={`workspace-viewport', tabsPosition);
 
   assert.ok(shellStart >= 0 && tabsPosition > shellStart && viewportPosition > tabsPosition);

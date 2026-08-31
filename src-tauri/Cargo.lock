@@ -288,7 +288,7 @@ dependencies = [
 
 [[package]]
 name = "bloquin"
-version = "2.3.0"
+version = "2.5.0"
 dependencies = [
  "serde",
  "serde_json",

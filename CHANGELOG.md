@@ -33,6 +33,19 @@ BREAKING CHANGE: apenas Arduino Uno R3+ é suportado a partir desta versão.
 
 <!-- Histórico de versões -->
 
+## [2.5.0] — 31/08/2026
+
+### Novas funcionalidades
+
+- A tela inicial passa a ser um espaço de trabalho local: permite criar, abrir, listar, renomear e excluir projetos salvos no dispositivo, além de importar arquivos JSON.
+- O acesso sem login escolar ganhou Biblioteca pública, Componentes e tutorial, mantendo os projetos locais disponíveis diretamente na IDE.
+- Adicionada a opção de tornar uma turma pública na Biblioteca, com leitura anônima protegida de publicações e anexos publicados.
+- O SAG passa a aceitar múltiplos papéis de painel na mesma identidade, preservando a separação das permissões do Bloquin.
+
+### Qualidade e segurança
+
+- Atualizadas as capacidades Tauri necessárias para persistência local de projetos e incluídas validações para a nova tela inicial e os projetos locais.
+
 ## [2.3.0] — 24/08/2026
 
 ### Novas funcionalidades

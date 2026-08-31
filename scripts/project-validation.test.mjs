@@ -5,6 +5,7 @@ import {
   BLOQUIN_PROJECT_FORMAT,
   BLOQUIN_PROJECT_SCHEMA_VERSION,
   MAX_PROJECT_FILE_BYTES,
+  createProjectFile,
   makeUniqueProjectName,
   parseProjectFileContents,
 } from '../src/types/project.ts';
@@ -46,6 +47,27 @@ test('rejeita propriedades perigosas e arquivos acima do limite', () => {
   const dangerous = `{"format":"bloquin-project","schemaVersion":1,"project":{"name":"X","targetBoard":"uno"},"workspace":{"__proto__":{}}}`;
   assert.throws(() => parseProjectFileContents(dangerous), /propriedade não permitida/i);
   assert.throws(() => parseProjectFileContents('x'.repeat(MAX_PROJECT_FILE_BYTES + 1)), /8 MB/i);
+});
+
+test('createProjectFile inclui updatedAt quando informado, e o parse preserva o campo', () => {
+  const withTimestamp = createProjectFile({
+    name: 'Robô',
+    targetBoard: 'esp32',
+    workspace: { blocks: { languageVersion: 0, blocks: [] } },
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+  assert.equal(withTimestamp.updatedAt, '2026-01-01T00:00:00.000Z');
+  assert.equal(
+    parseProjectFileContents(JSON.stringify(withTimestamp), 'robo.json').updatedAt,
+    '2026-01-01T00:00:00.000Z',
+  );
+
+  const withoutTimestamp = createProjectFile({
+    name: 'Robô',
+    targetBoard: 'esp32',
+    workspace: { blocks: { languageVersion: 0, blocks: [] } },
+  });
+  assert.equal(withoutTimestamp.updatedAt, undefined);
 });
 
 test('gera nomes alternativos sem substituir projetos existentes', () => {

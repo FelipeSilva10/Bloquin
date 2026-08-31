@@ -225,7 +225,7 @@ export function LibraryResourceScreen({ tabId, mode }: { tabId?: string; mode: '
   );
 }
 
-function LibraryPostReader({ post, onOpenAttachment }: { post: LibraryPost; onOpenAttachment: (attachment: LibraryAttachment) => void }) {
+export function LibraryPostReader({ post, onOpenAttachment }: { post: LibraryPost; onOpenAttachment: (attachment: LibraryAttachment) => void }) {
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
   const [externalError, setExternalError] = useState('');
   const content = typeof post.conteudo_json?.html === 'string' ? sanitizeRichText(post.conteudo_json.html) : '';

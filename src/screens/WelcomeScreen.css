@@ -1,181 +1,597 @@
-.welcome-screen {
-  position: absolute;
-  inset: 0;
-  display: grid;
+.welcome-page {
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
-  place-items: center;
+  overflow-y: auto;
   background:
-    radial-gradient(circle at 52% 32%, rgba(84, 224, 255, 0.24), transparent 28rem),
-    linear-gradient(128deg, #5633d7 0%, #4056e7 48%, #087fe9 100%);
-  color: #fff;
+    radial-gradient(circle at 8% 20%, rgba(0, 168, 255, 0.08), transparent 24rem),
+    radial-gradient(circle at 92% 76%, rgba(76, 209, 55, 0.08), transparent 25rem),
+    var(--background);
 }
 
-.welcome-screen::before {
+/* Mesmo gradiente + textura de pontos da tela de login — a tela inicial é
+   tão "porta de entrada" do Bloquin quanto ela. Mas aqui é uma faixa
+   compacta de uma linha só: quem abre o app quer ver os projetos, não rolar
+   a tela pra passar por um herói grande. */
+.welcome-hero {
+  position: relative;
+  /* Sem padding embaixo: a fileira arco-íris precisa encostar na borda
+     inferior do herói pra ser a própria linha que separa o azul do branco,
+     não flutuar dentro da área azul com uma sobra de cor abaixo dela. */
+  padding: 18px clamp(20px, 5vw, 64px) 0;
+  background: linear-gradient(105deg, #667eea 12%, #764ba2 40%, var(--primary) 100%);
+  color: #fff;
+  overflow: hidden;
+}
+
+.welcome-hero::before {
+  content: '';
   position: absolute;
   inset: 0;
-  z-index: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
   pointer-events: none;
-  content: '';
-  opacity: 0.18;
-  background-image:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.15) 1px, transparent 1px),
-    linear-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px);
-  background-size: 32px 32px;
-  mask-image: radial-gradient(ellipse at center, #000 0%, transparent 72%);
 }
 
-.welcome-content {
+/* Blocos flutuantes discretos — a mesma forma de bloco/puzzle da linguagem
+   de programação do Bloquin, só como textura no canto, sem competir com o
+   conteúdo agora que a faixa é baixa. */
+.welcome-hero-decor {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.welcome-hero-block {
+  position: absolute;
+  border-radius: 12px 18px 12px 18px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 12px 30px rgba(27, 19, 92, 0.18);
+  animation: welcome-block-float 6.5s ease-in-out infinite;
+}
+
+.welcome-hero-block--1 { width: 46px; height: 46px; right: 31%; top: -12px; background: var(--secondary); opacity: 0.64; transform: rotate(-14deg); animation-delay: 0s; }
+.welcome-hero-block--2 { width: 32px; height: 32px; right: 22%; top: 30px; background: #fff; opacity: 0.18; transform: rotate(12deg); animation-delay: 1.3s; }
+.welcome-hero-block--3 { width: 28px; height: 28px; right: 39%; top: 38px; background: var(--danger); opacity: 0.56; transform: rotate(-20deg); animation-delay: 2s; }
+
+@keyframes welcome-block-float {
+  0%, 100% { margin-top: 0; }
+  50% { margin-top: -8px; }
+}
+
+@media (max-width: 1300px) {
+  .welcome-hero-decor { display: none; }
+}
+
+.welcome-hero-inner {
   position: relative;
   z-index: 1;
-  display: grid;
-  width: min(540px, calc(100% - 32px));
-  max-height: 100%;
-  padding: clamp(18px, 5vh, 56px) 0 clamp(32px, 6vh, 70px);
-  justify-items: center;
-  align-content: center;
-  row-gap: clamp(24px, 5vh, 48px);
-}
-
-.welcome-logo-frame {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-bottom: 18px;
   display: flex;
-  width: min(100%, clamp(260px, 50vw, 500px));
   align-items: center;
-  justify-content: center;
-  filter: drop-shadow(0 12px 18px rgba(17, 23, 82, 0.28));
-  animation: welcome-logo-in 520ms cubic-bezier(0.2, 1, 0.35, 1) both;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  animation: welcome-hero-in 480ms cubic-bezier(0.2, 1, 0.35, 1) both;
 }
 
-.welcome-logo-image {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: contain;
-  user-select: none;
-}
-
-@keyframes welcome-logo-in {
-  from { opacity: 0; transform: translateY(12px); }
+@keyframes welcome-hero-in {
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.welcome-actions {
-  display: grid;
-  width: min(100%, 500px);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(10px, 2vw, 18px);
+.welcome-hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
-.welcome-button {
+.welcome-hero-mark {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  flex: none;
+  filter: drop-shadow(0 4px 10px rgba(20, 20, 60, 0.32));
+}
+
+.welcome-hero-brand h1 {
+  margin: 0;
+  font-size: clamp(1.7rem, 3.2vw, 2.15rem);
+  font-weight: 900;
+  letter-spacing: -0.045em;
+  line-height: 0.9;
+}
+
+.welcome-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.welcome-hero-create {
   display: inline-flex;
-  min-width: 0;
-  min-height: clamp(48px, 7vh, 58px);
-  padding: 10px clamp(14px, 2.5vw, 22px);
   align-items: center;
   justify-content: center;
   gap: 10px;
+  height: 50px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 14px;
-  font-size: clamp(0.8rem, 1.6vw, 0.98rem);
-  font-weight: 900;
-  letter-spacing: 0.01em;
-  transition: transform 150ms ease, background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-}
-
-.welcome-button svg {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  stroke-width: 2.2;
-}
-
-.welcome-button--enter {
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  padding: 0 22px;
   background: #fff;
   color: #4056e7;
-  box-shadow: 0 5px 0 rgba(40, 41, 151, 0.38), 0 10px 20px rgba(19, 28, 111, 0.16);
+  font-size: 0.96rem;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 5px 0 rgba(40, 41, 151, 0.34), 0 10px 20px rgba(19, 28, 111, 0.2);
+  transition: transform 150ms ease, box-shadow 150ms ease;
 }
 
-.welcome-button--visitor {
-  border: 2px solid rgba(255, 255, 255, 0.52);
-  background: rgba(21, 104, 225, 0.18);
+.welcome-hero-create:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 7px 0 rgba(40, 41, 151, 0.28), 0 14px 26px rgba(19, 28, 111, 0.22); }
+.welcome-hero-create svg { width: 20px; height: 20px; stroke-width: 2.5; }
+.welcome-hero-create:disabled { opacity: 0.75; }
+
+.welcome-hero-login {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: none;
+  height: 50px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   color: #fff;
-  box-shadow: 0 5px 0 rgba(25, 51, 158, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  -webkit-backdrop-filter: blur(7px);
-  backdrop-filter: blur(7px);
-}
-
-.welcome-button:hover { transform: translateY(-2px); }
-.welcome-button--enter:hover { background: #f8f7ff; }
-.welcome-button--visitor:hover { border-color: rgba(255, 255, 255, 0.78); background: rgba(28, 119, 239, 0.38); }
-.welcome-button:active { transform: translateY(4px); box-shadow: none; }
-.welcome-button:focus-visible { outline-color: rgba(255, 255, 255, 0.95); outline-offset: 4px; }
-
-.welcome-version {
-  position: absolute;
-  bottom: clamp(10px, 2vh, 18px);
-  left: clamp(12px, 2vw, 20px);
-  z-index: 1;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: clamp(0.64rem, 1.2vw, 0.72rem);
+  padding: 0 18px;
+  border-radius: var(--control-radius);
   font-weight: 800;
-  letter-spacing: 0.03em;
-  text-shadow: 0 1px 4px rgba(14, 21, 79, 0.4);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  box-shadow: 0 4px 0 rgba(15, 20, 70, 0.28);
+  transition: background 150ms ease, transform 150ms ease;
 }
 
-.welcome-creator {
+.welcome-hero-login:hover { background: rgba(255, 255, 255, 0.24); transform: translateY(-1px); }
+.welcome-hero-login svg { width: 16px; height: 16px; stroke-width: 2.3; }
+
+/*
+ * Costura entre o herói e o painel:
+ * a própria arte/colorização está no PNG otimizado.
+ * O CSS apenas posiciona, escala e anima.
+ */
+
+.welcome-hero-block-train-rail {
+  position: relative;
+  z-index: 1;
+  height: 15px;
+  overflow: hidden;
+
+  margin-left: calc(-1 * clamp(20px, 5vw, 64px));
+  margin-right: calc(-1 * clamp(20px, 5vw, 64px));
+}
+
+.welcome-hero-block-train-rail::before {
   position: absolute;
-  right: clamp(12px, 2vw, 20px);
-  bottom: clamp(10px, 2vh, 18px);
+  inset: 0;
+  content: '';
+
+  background-image: url('../assets/block-rail.png');
+  background-repeat: repeat-x;
+  background-position: 0 0;
+
+  /* mantém a proporção original do PNG */
+  background-size: auto 15px;
+
+  animation: welcome-block-carving 128s linear infinite;
+}
+
+@keyframes welcome-block-carving {
+  from {
+    background-position-x: 0;
+  }
+
+  to {
+    background-position-x: -4096px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-hero-block { animation: none; }
+  .welcome-hero-block-train-rail::before { animation: none; }
+  .welcome-hero-inner { animation: none; }
+}
+
+.welcome-body {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 30px clamp(20px, 5vw, 64px) 56px;
+}
+
+.welcome-section { margin-top: 34px; }
+.welcome-section:first-child { margin-top: 0; }
+
+.welcome-section-label {
+  display: block;
+  margin: 0 0 5px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.welcome-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.welcome-project-count {
+  flex: none;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #e2f5ff;
+  color: #1679b1;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.welcome-projects-grid { margin: 0; }
+
+.welcome-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 22px;
+  border: 1px solid #cfe6f2;
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(236, 249, 255, 0.92)),
+    var(--white);
+  color: #637d8d;
+  box-shadow: 0 10px 28px rgba(35, 99, 140, 0.08);
+}
+
+.welcome-empty-state-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  flex: none;
+  place-items: center;
+  border-radius: 15px;
+  background: var(--btn-primary-bg);
+  box-shadow: 0 5px 0 var(--btn-primary-shadow);
+}
+
+.welcome-empty-state-icon svg { width: 23px; height: 23px; stroke-width: 2.3; color: #fff; }
+.welcome-empty-state > strong { flex: 1; color: var(--dark); font-size: 0.98rem; font-weight: 900; }
+.welcome-empty-state button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  padding: 9px 13px;
+  border: none;
+  border-radius: 12px;
+  background: var(--primary);
+  box-shadow: 0 4px 0 #0785ca;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.welcome-empty-state button svg { width: 16px; height: 16px; stroke-width: 2.7; }
+
+.welcome-corrupted-notice {
+  margin-top: 12px;
+  color: var(--warning);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+/* Cartão de projeto: a superfície clicável abre o projeto; o menu de mais
+   ações (renomear/excluir) fica fora dela, como um irmão — dois controles
+   interativos nunca podem ficar aninhados. */
+.project-card-wrap {
+  position: relative;
+}
+
+.welcome-projects-grid > .project-card-wrap:nth-child(4n + 1) { --project-tone: #00a8ff; }
+.welcome-projects-grid > .project-card-wrap:nth-child(4n + 2) { --project-tone: #ef9f4b; }
+.welcome-projects-grid > .project-card-wrap:nth-child(4n + 3) { --project-tone: #e73561; }
+.welcome-projects-grid > .project-card-wrap:nth-child(4n + 4) { --project-tone: #4cd137; }
+
+.project-card-surface {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.38rem;
+  width: 100%;
+  min-height: 150px;
+  justify-content: flex-end;
+  text-align: left;
+  padding: 18px 16px 15px;
+  border: 1px solid #dce8ee;
+  border-radius: 18px;
+  background: linear-gradient(140deg, #fff 45%, color-mix(in srgb, var(--project-tone, var(--primary)) 8%, #fff));
+  color: var(--dark);
+  box-shadow: 0 3px 0 rgba(71, 109, 133, 0.08), 0 10px 20px rgba(47, 53, 66, 0.06);
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.project-card-surface::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  background: var(--project-tone, var(--primary));
+  content: '';
+}
+
+.project-card-surface::after {
+  position: absolute;
+  top: 15px;
+  right: 13px;
+  width: 30px;
+  height: 30px;
+  border: 2px solid color-mix(in srgb, var(--project-tone, var(--primary)) 38%, transparent);
+  border-radius: 9px 13px 9px 13px;
+  content: '';
+  opacity: 0.75;
+}
+
+.project-card-surface:hover { border-color: color-mix(in srgb, var(--project-tone, var(--primary)) 45%, #dce8ee); transform: translateY(-3px); box-shadow: 0 4px 0 color-mix(in srgb, var(--project-tone, var(--primary)) 23%, transparent), 0 16px 26px rgba(47, 53, 66, 0.1); }
+.project-card-surface strong { max-width: calc(100% - 30px); font-size: 1.05rem; font-weight: 900; line-height: 1.15; }
+.project-card-surface small { color: var(--text-muted); font-weight: 700; }
+.project-card-surface:disabled { opacity: 0.65; cursor: wait; }
+
+.project-card-surface--session { --project-tone: var(--btn-primary-bg); }
+
+.project-card-surface--renaming { cursor: default; }
+
+.project-card-rename-input {
+  width: 100%;
+  padding: 4px 8px;
+  margin: -4px -8px 2px;
+  border: 2px solid var(--primary);
+  border-radius: 8px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--dark);
+  background: var(--surface);
+}
+
+.project-card-menu {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.project-card-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.project-card-menu-trigger:hover { background: var(--color-surface-2); color: var(--dark); }
+.project-card-menu-trigger svg { width: 18px; height: 18px; stroke-width: 2.2; }
+
+.project-card-menu-list {
+  position: absolute;
+  top: 32px;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--white);
+  box-shadow: var(--shadow-lg);
+}
+
+.project-card-menu-list button {
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  box-shadow: none;
+  color: var(--dark);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.project-card-menu-list button:hover { background: var(--color-surface-2); }
+.project-card-menu-danger { color: var(--danger) !important; }
+
+/* Ações secundárias: mesmo nível de importância entre si, cada uma com um
+   selo de ícone colorido e sólido — a mesma linguagem dos badges de placa da
+   IDE — em vez de só uma borda ou um gradiente sutil demais pra ler como
+   identidade própria. */
+.welcome-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.welcome-secondary-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 174px;
+  padding: 19px;
+  border: 1px solid transparent;
+  border-radius: 21px;
+  text-align: left;
+  box-shadow: 0 3px 0 rgba(71, 109, 133, 0.08), 0 13px 24px rgba(47, 53, 66, 0.07);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.welcome-secondary-card:hover { transform: translateY(-4px); box-shadow: 0 5px 0 var(--card-shadow), 0 18px 30px rgba(47, 53, 66, 0.12); }
+
+.welcome-secondary-card-visual {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 83px;
+  align-items: center;
+  padding: 14px;
+  overflow: hidden;
+  border-radius: 15px;
+  background: var(--card-visual);
+}
+
+.welcome-secondary-card-visual::before,
+.welcome-secondary-card-visual::after {
+  position: absolute;
+  border-radius: 11px 15px 11px 15px;
+  content: '';
+  opacity: 0.9;
+}
+
+.welcome-secondary-card-visual::before { width: 38px; height: 38px; right: 28px; bottom: -16px; background: var(--card-shape); transform: rotate(17deg); }
+.welcome-secondary-card-visual::after { width: 21px; height: 21px; right: 14px; top: 14px; border: 2px solid var(--card-shape); background: transparent; transform: rotate(-14deg); }
+
+.welcome-secondary-card-icon {
+  position: relative;
   z-index: 1;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: clamp(0.64rem, 1.2vw, 0.72rem);
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  text-shadow: 0 1px 4px rgba(14, 21, 79, 0.4);
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  box-shadow: 0 6px 0 var(--card-shadow), 0 10px 16px rgba(20, 20, 60, 0.1);
 }
 
-.welcome-creator a {
+.welcome-secondary-card-icon svg { width: 23px; height: 23px; stroke-width: 2.4; color: #fff; }
+
+.welcome-secondary-card-title { margin-top: 14px; color: var(--dark); font-size: 1.04rem; font-weight: 950; line-height: 1.12; }
+
+.welcome-secondary-card--neutral {
+  --card-visual: #e9f8ff;
+  --card-shape: #9bdcf7;
+  --card-label: #167fb9;
+  --card-shadow: #86c9ec;
+  background: #fff;
+  border-color: #cfe7f3;
+}
+.welcome-secondary-card--neutral .welcome-secondary-card-icon { background: var(--primary); }
+
+.welcome-secondary-card--library {
+  --card-visual: #fff0f4;
+  --card-shape: #f7b9cb;
+  --card-label: #c82f59;
+  --card-shadow: #e691ad;
+  background: linear-gradient(155deg, #fff 40%, #fbe1e9 165%);
+  border-color: #f3d4de;
+}
+.welcome-secondary-card--library .welcome-secondary-card-icon { background: var(--btn-outline-bg); }
+
+.welcome-secondary-card--components {
+  --card-visual: #eaf4f8;
+  --card-shape: #add1e4;
+  --card-label: #23638c;
+  --card-shadow: #94c1d9;
+  background: linear-gradient(155deg, #fff 40%, #dfebf5 165%);
+  border-color: #d6e6ee;
+}
+.welcome-secondary-card--components .welcome-secondary-card-icon { background: var(--btn-secondary-bg); }
+
+.welcome-footer-line {
+  margin-top: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.welcome-footer-line a {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #fff;
-  text-decoration-color: rgba(255, 255, 255, 0.58);
+  color: var(--text-muted);
+  text-decoration-color: var(--border);
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
   transition: color 150ms ease, text-decoration-color 150ms ease;
 }
 
-.welcome-creator a:hover { color: #dff7ff; text-decoration-color: currentColor; }
-.welcome-creator a:focus-visible { outline: 2px solid #fff; outline-offset: 4px; border-radius: 3px; }
-.welcome-creator svg { width: 12px; height: 12px; stroke-width: 2.4; }
+.welcome-footer-line a:hover { color: var(--primary); text-decoration-color: currentColor; }
+.welcome-footer-line a:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 3px; }
+.welcome-footer-line svg { width: 12px; height: 12px; stroke-width: 2.4; }
 
-@media (max-width: 480px) {
-  .welcome-content {
-    width: calc(100% - 24px);
-    row-gap: clamp(22px, 5vh, 34px);
-  }
-
-  .welcome-actions { grid-template-columns: 1fr; }
-  .welcome-button { padding-inline: 16px; }
-  .welcome-creator { bottom: 35px; font-size: 0.62rem; }
+/* Tutorial é útil sobretudo no primeiro acesso — vira um botão flutuante
+   discreto no canto, fora do fluxo principal, em vez de disputar espaço com
+   Biblioteca/Componentes ou ficar solto entre as seções. */
+.welcome-tutorial-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--dark);
+  color: #fff;
+  box-shadow: var(--shadow-lg);
+  transition: transform 150ms ease;
 }
 
-@media (max-height: 560px) {
-  .welcome-content {
-    padding: 14px 0 28px;
-    row-gap: 18px;
-  }
+.welcome-tutorial-fab:hover { transform: translateY(-2px) scale(1.04); }
+.welcome-tutorial-fab svg { width: 22px; height: 22px; stroke-width: 2.2; }
 
-  .welcome-logo-frame { width: clamp(220px, 42vw, 380px); }
-  .welcome-button { min-height: 44px; }
-  .welcome-creator { bottom: 33px; }
+@media (max-width: 640px) {
+  .welcome-body { padding: 24px 18px 48px; }
+  .welcome-secondary-grid { grid-template-columns: 1fr; }
+  .welcome-secondary-card { min-height: 0; }
+  .welcome-secondary-card-visual { height: 74px; }
+  .welcome-hero { padding-inline: 18px; }
+  .welcome-hero-inner { justify-content: center; text-align: center; }
+  .welcome-hero-brand { width: 100%; justify-content: center; }
+  .welcome-hero-actions { width: 100%; justify-content: center; }
+  .welcome-section-heading { align-items: start; }
+  .welcome-empty-state { align-items: flex-start; flex-wrap: wrap; }
+  .welcome-empty-state > strong { flex: 1 1 190px; }
+  .welcome-empty-state button { width: 100%; justify-content: center; margin-left: 0; }
+  .welcome-tutorial-fab { right: 16px; bottom: 16px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .welcome-logo-frame { animation: none; }
-  .welcome-button { transition-duration: 0.01ms; }
+@media (max-width: 430px) {
+  .welcome-hero-actions { gap: 8px; }
+  .welcome-hero-create { padding-inline: 14px; font-size: 0.85rem; }
+  .welcome-hero-login { padding-inline: 12px; font-size: 0.78rem; }
+  .welcome-section-heading { display: block; }
+  .welcome-project-count { display: inline-block; margin-top: 8px; }
+  .project-card-surface { min-height: 142px; }
 }

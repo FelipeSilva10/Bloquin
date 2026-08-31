@@ -17,6 +17,8 @@ export interface BloquinProjectFile {
     targetBoard: BoardKey | null;
   };
   workspace: Record<string, unknown>;
+  /** Carimbo ISO da última escrita local. Ausente em arquivos legados ou exportados. */
+  updatedAt?: string;
 }
 
 export function createProjectFile(input: {
@@ -24,6 +26,7 @@ export function createProjectFile(input: {
   targetBoard: BoardKey | null;
   workspace: Record<string, unknown>;
   description?: string;
+  updatedAt?: string;
 }): BloquinProjectFile {
   return {
     format: BLOQUIN_PROJECT_FORMAT,
@@ -34,6 +37,7 @@ export function createProjectFile(input: {
       targetBoard: input.targetBoard,
     },
     workspace: input.workspace,
+    updatedAt: input.updatedAt,
   };
 }
 
