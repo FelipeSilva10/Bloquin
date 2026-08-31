@@ -33,9 +33,9 @@ import logoSimples from '../assets/LogoSimples.png';
 import LZString from 'lz-string';
 import { MAX_OPEN_TABS, useTabs } from '../state/tabsStore';
 import { useSetup } from '../state/setupStore';
-import { createProjectFile } from '../types/project';
+import { createProjectFile, projectFileSlug } from '../types/project';
 import { exportLocalProjectFile, isTauriRuntime, saveLocalProjectFile } from '../services/localProjectService';
-import { writeLocalProject } from '../services/localProjectStore';
+import { persistLocalProject, writeLocalProject } from '../services/localProjectStore';
 
 import { type BoardKey, BOARD_UNSET, BOARDS } from '../blockly/boards';
 import { auditSerializedWorkspace, auditWorkspace } from '../blockly/audit';
@@ -97,6 +97,12 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
   };
   const dirtyRef = useRef(activeTab.dirty);
   const projectNameRef = useRef(activeTab.title || 'Projeto');
+  // Espelha activeTab.filePath para o listener de autosave/cleanup abaixo:
+  // esse listener é registrado uma vez por aba (efeito não depende de
+  // filePath) e salvar pela primeira vez um projeto importado troca o
+  // caminho de arquivo da aba; sem este ref, o autosave continuaria
+  // gravando no arquivo externo antigo em vez do projeto recém-persistido.
+  const filePathRef = useRef(activeTab.filePath);
   const workspaceLoadFailedRef = useRef(false);
   const setup = useSetup();
 
@@ -282,6 +288,10 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
     updateTab(activeTab.id, { dirty: isDirty, title: projectName || activeTab.title, board });
   }, [activeTab.id, activeTab.title, isDirty, projectName, board, updateTab]);
 
+  useEffect(() => {
+    filePathRef.current = activeTab.filePath;
+  }, [activeTab.filePath]);
+
   const handleBoardSelected = async (selected: BoardKey) => {
     try {
       const { syncBoardPins } = await import('../blockly/blocks');
@@ -404,12 +414,12 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
       // Projeto local (sem conta) grava sozinho em disco — ninguém precisa
       // lembrar de clicar em Salvar. 1.8s de espera evita gravar a cada
       // pequeno movimento de bloco.
-      if (!projectId && activeTab.source === 'local-file' && activeTab.filePath && isTauriRuntime()) {
-        const filePath = activeTab.filePath;
+      if (!projectId && activeTab.source === 'local-file' && filePathRef.current && isTauriRuntime()) {
         if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current);
         autosaveTimer.current = window.setTimeout(() => {
           autosaveTimer.current = null;
-          if (!workspace.current) return;
+          const filePath = filePathRef.current;
+          if (!workspace.current || !filePath) return;
           const file = createProjectFile({
             name: projectNameRef.current || 'Meu projeto',
             targetBoard: board,
@@ -500,13 +510,13 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
           });
           // Troca de aba/fechamento não deve esperar o debounce: grava agora
           // se havia alterações pendentes.
-          if (!projectId && activeTab.source === 'local-file' && activeTab.filePath && dirtyRef.current && isTauriRuntime()) {
+          if (!projectId && activeTab.source === 'local-file' && filePathRef.current && dirtyRef.current && isTauriRuntime()) {
             const file = createProjectFile({
               name: projectNameRef.current || 'Meu projeto',
               targetBoard: board,
               workspace: workspaceData,
             });
-            void writeLocalProject(activeTab.filePath, file);
+            void writeLocalProject(filePathRef.current, file);
           }
         }
         workspace.current.dispose();
@@ -651,12 +661,24 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
         targetBoard: board,
         workspace: workspaceData,
       });
-      const json = JSON.stringify(file, null, 2);
-      const safeName = `${(projectName || 'projeto').replace(/[^\p{L}\p{N}_-]+/gu, '-').toLowerCase()}.json`;
 
       setIsSaving(true);
       try {
-        const filePath = await saveLocalProjectFile(json, safeName, activeTab.filePath, saveAs);
+        // "Salvar" (não "Salvar como") em um projeto local grava direto na
+        // pasta gerenciada de projetos, sem diálogo do sistema: se o
+        // arquivo ainda não é um projeto persistido — por exemplo, aberto
+        // via "Abrir arquivo JSON" —, ele passa a ser um agora, reutilizando
+        // o mesmo mecanismo de "Criar novo projeto" (mesma identidade
+        // estável nas próximas gravações). "Salvar como" continua abrindo o
+        // diálogo normalmente, sem se misturar a esse fluxo.
+        const filePath = !saveAs && isTauriRuntime()
+          ? await persistLocalProject(activeTab.filePath, file)
+          : await saveLocalProjectFile(
+            JSON.stringify(file, null, 2),
+            projectFileSlug(projectName || 'projeto'),
+            activeTab.filePath,
+            saveAs,
+          );
         if (!filePath) return false;
         updateTab(activeTab.id, {
           workspaceData,
@@ -732,7 +754,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
       targetBoard: board,
       workspace: Blockly.serialization.workspaces.save(workspace.current) as Record<string, unknown>,
     });
-    const safeName = `${(projectName || 'projeto').replace(/[^\p{L}\p{N}_-]+/gu, '-').toLowerCase()}.json`;
+    const safeName = projectFileSlug(projectName || 'projeto');
 
     setIsExporting(true);
     try {

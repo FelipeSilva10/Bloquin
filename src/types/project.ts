@@ -84,6 +84,11 @@ export function getProjectFallbackName(fileName?: string): string {
   return cleanProjectName(baseName, 'Projeto importado');
 }
 
+/** Nome de arquivo seguro (slug) para exportar/baixar um projeto pelo nome. */
+export function projectFileSlug(name: string): string {
+  return `${(name || 'projeto').replace(/[^\p{L}\p{N}_-]+/gu, '-').toLowerCase()}.json`;
+}
+
 export function parseProjectFile(value: unknown, options: ParseProjectFileOptions = {}): BloquinProjectFile {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('O arquivo não contém um objeto JSON válido.');
@@ -141,16 +146,16 @@ export function parseProjectFileContents(contents: string, fileName?: string): B
   return parseProjectFile(value, { fallbackName: getProjectFallbackName(fileName) });
 }
 
-export function makeUniqueProjectName(name: string, existingNames: Iterable<string>): string {
+export function makeUniqueProjectName(name: string, existingNames: Iterable<string>, label = 'importado'): string {
   const occupied = new Set(Array.from(existingNames, (item) => item.trim().toLocaleLowerCase('pt-BR')));
   if (!occupied.has(name.toLocaleLowerCase('pt-BR'))) return name;
 
-  const suffix = ' (importado)';
+  const suffix = ` (${label})`;
   const base = name.slice(0, 80 - suffix.length).trim();
   let candidate = `${base}${suffix}`;
   let index = 2;
   while (occupied.has(candidate.toLocaleLowerCase('pt-BR'))) {
-    const numberedSuffix = ` (importado ${index})`;
+    const numberedSuffix = ` (${label} ${index})`;
     candidate = `${name.slice(0, 80 - numberedSuffix.length).trim()}${numberedSuffix}`;
     index += 1;
   }
