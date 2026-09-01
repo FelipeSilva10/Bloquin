@@ -73,17 +73,17 @@ export async function runBlockAudit() {
   initGenerators();
 
   const customTypes = Object.keys(Blockly.Blocks);
-  assert(customTypes.length === 104, `Esperava 104 blocos; encontrei ${customTypes.length}.`);
+  assert(customTypes.length === 137, `Esperava 137 blocos; encontrei ${customTypes.length}.`);
 
   const toolboxTypes = toolboxBlockTypes();
-  assert(new Set(toolboxTypes).size === 100, 'A toolbox deve expor 100 blocos sem duplicatas.');
+  assert(new Set(toolboxTypes).size === 133, 'A toolbox deve expor 133 blocos sem duplicatas.');
   assert(
     !toolboxTypes.includes('util_map_float') && !toolboxTypes.includes('util_fabsf'),
     'Aliases decimais legados devem continuar definidos, mas não duplicar opções na toolbox.',
   );
   assert(
     toolboxConfig.contents.map((category) => category.name).join('|')
-      === 'Lógica|Controle|Matemática|Variáveis|Funções|Tempo|Entradas e Saídas|Sensor de Distância|MPU6050|Servo|Buzzer|Motor DC|Comunicação|ESP-NOW|Wi-Fi|Bluetooth',
+      === 'Lógica|Controle|Matemática|Variáveis|Listas|Armazenamento|Funções|Tempo|Entradas e Saídas|Sensor de Distância|Sensor de Temperatura e Umidade|Receptor Infravermelho|MPU6050|Servo|Buzzer|Display LCD|LED Endereçável|Motor DC|Texto|Serial|ESP-NOW|Wi-Fi|Bluetooth',
     'A ordem da toolbox deve priorizar fundamentos antes de hardware e comunicação.',
   );
   for (const type of toolboxTypes) {
@@ -758,8 +758,8 @@ export async function runBlockAudit() {
   const fixtureNames = Object.keys(createCompilationFixtures());
   assert(
     fixtureNames.join('|')
-      === 'uno-fundamentals|uno-hardware|nano-io|esp32-io|esp32-transmitter|esp32-receiver'
-        + '|esp32-generic-transmitter|esp32-generic-receiver|esp32-wifi|esp32-bluetooth',
+      === 'uno-fundamentals|uno-hardware|uno-texto-serial|uno-lcd-dht|uno-led-ir|uno-listas-armazenamento|nano-io|esp32-io|esp32-transmitter|esp32-receiver'
+        + '|esp32-generic-transmitter|esp32-generic-receiver|esp32-wifi|esp32-http|esp32-bluetooth',
     'A matriz de compilação representativa está incompleta.',
   );
 
@@ -957,6 +957,317 @@ export function createCompilationFixtures(): Record<string, CompilationFixture> 
   ]);
   fixtures['uno-hardware'] = finishFixture('uno-hardware', unoHardware, 'uno');
 
+  // Fase 1 da auditoria de blocos: variável de texto, comparar/concatenar/
+  // medir/conter texto, conversão número<->texto, leitura de Serial e
+  // detecção de borda — tudo isolado no AVR (avr-gcc é mais estrito que o
+  // toolchain do ESP32 para overloads de String, então é o teste mais forte).
+  syncBoardPins('uno');
+  const unoTexto = new Blockly.Workspace();
+  const unoTextoRoots = makeRoots(unoTexto);
+
+  const comandoDecl = unoTexto.newBlock('declarar_variavel_global');
+  comandoDecl.setFieldValue('string', 'TIPO');
+  comandoDecl.setFieldValue('comando', 'NOME');
+  connectValue(comandoDecl, 'VALOR', unoTexto.newBlock('texto_fixo'));
+
+  const ledPin = unoTexto.newBlock('configurar_pino');
+  ledPin.setFieldValue('13', 'PIN');
+  ledPin.setFieldValue('OUTPUT', 'MODE');
+  const buttonPin = unoTexto.newBlock('configurar_pino');
+  buttonPin.setFieldValue('2', 'PIN');
+  buttonPin.setFieldValue('INPUT_PULLUP', 'MODE');
+  connectChain(unoTextoRoots.setup, 'DO', [ledPin, buttonPin]);
+
+  const serialCheck = unoTexto.newBlock('se_entao');
+  connectValue(serialCheck, 'CONDICAO', unoTexto.newBlock('serial_disponivel'));
+  const comandoAssign = unoTexto.newBlock('atribuir_variavel');
+  comandoAssign.setFieldValue('comando', 'NOME');
+  connectValue(comandoAssign, 'VALOR', unoTexto.newBlock('serial_ler_texto'));
+  connectStatement(serialCheck, 'ENTAO', comandoAssign);
+
+  const comandoIsLigar = unoTexto.newBlock('se_entao');
+  const comparar = unoTexto.newBlock('comparar_texto');
+  comparar.setFieldValue('==', 'OP');
+  const comandoReadForCompare = unoTexto.newBlock('ler_variavel');
+  comandoReadForCompare.setFieldValue('comando', 'NOME');
+  connectValue(comparar, 'A', comandoReadForCompare);
+  const ligarTexto = unoTexto.newBlock('texto_fixo');
+  ligarTexto.setFieldValue('ligar', 'TEXT');
+  connectValue(comparar, 'B', ligarTexto);
+  connectValue(comandoIsLigar, 'CONDICAO', comparar);
+  const acender = unoTexto.newBlock('escrever_pino');
+  acender.setFieldValue('13', 'PIN');
+  acender.setFieldValue('HIGH', 'STATE');
+  connectStatement(comandoIsLigar, 'ENTAO', acender);
+
+  const mensagem = unoTexto.newBlock('escrever_serial_valor');
+  const concat = unoTexto.newBlock('concatenar_texto');
+  const prefixText = unoTexto.newBlock('texto_fixo');
+  prefixText.setFieldValue('Comando: ', 'TEXT');
+  connectValue(concat, 'A', prefixText);
+  const comandoReadForConcat = unoTexto.newBlock('ler_variavel');
+  comandoReadForConcat.setFieldValue('comando', 'NOME');
+  connectValue(concat, 'B', comandoReadForConcat);
+  connectValue(mensagem, 'VALOR', concat);
+
+  const tamanhoMsg = unoTexto.newBlock('escrever_serial_valor');
+  const tamanho = unoTexto.newBlock('comprimento_texto');
+  const comandoReadForLength = unoTexto.newBlock('ler_variavel');
+  comandoReadForLength.setFieldValue('comando', 'NOME');
+  connectValue(tamanho, 'VALOR', comandoReadForLength);
+  connectValue(tamanhoMsg, 'VALOR', tamanho);
+
+  const contemMsg = unoTexto.newBlock('escrever_serial_valor');
+  const contem = unoTexto.newBlock('texto_contem');
+  const comandoReadForContains = unoTexto.newBlock('ler_variavel');
+  comandoReadForContains.setFieldValue('comando', 'NOME');
+  connectValue(contem, 'A', comandoReadForContains);
+  const ligarSub = unoTexto.newBlock('texto_fixo');
+  ligarSub.setFieldValue('lig', 'TEXT');
+  connectValue(contem, 'B', ligarSub);
+  connectValue(contemMsg, 'VALOR', contem);
+
+  const numeroMsg = unoTexto.newBlock('escrever_serial_valor');
+  const numero = unoTexto.newBlock('texto_para_numero');
+  const textoNumero = unoTexto.newBlock('texto_fixo');
+  textoNumero.setFieldValue('42', 'TEXT');
+  connectValue(numero, 'VALOR', textoNumero);
+  connectValue(numeroMsg, 'VALOR', numero);
+
+  const textoMsg = unoTexto.newBlock('escrever_serial_valor');
+  const textoConvertido = unoTexto.newBlock('numero_para_texto');
+  const numeroFixo42 = unoTexto.newBlock('numero_fixo');
+  numeroFixo42.setFieldValue(42, 'VALOR');
+  connectValue(textoConvertido, 'VALOR', numeroFixo42);
+  connectValue(textoMsg, 'VALOR', textoConvertido);
+
+  const edgeCheck = unoTexto.newBlock('se_entao');
+  const edge = unoTexto.newBlock('mudou_para_verdadeiro');
+  const notRead = unoTexto.newBlock('nao_logico');
+  const digitalReadButton = unoTexto.newBlock('ler_pino_digital');
+  digitalReadButton.setFieldValue('2', 'PIN');
+  connectValue(notRead, 'VALOR', digitalReadButton);
+  connectValue(edge, 'VALOR', notRead);
+  connectValue(edgeCheck, 'CONDICAO', edge);
+  const edgeMsg = unoTexto.newBlock('escrever_serial');
+  edgeMsg.setFieldValue('Clique!', 'TEXT');
+  connectStatement(edgeCheck, 'ENTAO', edgeMsg);
+
+  connectChain(unoTextoRoots.loop, 'DO', [
+    serialCheck,
+    comandoIsLigar,
+    mensagem,
+    tamanhoMsg,
+    contemMsg,
+    numeroMsg,
+    textoMsg,
+    edgeCheck,
+  ]);
+  fixtures['uno-texto-serial'] = finishFixture('uno-texto-serial', unoTexto, 'uno');
+
+  // Fase 2 da auditoria de blocos: Display LCD (protocolo HD44780 4 bits à
+  // mão sobre Wire.h) e sensor DHT11/DHT22 (protocolo de 1 fio à mão sobre
+  // pulseIn()) juntos no AVR — o toolchain mais estrito para os dois
+  // helpers escritos na mão nesta fase.
+  syncBoardPins('uno');
+  const unoLcdDht = new Blockly.Workspace();
+  const unoLcdDhtRoots = makeRoots(unoLcdDht);
+
+  const lcdInit = unoLcdDht.newBlock('lcd_iniciar');
+  lcdInit.setFieldValue('A4', 'SDA');
+  lcdInit.setFieldValue('A5', 'SCL');
+  lcdInit.setFieldValue('0x27', 'ADDR');
+  lcdInit.setFieldValue(16, 'COLUNAS');
+  lcdInit.setFieldValue(2, 'LINHAS');
+  const dhtInit = unoLcdDht.newBlock('dht_iniciar');
+  dhtInit.setFieldValue('2', 'PIN');
+  dhtInit.setFieldValue('DHT22', 'TIPO');
+  connectChain(unoLcdDhtRoots.setup, 'DO', [lcdInit, dhtInit]);
+
+  const lcdClear = unoLcdDht.newBlock('lcd_limpar');
+  const lcdCursorTemp = unoLcdDht.newBlock('lcd_posicionar_cursor');
+  const colTemp = unoLcdDht.newBlock('numero_fixo');
+  colTemp.setFieldValue(0, 'VALOR');
+  const rowTemp = unoLcdDht.newBlock('numero_fixo');
+  rowTemp.setFieldValue(0, 'VALOR');
+  connectValue(lcdCursorTemp, 'COLUNA', colTemp);
+  connectValue(lcdCursorTemp, 'LINHA', rowTemp);
+  const lcdLabelTemp = unoLcdDht.newBlock('lcd_escrever_texto');
+  lcdLabelTemp.setFieldValue('T:', 'TEXT');
+  const lcdValueTemp = unoLcdDht.newBlock('lcd_escrever_valor');
+  connectValue(lcdValueTemp, 'VALOR', unoLcdDht.newBlock('dht_ler_temperatura'));
+  const lcdCursorUmid = unoLcdDht.newBlock('lcd_posicionar_cursor');
+  const colUmid = unoLcdDht.newBlock('numero_fixo');
+  colUmid.setFieldValue(0, 'VALOR');
+  const rowUmid = unoLcdDht.newBlock('numero_fixo');
+  rowUmid.setFieldValue(1, 'VALOR');
+  connectValue(lcdCursorUmid, 'COLUNA', colUmid);
+  connectValue(lcdCursorUmid, 'LINHA', rowUmid);
+  const lcdLabelUmid = unoLcdDht.newBlock('lcd_escrever_texto');
+  lcdLabelUmid.setFieldValue('U:', 'TEXT');
+  const lcdValueUmid = unoLcdDht.newBlock('lcd_escrever_valor');
+  connectValue(lcdValueUmid, 'VALOR', unoLcdDht.newBlock('dht_ler_umidade'));
+
+  connectChain(unoLcdDhtRoots.loop, 'DO', [
+    lcdClear,
+    lcdCursorTemp,
+    lcdLabelTemp,
+    lcdValueTemp,
+    lcdCursorUmid,
+    lcdLabelUmid,
+    lcdValueUmid,
+    unoLcdDht.newBlock('esperar'),
+  ]);
+  fixtures['uno-lcd-dht'] = finishFixture('uno-lcd-dht', unoLcdDht, 'uno');
+
+  // Fase 3 da auditoria de blocos: LED endereçável (única família que
+  // depende de biblioteca externa, Adafruit_NeoPixel — protocolo com
+  // timing nanossegundo, inviável de reimplementar à mão) e receptor
+  // infravermelho (protocolo NEC à mão sobre pulseIn, mesmo espírito do
+  // DHT) juntos no AVR, o toolchain mais estrito para os dois.
+  syncBoardPins('uno');
+  const unoLedIr = new Blockly.Workspace();
+  const unoLedIrRoots = makeRoots(unoLedIr);
+
+  const irInit = unoLedIr.newBlock('ir_iniciar');
+  irInit.setFieldValue('2', 'PIN');
+  const neopixelInit = unoLedIr.newBlock('neopixel_iniciar');
+  neopixelInit.setFieldValue('6', 'PIN');
+  neopixelInit.setFieldValue(8, 'QUANTIDADE');
+  connectChain(unoLedIrRoots.setup, 'DO', [irInit, neopixelInit]);
+
+  const outerCheck = unoLedIr.newBlock('se_entao');
+  connectValue(outerCheck, 'CONDICAO', unoLedIr.newBlock('ir_disponivel'));
+
+  const innerCheck = unoLedIr.newBlock('se_entao_senao');
+  const compareCode = unoLedIr.newBlock('comparar_valores');
+  compareCode.setFieldValue('==', 'OP');
+  connectValue(compareCode, 'A', unoLedIr.newBlock('ir_ler_codigo'));
+  const codeLiteral = unoLedIr.newBlock('numero_fixo');
+  codeLiteral.setFieldValue(16724175, 'VALOR');
+  connectValue(compareCode, 'B', codeLiteral);
+  connectValue(innerCheck, 'CONDICAO', compareCode);
+
+  const setRed = unoLedIr.newBlock('neopixel_definir_cor');
+  const redIndice = unoLedIr.newBlock('numero_fixo');
+  redIndice.setFieldValue(0, 'VALOR');
+  const redR = unoLedIr.newBlock('numero_fixo');
+  redR.setFieldValue(255, 'VALOR');
+  const redG = unoLedIr.newBlock('numero_fixo');
+  redG.setFieldValue(0, 'VALOR');
+  const redB = unoLedIr.newBlock('numero_fixo');
+  redB.setFieldValue(0, 'VALOR');
+  connectValue(setRed, 'INDICE', redIndice);
+  connectValue(setRed, 'R', redR);
+  connectValue(setRed, 'G', redG);
+  connectValue(setRed, 'B', redB);
+  connectChain(innerCheck, 'ENTAO', [setRed, unoLedIr.newBlock('neopixel_mostrar')]);
+
+  const setBlue = unoLedIr.newBlock('neopixel_definir_cor');
+  const blueIndice = unoLedIr.newBlock('numero_fixo');
+  blueIndice.setFieldValue(0, 'VALOR');
+  const blueR = unoLedIr.newBlock('numero_fixo');
+  blueR.setFieldValue(0, 'VALOR');
+  const blueG = unoLedIr.newBlock('numero_fixo');
+  blueG.setFieldValue(0, 'VALOR');
+  const blueB = unoLedIr.newBlock('numero_fixo');
+  blueB.setFieldValue(255, 'VALOR');
+  connectValue(setBlue, 'INDICE', blueIndice);
+  connectValue(setBlue, 'R', blueR);
+  connectValue(setBlue, 'G', blueG);
+  connectValue(setBlue, 'B', blueB);
+  connectChain(innerCheck, 'SENAO', [setBlue, unoLedIr.newBlock('neopixel_mostrar')]);
+
+  connectStatement(outerCheck, 'ENTAO', innerCheck);
+  connectChain(unoLedIrRoots.loop, 'DO', [unoLedIr.newBlock('neopixel_limpar'), outerCheck]);
+  fixtures['uno-led-ir'] = finishFixture('uno-led-ir', unoLedIr, 'uno');
+
+  // Fase 4 da auditoria de blocos: listas de tamanho fixo (índice sempre
+  // protegido via sizeof) e armazenamento permanente (tabela de chaves do
+  // EEPROM) juntos no AVR, o toolchain mais estrito para os dois.
+  syncBoardPins('uno');
+  const unoListasArmazenamento = new Blockly.Workspace();
+  const unoListasRoots = makeRoots(unoListasArmazenamento);
+
+  const listaDecl = unoListasArmazenamento.newBlock('declarar_lista_global');
+  listaDecl.setFieldValue('float', 'TIPO');
+  listaDecl.setFieldValue('leituras', 'NOME');
+  listaDecl.setFieldValue(5, 'TAMANHO');
+  const indiceDecl = unoListasArmazenamento.newBlock('declarar_variavel_global');
+  indiceDecl.setFieldValue('int', 'TIPO');
+  indiceDecl.setFieldValue('indice', 'NOME');
+  const indiceInicial = unoListasArmazenamento.newBlock('numero_fixo');
+  indiceInicial.setFieldValue(0, 'VALOR');
+  connectValue(indiceDecl, 'VALOR', indiceInicial);
+
+  const readPin = unoListasArmazenamento.newBlock('configurar_pino');
+  readPin.setFieldValue('A0', 'PIN');
+  readPin.setFieldValue('INPUT', 'MODE');
+  connectStatement(unoListasRoots.setup, 'DO', readPin);
+
+  const fillCheck = unoListasArmazenamento.newBlock('se_entao_senao');
+  const compareIdx = unoListasArmazenamento.newBlock('comparar_valores');
+  compareIdx.setFieldValue('<', 'OP');
+  const idxReadForCompare = unoListasArmazenamento.newBlock('ler_variavel');
+  idxReadForCompare.setFieldValue('indice', 'NOME');
+  connectValue(compareIdx, 'A', idxReadForCompare);
+  const tamanhoBlock = unoListasArmazenamento.newBlock('lista_tamanho');
+  tamanhoBlock.setFieldValue('leituras', 'NOME');
+  connectValue(compareIdx, 'B', tamanhoBlock);
+  connectValue(fillCheck, 'CONDICAO', compareIdx);
+
+  const setItem = unoListasArmazenamento.newBlock('lista_definir_item');
+  setItem.setFieldValue('leituras', 'NOME');
+  const idxReadForSet = unoListasArmazenamento.newBlock('ler_variavel');
+  idxReadForSet.setFieldValue('indice', 'NOME');
+  connectValue(setItem, 'INDICE', idxReadForSet);
+  connectValue(setItem, 'VALOR', unoListasArmazenamento.newBlock('ler_pino_analogico'));
+  const incIdx = unoListasArmazenamento.newBlock('incrementar_variavel');
+  incIdx.setFieldValue('indice', 'NOME');
+  const incAmount = unoListasArmazenamento.newBlock('numero_fixo');
+  incAmount.setFieldValue(1, 'VALOR');
+  connectValue(incIdx, 'VALOR', incAmount);
+  connectChain(fillCheck, 'ENTAO', [setItem, incIdx]);
+
+  const readFirst = unoListasArmazenamento.newBlock('escrever_serial_valor');
+  const listReadFirst = unoListasArmazenamento.newBlock('lista_ler_item');
+  listReadFirst.setFieldValue('leituras', 'NOME');
+  const indiceZeroForRead = unoListasArmazenamento.newBlock('numero_fixo');
+  indiceZeroForRead.setFieldValue(0, 'VALOR');
+  connectValue(listReadFirst, 'INDICE', indiceZeroForRead);
+  connectValue(readFirst, 'VALOR', listReadFirst);
+
+  const saveCheck = unoListasArmazenamento.newBlock('se_entao');
+  const compareSave = unoListasArmazenamento.newBlock('comparar_valores');
+  compareSave.setFieldValue('>', 'OP');
+  const listReadForCompare = unoListasArmazenamento.newBlock('lista_ler_item');
+  listReadForCompare.setFieldValue('leituras', 'NOME');
+  const indiceZeroForCompare = unoListasArmazenamento.newBlock('numero_fixo');
+  indiceZeroForCompare.setFieldValue(0, 'VALOR');
+  connectValue(listReadForCompare, 'INDICE', indiceZeroForCompare);
+  connectValue(compareSave, 'A', listReadForCompare);
+  const armLer = unoListasArmazenamento.newBlock('armazenamento_ler');
+  armLer.setFieldValue('recorde', 'CHAVE');
+  const padraoLer = unoListasArmazenamento.newBlock('numero_fixo');
+  padraoLer.setFieldValue(0, 'VALOR');
+  connectValue(armLer, 'PADRAO', padraoLer);
+  connectValue(compareSave, 'B', armLer);
+  connectValue(saveCheck, 'CONDICAO', compareSave);
+
+  const armSalvar = unoListasArmazenamento.newBlock('armazenamento_salvar');
+  armSalvar.setFieldValue('recorde', 'CHAVE');
+  const listReadForSave = unoListasArmazenamento.newBlock('lista_ler_item');
+  listReadForSave.setFieldValue('leituras', 'NOME');
+  const indiceZeroForSave = unoListasArmazenamento.newBlock('numero_fixo');
+  indiceZeroForSave.setFieldValue(0, 'VALOR');
+  connectValue(listReadForSave, 'INDICE', indiceZeroForSave);
+  connectValue(armSalvar, 'VALOR', listReadForSave);
+  connectStatement(saveCheck, 'ENTAO', armSalvar);
+
+  connectChain(fillCheck, 'SENAO', [readFirst, saveCheck]);
+  connectChain(unoListasRoots.loop, 'DO', [fillCheck]);
+  fixtures['uno-listas-armazenamento'] = finishFixture('uno-listas-armazenamento', unoListasArmazenamento, 'uno');
+
   syncBoardPins('nano');
   const nanoIo = new Blockly.Workspace();
   const nanoRoots = makeRoots(nanoIo);
@@ -1153,6 +1464,53 @@ export function createCompilationFixtures(): Record<string, CompilationFixture> 
   connectStatement(wifiStatus, 'SENAO', wifiPrintDown);
   connectStatement(wifiRoots.loop, 'DO', wifiStatus);
   fixtures['esp32-wifi'] = finishFixture('esp32-wifi', esp32Wifi, 'esp32');
+
+  // ── Wi-Fi: cliente HTTP — compõe com concatenar_texto (Fase 1) para
+  // montar a URL a partir de uma leitura de sensor.
+  syncBoardPins('esp32');
+  const esp32Http = new Blockly.Workspace();
+  const httpRoots = makeRoots(esp32Http);
+  connectStatement(httpRoots.setup, 'DO', esp32Http.newBlock('wifi_conectar'));
+
+  const httpGet = esp32Http.newBlock('wifi_http_get');
+  const urlConcat = esp32Http.newBlock('concatenar_texto');
+  const urlPrefix = esp32Http.newBlock('texto_fixo');
+  urlPrefix.setFieldValue('http://exemplo.com/sensor?valor=', 'TEXT');
+  const sensorRead = esp32Http.newBlock('ler_pino_analogico');
+  sensorRead.setFieldValue('34', 'PIN');
+  connectValue(urlConcat, 'A', urlPrefix);
+  connectValue(urlConcat, 'B', sensorRead);
+  connectValue(httpGet, 'URL', urlConcat);
+
+  const httpCheck = esp32Http.newBlock('se_entao');
+  connectValue(httpCheck, 'CONDICAO', esp32Http.newBlock('wifi_http_sucesso'));
+  const httpPrint = esp32Http.newBlock('escrever_serial_valor');
+  connectValue(httpPrint, 'VALOR', esp32Http.newBlock('wifi_http_resposta'));
+  connectStatement(httpCheck, 'ENTAO', httpPrint);
+
+  // Armazenamento permanente no ESP32 usa Preferences.h, um caminho de
+  // código completamente diferente do EEPROM (ver uno-listas-armazenamento)
+  // — reaproveita esta fixture em vez de criar uma nova só para isso.
+  const armazenamentoCheck = esp32Http.newBlock('se_entao');
+  const compareRecorde = esp32Http.newBlock('comparar_valores');
+  compareRecorde.setFieldValue('>', 'OP');
+  const sensorReadForRecorde = esp32Http.newBlock('ler_pino_analogico');
+  sensorReadForRecorde.setFieldValue('34', 'PIN');
+  connectValue(compareRecorde, 'A', sensorReadForRecorde);
+  const armLerEsp32 = esp32Http.newBlock('armazenamento_ler');
+  armLerEsp32.setFieldValue('recorde', 'CHAVE');
+  connectValue(armLerEsp32, 'PADRAO', esp32Http.newBlock('numero_fixo'));
+  connectValue(compareRecorde, 'B', armLerEsp32);
+  connectValue(armazenamentoCheck, 'CONDICAO', compareRecorde);
+  const armSalvarEsp32 = esp32Http.newBlock('armazenamento_salvar');
+  armSalvarEsp32.setFieldValue('recorde', 'CHAVE');
+  const sensorReadForSalvar = esp32Http.newBlock('ler_pino_analogico');
+  sensorReadForSalvar.setFieldValue('34', 'PIN');
+  connectValue(armSalvarEsp32, 'VALOR', sensorReadForSalvar);
+  connectStatement(armazenamentoCheck, 'ENTAO', armSalvarEsp32);
+
+  connectChain(httpRoots.loop, 'DO', [httpGet, httpCheck, armazenamentoCheck, esp32Http.newBlock('esperar')]);
+  fixtures['esp32-http'] = finishFixture('esp32-http', esp32Http, 'esp32');
 
   // ── Bluetooth clássico ────────────────────────────────────────────────────
   // Sozinho (sem Wi-Fi/ESP-NOW no mesmo sketch): o stack Bluetooth clássico

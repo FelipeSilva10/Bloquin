@@ -30,6 +30,13 @@ export const COMPONENT_IDS = [
   'mpu6050',
   'l298n',
   'dc-motor',
+  'lcd-i2c-16x2',
+  'dht11-dht22',
+  'neopixel-strip',
+  'ir-receiver',
+  'potentiometer',
+  'pir-motion-sensor',
+  'relay-module',
 ] as const;
 
 export type ComponentId = (typeof COMPONENT_IDS)[number];
@@ -44,7 +51,14 @@ export type ComponentIllustrationId =
   | 'ultrasonic'
   | 'imu'
   | 'driver'
-  | 'motor';
+  | 'motor'
+  | 'display'
+  | 'dht'
+  | 'led-strip'
+  | 'ir'
+  | 'potentiometer'
+  | 'pir'
+  | 'relay';
 
 export type ComponentCategoryAccent = 'blue' | 'violet' | 'orange' | 'green' | 'pink' | 'slate';
 

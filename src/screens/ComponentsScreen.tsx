@@ -67,6 +67,20 @@ function ComponentIllustration({ kind }: { kind: ComponentIllustrationId }) {
       return <div className="component-illustration component-illustration--motor"><span /><i /><b>↻</b></div>;
     case 'board':
       return <div className="component-illustration component-illustration--board"><span>DEV</span><i /><i /><i /></div>;
+    case 'display':
+      return <div className="component-illustration component-illustration--display"><span>16x2</span><i /><i /></div>;
+    case 'dht':
+      return <div className="component-illustration component-illustration--dht"><span>💧</span><i /><i /><i /></div>;
+    case 'led-strip':
+      return <div className="component-illustration component-illustration--led-strip"><i /><i /><i /><i /></div>;
+    case 'ir':
+      return <div className="component-illustration component-illustration--ir"><span /><i /><i /><i /></div>;
+    case 'potentiometer':
+      return <div className="component-illustration component-illustration--potentiometer"><span /><b /></div>;
+    case 'pir':
+      return <div className="component-illustration component-illustration--pir"><span /><i /></div>;
+    case 'relay':
+      return <div className="component-illustration component-illustration--relay"><span /><i /><i /></div>;
   }
 }
 

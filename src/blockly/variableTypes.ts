@@ -82,3 +82,34 @@ export function synchronizeVariableTypes(workspace: Blockly.Workspace) {
     }
   }
 }
+
+/**
+ * Mesma lógica de `synchronizeVariableTypes`, para listas: o tipo declarado
+ * em `declarar_lista_global` propaga para o valor guardado em
+ * `lista_definir_item` e para a saída de `lista_ler_item`. Listas e
+ * variáveis não compartilham este mapa — nomes duplicados entre as duas são
+ * pegos à parte pela auditoria (`audit.ts`), não aqui.
+ */
+export function synchronizeListTypes(workspace: Blockly.Workspace) {
+  const blocks = workspace.getAllBlocks(false);
+  const declarations = new Map<string, BlocklyValueType>();
+
+  for (const block of blocks) {
+    if (block.type !== 'declarar_lista_global') continue;
+    const name = toCppIdentifier(block.getFieldValue('NOME'), 'minha_lista', 'var');
+    if (!declarations.has(name)) {
+      declarations.set(name, variableValueType(block.getFieldValue('TIPO')));
+    }
+  }
+
+  for (const block of blocks) {
+    if (block.type !== 'lista_definir_item' && block.type !== 'lista_ler_item') continue;
+    const name = toCppIdentifier(block.getFieldValue('NOME'), 'minha_lista', 'var');
+    const type = declarations.get(name) ?? null;
+    if (block.type === 'lista_definir_item') {
+      setInputCheckWithoutBreakingLegacyConnection(block, 'VALOR', type);
+    } else {
+      setOutputCheckWithoutBreakingLegacyConnection(block, type);
+    }
+  }
+}

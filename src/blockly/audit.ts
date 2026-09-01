@@ -17,7 +17,7 @@ import {
   type BlocklyValueType,
 } from './contracts';
 import { toCppIdentifier } from './identifiers';
-import { synchronizeVariableTypes } from './variableTypes';
+import { synchronizeVariableTypes, synchronizeListTypes } from './variableTypes';
 
 export interface WorkspaceAuditIssue {
   blockId: string;
@@ -98,10 +98,21 @@ export function auditSerializedWorkspace(
   return [...new Set(issues)];
 }
 
+const LIST_BLOCK_TYPES = new Set([
+  'declarar_lista_global',
+  'lista_definir_item',
+  'lista_ler_item',
+  'lista_tamanho',
+]);
+
 function variableIdentifier(block: Blockly.Block): string {
   return toCppIdentifier(
     block.getFieldValue('NOME'),
-    block.type === 'incrementar_variavel' ? 'contador' : 'minha_var',
+    block.type === 'incrementar_variavel'
+      ? 'contador'
+      : LIST_BLOCK_TYPES.has(block.type)
+      ? 'minha_lista'
+      : 'minha_var',
     'var',
   );
 }
@@ -162,6 +173,7 @@ export function auditWorkspace(
   board: BoardKey,
 ): WorkspaceAuditIssue[] {
   synchronizeVariableTypes(workspace);
+  synchronizeListTypes(workspace);
   const blocks = workspace.getAllBlocks(false);
   const types = new Set(blocks.map((block) => block.type));
   const issues: WorkspaceAuditIssue[] = [];
@@ -207,6 +219,23 @@ export function auditWorkspace(
     add(
       receiverBlock,
       'Escolha um papel para este projeto: transmissor ou receptor ESP-NOW, não os dois ao mesmo tempo.',
+    );
+  }
+
+  // I²C é um barramento físico único: um projeto com MPU6050 e Display LCD
+  // ao mesmo tempo precisa usar os mesmos pinos SDA/SCL nos dois blocos de
+  // "iniciar" (cada um gera seu próprio Wire.begin(), mas com fiação real
+  // só existe um barramento).
+  const mpuInitBlockForI2c = blocks.find((block) => block.type === 'mpu_iniciar');
+  const lcdInitBlockForI2c = blocks.find((block) => block.type === 'lcd_iniciar');
+  if (
+    mpuInitBlockForI2c && lcdInitBlockForI2c
+    && (String(mpuInitBlockForI2c.getFieldValue('SDA')) !== String(lcdInitBlockForI2c.getFieldValue('SDA'))
+      || String(mpuInitBlockForI2c.getFieldValue('SCL')) !== String(lcdInitBlockForI2c.getFieldValue('SCL')))
+  ) {
+    add(
+      lcdInitBlockForI2c,
+      'O MPU6050 e o Display LCD compartilham o mesmo barramento I²C — use os mesmos pinos SDA/SCL nos dois.',
     );
   }
 
@@ -306,6 +335,12 @@ export function auditWorkspace(
       add(block, 'Os pinos SDA e SCL do acelerômetro precisam ser diferentes.');
     }
     if (
+      block.type === 'lcd_iniciar'
+      && String(block.getFieldValue('SDA')) === String(block.getFieldValue('SCL'))
+    ) {
+      add(block, 'Os pinos SDA e SCL do Display LCD precisam ser diferentes.');
+    }
+    if (
       ULTRASONIC_TYPES.has(block.type)
       && String(block.getFieldValue('TRIG')) === String(block.getFieldValue('ECHO'))
     ) {
@@ -337,8 +372,30 @@ export function auditWorkspace(
         declaration,
         expected === 'Boolean'
           ? 'Uma variável Verdadeiro/Falso precisa começar com um valor lógico.'
+          : expected === 'String'
+          ? 'Uma variável de texto precisa começar com um valor de texto.'
           : 'Uma variável numérica precisa começar com um número.',
       );
+    }
+  }
+
+  // Listas e variáveis compartilham o mesmo espaço de identificador C++
+  // (uma lista "contador" e uma variável "contador" viram duas declarações
+  // globais com o mesmo nome — erro de compilação). Checagem à parte da
+  // sincronização de tipos (`synchronizeListTypes`), que só cuida de
+  // propagar o tipo, não de detectar colisão de nome.
+  const declaredLists = new Map<string, Blockly.Block>();
+  for (const declaration of blocks.filter((block) => block.type === 'declarar_lista_global')) {
+    const name = variableIdentifier(declaration);
+    const previousList = declaredLists.get(name);
+    const previousVariable = declaredVariables.get(name);
+    if (previousList) add(declaration, 'Há duas listas declaradas com o mesmo nome.');
+    else if (previousVariable) add(declaration, 'Esta lista tem o mesmo nome de uma variável já declarada.');
+    else declaredLists.set(name, declaration);
+  }
+  for (const [name, variableDeclaration] of declaredVariables) {
+    if (declaredLists.has(name)) {
+      add(variableDeclaration, 'Esta variável tem o mesmo nome de uma lista já declarada.');
     }
   }
 
@@ -517,6 +574,47 @@ export function auditWorkspace(
     'l298n_configurar_simples',
     'Configure os motores no bloco PREPARAR antes de movimentá-los.',
   );
+  requireBlock(
+    ['dht_ler_temperatura', 'dht_ler_umidade'],
+    'dht_iniciar',
+    'Configure o Sensor DHT11/DHT22 no bloco PREPARAR antes de ler seus dados.',
+  );
+  requireBlock(
+    ['lcd_limpar', 'lcd_posicionar_cursor', 'lcd_escrever_texto', 'lcd_escrever_valor'],
+    'lcd_iniciar',
+    'Inicie o Display LCD no bloco PREPARAR antes de usá-lo.',
+  );
+  requireBlock(
+    ['neopixel_definir_cor', 'neopixel_limpar', 'neopixel_mostrar'],
+    'neopixel_iniciar',
+    'Configure a Tira de LEDs no bloco PREPARAR antes de usá-la.',
+  );
+  requireBlock(
+    ['ir_disponivel', 'ir_ler_codigo'],
+    'ir_iniciar',
+    'Configure o Receptor Infravermelho no bloco PREPARAR antes de usá-lo.',
+  );
+
+  // No AVR, cada chave de Armazenamento usa 5 bytes de EEPROM (marca +
+  // float) num deslocamento fixo — muitas chaves distintas podem estourar
+  // o tamanho físico da EEPROM (512 B nos menores AVR, 1024 B no
+  // Uno/Nano). No ESP32 (Preferences/NVS) isso não se aplica.
+  if (board !== 'esp32') {
+    const chavesArmazenamento = new Set(
+      blocks
+        .filter((block) => block.type === 'armazenamento_salvar' || block.type === 'armazenamento_ler')
+        .map((block) => String(block.getFieldValue('CHAVE'))),
+    );
+    if (chavesArmazenamento.size * 5 > 512) {
+      const primeiroUso = blocks.find((block) => block.type === 'armazenamento_salvar' || block.type === 'armazenamento_ler');
+      if (primeiroUso) {
+        add(
+          primeiroUso,
+          `Este projeto usa ${chavesArmazenamento.size} chaves de Armazenamento — pode não caber na EEPROM desta placa. Use menos chaves diferentes.`,
+        );
+      }
+    }
+  }
 
   const espNowBlock = blocks.find((block) => ESP_NOW_TYPES.has(block.type));
   if (espNowBlock && !types.has('espnow_iniciar_wifi')) {
@@ -579,6 +677,11 @@ export function auditWorkspace(
     ['wifi_esta_conectado', 'wifi_endereco_ip', 'wifi_desconectar'],
     'wifi_conectar',
     'Adicione "Conectar ao Wi-Fi" em algum lugar do projeto antes de consultar o status da rede.',
+  );
+  requireBlock(
+    ['wifi_http_get'],
+    'wifi_conectar',
+    'Adicione "Conectar ao Wi-Fi" em algum lugar do projeto antes de fazer uma requisição HTTP.',
   );
 
   const setupRoot = workspace.getTopBlocks(false).find((block) => block.type === 'bloco_setup');

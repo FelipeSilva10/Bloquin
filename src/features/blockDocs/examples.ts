@@ -510,6 +510,342 @@ export const BLOCK_EXAMPLES: readonly BlockExample[] = [
     ],
     ['bloco_setup', 'bloco_loop', 'bt_iniciar', 'se_entao', 'bt_disponivel', 'bt_enviar_texto', 'bt_ler_texto'],
   ),
+  example(
+    'serial-comando-texto',
+    'Ligar um LED por comando digitado na Serial',
+    'uno',
+    'A cada volta do AGIR, se chegou algo pela Serial (USB), lê o texto e compara com "ligar" — digite no Monitor Serial para acender o LED.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'configurar_pino', fields: { PIN: '13', MODE: 'OUTPUT' },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 140, inputs: { DO: { block: {
+        type: 'se_entao', inputs: {
+          CONDICAO: { block: { type: 'serial_disponivel' } },
+          ENTAO: { block: {
+            type: 'se_entao', inputs: {
+              CONDICAO: { block: {
+                type: 'comparar_texto', fields: { OP: '==' },
+                inputs: {
+                  A: { block: { type: 'serial_ler_texto' } },
+                  B: { block: { type: 'texto_fixo', fields: { TEXT: 'ligar' } } },
+                },
+              } },
+              ENTAO: { block: {
+                type: 'escrever_pino', fields: { PIN: '13', STATE: 'HIGH' },
+              } },
+            },
+          } },
+        },
+      } } } },
+    ],
+    ['bloco_setup', 'bloco_loop', 'configurar_pino', 'se_entao', 'serial_disponivel', 'comparar_texto', 'serial_ler_texto', 'texto_fixo', 'escrever_pino'],
+  ),
+  example(
+    'bluetooth-comando-texto',
+    'Escolher um pino por comando de texto pelo Bluetooth',
+    'esp32',
+    'Lê um texto recebido pelo Bluetooth e usa "Comparar Texto" para decidir entre dois pinos — a mesma ideia de um comando por Serial, mas sem fio.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'bt_iniciar', fields: { NOME: 'Bloquin' },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 140, inputs: { DO: { block: {
+        type: 'se_entao', inputs: {
+          CONDICAO: { block: { type: 'bt_disponivel' } },
+          ENTAO: { block: {
+            type: 'se_entao_senao', inputs: {
+              CONDICAO: { block: {
+                type: 'comparar_texto', fields: { OP: '==' },
+                inputs: {
+                  A: { block: { type: 'bt_ler_texto' } },
+                  B: { block: { type: 'texto_fixo', fields: { TEXT: 'esquerda' } } },
+                },
+              } },
+              ENTAO: { block: { type: 'escrever_pino', fields: { PIN: '18', STATE: 'HIGH' } } },
+              SENAO: { block: { type: 'escrever_pino', fields: { PIN: '19', STATE: 'HIGH' } } },
+            },
+          } },
+        },
+      } } } },
+    ],
+    ['bloco_setup', 'bloco_loop', 'bt_iniciar', 'se_entao', 'bt_disponivel', 'se_entao_senao', 'comparar_texto', 'bt_ler_texto', 'texto_fixo', 'escrever_pino'],
+  ),
+  example(
+    'borda-contador-botao',
+    'Contar quantas vezes um botão foi apertado',
+    'uno',
+    'Com "Configurar Pino" em INPUT_PULLUP, o botão apertado lê falso — por isso a leitura passa por NÃO antes de "Mudou de Falso para Verdadeiro?", detectando o instante do aperto, não o tempo em que fica apertado.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'configurar_pino', fields: { PIN: '2', MODE: 'INPUT_PULLUP' },
+      } } } },
+      { type: 'declarar_variavel_global', x: 20, y: 140, fields: { TIPO: 'int', NOME: 'cliques' },
+        inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } },
+      },
+      { type: 'bloco_loop', x: 20, y: 260, inputs: { DO: { block: {
+        type: 'se_entao', inputs: {
+          CONDICAO: { block: {
+            type: 'mudou_para_verdadeiro',
+            inputs: { VALOR: { block: {
+              type: 'nao_logico',
+              inputs: { VALOR: { block: { type: 'ler_pino_digital', fields: { PIN: '2' } } } },
+            } } },
+          } },
+          ENTAO: { block: {
+            type: 'incrementar_variavel', fields: { NOME: 'cliques' },
+            inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 1 } } } },
+            next: { block: {
+              type: 'escrever_serial_valor',
+              inputs: { VALOR: { block: { type: 'ler_variavel', fields: { NOME: 'cliques' } } } },
+            } },
+          } },
+        },
+      } } } },
+    ],
+    ['bloco_setup', 'configurar_pino', 'declarar_variavel_global', 'numero_fixo', 'bloco_loop', 'se_entao', 'mudou_para_verdadeiro', 'nao_logico', 'ler_pino_digital', 'incrementar_variavel', 'escrever_serial_valor', 'ler_variavel'],
+  ),
+  example(
+    'estacao-temperatura-umidade',
+    'Mostrar temperatura e umidade no monitor',
+    'uno',
+    'Configura o sensor DHT11 uma vez e, a cada volta, mostra a temperatura e a umidade juntas com um rótulo, unindo texto fixo com o valor lido.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'dht_iniciar', fields: { PIN: '2', TIPO: 'DHT11' },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 140, inputs: { DO: { block: {
+        type: 'escrever_serial_valor', inputs: {
+          VALOR: { block: {
+            type: 'concatenar_texto',
+            inputs: {
+              A: { block: { type: 'texto_fixo', fields: { TEXT: 'Temperatura: ' } } },
+              B: { block: { type: 'dht_ler_temperatura' } },
+            },
+          } },
+        },
+        next: { block: {
+          type: 'escrever_serial_valor', inputs: {
+            VALOR: { block: {
+              type: 'concatenar_texto',
+              inputs: {
+                A: { block: { type: 'texto_fixo', fields: { TEXT: 'Umidade: ' } } },
+                B: { block: { type: 'dht_ler_umidade' } },
+              },
+            } },
+          },
+          next: { block: { type: 'esperar', fields: { TIME: 2000 } } },
+        } },
+      } } } },
+    ],
+    ['bloco_setup', 'dht_iniciar', 'bloco_loop', 'escrever_serial_valor', 'concatenar_texto', 'texto_fixo', 'dht_ler_temperatura', 'dht_ler_umidade', 'esperar'],
+  ),
+  example(
+    'lcd-distancia',
+    'Mostrar a distância no Display LCD',
+    'uno',
+    'Um rótulo fixo na primeira linha e o valor medido na segunda — limpar, posicionar o cursor e escrever, na mesma ordem em cada volta do AGIR.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'lcd_iniciar', fields: { SDA: 'A4', SCL: 'A5', ADDR: '0x27', COLUNAS: 16, LINHAS: 2 },
+        next: { block: {
+          type: 'configurar_ultrassonico', fields: { TRIG: '12', ECHO: '13' },
+        } },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 140, inputs: { DO: { block: {
+        type: 'lcd_limpar',
+        next: { block: {
+          type: 'lcd_posicionar_cursor',
+          inputs: {
+            COLUNA: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+            LINHA: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+          },
+          next: { block: {
+            type: 'lcd_escrever_texto', fields: { TEXT: 'Distancia:' },
+            next: { block: {
+              type: 'lcd_posicionar_cursor',
+              inputs: {
+                COLUNA: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+                LINHA: { block: { type: 'numero_fixo', fields: { VALOR: 1 } } },
+              },
+              next: { block: {
+                type: 'lcd_escrever_valor',
+                inputs: { VALOR: { block: { type: 'ler_distancia_cm', fields: { TRIG: '12', ECHO: '13' } } } },
+                next: { block: { type: 'esperar', fields: { TIME: 500 } } },
+              } },
+            } },
+          } },
+        } },
+      } } } },
+    ],
+    ['bloco_setup', 'lcd_iniciar', 'configurar_ultrassonico', 'bloco_loop', 'lcd_limpar', 'lcd_posicionar_cursor', 'numero_fixo', 'lcd_escrever_texto', 'lcd_escrever_valor', 'ler_distancia_cm', 'esperar'],
+  ),
+  example(
+    'wifi-http-consulta',
+    'Enviar uma leitura de sensor para um endereço da internet',
+    'esp32',
+    'Monta a URL com "Unir Texto" (o valor do sensor vira parte do endereço), faz a requisição e mostra a resposta só quando ela teve sucesso.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'wifi_conectar', fields: { SSID: 'MinhaRede', SENHA: 'minhasenha' },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 140, inputs: { DO: { block: {
+        type: 'wifi_http_get',
+        inputs: {
+          URL: { block: {
+            type: 'concatenar_texto',
+            inputs: {
+              A: { block: { type: 'texto_fixo', fields: { TEXT: 'http://exemplo.com/sensor?valor=' } } },
+              B: { block: { type: 'ler_pino_analogico', fields: { PIN: '34' } } },
+            },
+          } },
+        },
+        next: { block: {
+          type: 'se_entao', inputs: {
+            CONDICAO: { block: { type: 'wifi_http_sucesso' } },
+            ENTAO: { block: {
+              type: 'escrever_serial_valor',
+              inputs: { VALOR: { block: { type: 'wifi_http_resposta' } } },
+            } },
+          },
+          next: { block: { type: 'esperar', fields: { TIME: 5000 } } },
+        } },
+      } } } },
+    ],
+    ['bloco_setup', 'wifi_conectar', 'bloco_loop', 'wifi_http_get', 'concatenar_texto', 'texto_fixo', 'ler_pino_analogico', 'se_entao', 'wifi_http_sucesso', 'escrever_serial_valor', 'wifi_http_resposta', 'esperar'],
+  ),
+  example(
+    'controle-remoto-leds',
+    'Trocar a cor de um LED com o controle remoto',
+    'uno',
+    'Um botão específico do controle acende o primeiro LED da tira em vermelho; qualquer outro código recebido acende em azul. Descubra o código de cada botão mostrando "Código Recebido do Controle Remoto" no monitor serial antes de escolher o número certo.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'ir_iniciar', fields: { PIN: '2' },
+        next: { block: {
+          type: 'neopixel_iniciar', fields: { PIN: '6', QUANTIDADE: 8 },
+        } },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 140, inputs: { DO: { block: {
+        type: 'se_entao', inputs: {
+          CONDICAO: { block: { type: 'ir_disponivel' } },
+          ENTAO: { block: {
+            type: 'se_entao_senao', inputs: {
+              CONDICAO: { block: {
+                type: 'comparar_valores', fields: { OP: '==' },
+                inputs: {
+                  A: { block: { type: 'ir_ler_codigo' } },
+                  B: { block: { type: 'numero_fixo', fields: { VALOR: 16724175 } } },
+                },
+              } },
+              ENTAO: { block: {
+                type: 'neopixel_definir_cor',
+                inputs: {
+                  INDICE: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+                  R: { block: { type: 'numero_fixo', fields: { VALOR: 255 } } },
+                  G: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+                  B: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+                },
+                next: { block: { type: 'neopixel_mostrar' } },
+              } },
+              SENAO: { block: {
+                type: 'neopixel_definir_cor',
+                inputs: {
+                  INDICE: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+                  R: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+                  G: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } },
+                  B: { block: { type: 'numero_fixo', fields: { VALOR: 255 } } },
+                },
+                next: { block: { type: 'neopixel_mostrar' } },
+              } },
+            },
+          } },
+        },
+      } } } },
+    ],
+    ['bloco_setup', 'ir_iniciar', 'neopixel_iniciar', 'bloco_loop', 'se_entao', 'ir_disponivel', 'se_entao_senao', 'comparar_valores', 'ir_ler_codigo', 'numero_fixo', 'neopixel_definir_cor', 'neopixel_mostrar'],
+  ),
+  example(
+    'media-distancia-lista',
+    'Guardar leituras de distância numa lista',
+    'uno',
+    'Guarda as 5 primeiras leituras de distância numa lista, uma por volta do AGIR; depois de cheia, mostra a primeira leitura guardada. "Tamanho da Lista" evita escrever o número 5 duas vezes.',
+    [
+      { type: 'declarar_lista_global', x: 20, y: 20, fields: { TIPO: 'float', NOME: 'leituras', TAMANHO: 5 } },
+      { type: 'declarar_variavel_global', x: 20, y: 100, fields: { TIPO: 'int', NOME: 'indice' },
+        inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } },
+      },
+      { type: 'bloco_setup', x: 20, y: 180, inputs: { DO: { block: {
+        type: 'configurar_ultrassonico', fields: { TRIG: '12', ECHO: '13' },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 300, inputs: { DO: { block: {
+        type: 'se_entao_senao', inputs: {
+          CONDICAO: { block: {
+            type: 'comparar_valores', fields: { OP: '<' },
+            inputs: {
+              A: { block: { type: 'ler_variavel', fields: { NOME: 'indice' } } },
+              B: { block: { type: 'lista_tamanho', fields: { NOME: 'leituras' } } },
+            },
+          } },
+          ENTAO: { block: {
+            type: 'lista_definir_item', fields: { NOME: 'leituras' },
+            inputs: {
+              INDICE: { block: { type: 'ler_variavel', fields: { NOME: 'indice' } } },
+              VALOR: { block: { type: 'ler_distancia_cm', fields: { TRIG: '12', ECHO: '13' } } },
+            },
+            next: { block: {
+              type: 'incrementar_variavel', fields: { NOME: 'indice' },
+              inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 1 } } } },
+            } },
+          } },
+          SENAO: { block: {
+            type: 'escrever_serial_valor',
+            inputs: { VALOR: { block: {
+              type: 'lista_ler_item', fields: { NOME: 'leituras' },
+              inputs: { INDICE: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } },
+            } } },
+          } },
+        },
+        next: { block: { type: 'esperar', fields: { TIME: 200 } } },
+      } } } },
+    ],
+    ['declarar_lista_global', 'declarar_variavel_global', 'numero_fixo', 'bloco_setup', 'configurar_ultrassonico', 'bloco_loop', 'se_entao_senao', 'comparar_valores', 'ler_variavel', 'lista_tamanho', 'lista_definir_item', 'ler_distancia_cm', 'incrementar_variavel', 'escrever_serial_valor', 'lista_ler_item', 'esperar'],
+  ),
+  example(
+    'recorde-permanente',
+    'Guardar um recorde que sobrevive a desligar a placa',
+    'uno',
+    'No PREPARAR, mostra o recorde salvo (ou 0, na primeira vez que a placa liga). No AGIR, salva um novo valor só quando a leitura bate o recorde anterior — nunca a cada volta sem necessidade.',
+    [
+      { type: 'bloco_setup', x: 20, y: 20, inputs: { DO: { block: {
+        type: 'escrever_serial_valor',
+        inputs: { VALOR: { block: {
+          type: 'armazenamento_ler', fields: { CHAVE: 'recorde' },
+          inputs: { PADRAO: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } },
+        } } },
+      } } } },
+      { type: 'bloco_loop', x: 20, y: 140, inputs: { DO: { block: {
+        type: 'se_entao', inputs: {
+          CONDICAO: { block: {
+            type: 'comparar_valores', fields: { OP: '>' },
+            inputs: {
+              A: { block: { type: 'ler_pino_analogico', fields: { PIN: 'A0' } } },
+              B: { block: {
+                type: 'armazenamento_ler', fields: { CHAVE: 'recorde' },
+                inputs: { PADRAO: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } },
+              } },
+            },
+          } },
+          ENTAO: { block: {
+            type: 'armazenamento_salvar', fields: { CHAVE: 'recorde' },
+            inputs: { VALOR: { block: { type: 'ler_pino_analogico', fields: { PIN: 'A0' } } } },
+          } },
+        },
+        next: { block: { type: 'esperar', fields: { TIME: 500 } } },
+      } } } },
+    ],
+    ['bloco_setup', 'escrever_serial_valor', 'armazenamento_ler', 'numero_fixo', 'bloco_loop', 'se_entao', 'comparar_valores', 'ler_pino_analogico', 'armazenamento_salvar', 'esperar'],
+  ),
 ];
 
 export function getExampleById(id: string): BlockExample | undefined {

@@ -457,6 +457,35 @@
 .component-illustration--board i:nth-child(2) { left: 16px; }
 .component-illustration--board i:nth-child(3) { left: 47px; }
 .component-illustration--board i:nth-child(4) { right: 16px; }
+.component-illustration--display { width: 112px; height: 68px; border: 5px solid #2d916f; border-radius: 8px; background: linear-gradient(160deg, #1f3b34, #16261f); box-shadow: 0 6px 0 #1c6d53; }
+.component-illustration--display span { top: 14px; left: 10px; color: #8ef7c9; font-family: monospace; font-size: 0.62rem; font-style: normal; font-weight: 900; letter-spacing: 0.5px; }
+.component-illustration--display i { top: 32px; left: 10px; width: 70px; height: 6px; border-radius: 2px; background: #4fe3a0; opacity: 0.85; }
+.component-illustration--display i:last-child { top: 44px; width: 46px; }
+.component-illustration--dht { width: 78px; height: 78px; border: 5px solid #4a6fa5; border-radius: 10px; background: linear-gradient(160deg, #eaf4ff, #cfe3fb); box-shadow: 0 6px 0 #33517a; }
+.component-illustration--dht span { top: 12px; left: 14px; font-size: 1.7rem; font-style: normal; }
+.component-illustration--dht i { bottom: 0; left: 16px; width: 4px; height: 16px; background: #33517a; }
+.component-illustration--dht i:nth-child(2) { left: 32px; }
+.component-illustration--dht i:nth-child(3) { left: 48px; }
+.component-illustration--led-strip { width: 112px; height: 34px; border-radius: 6px; background: #1c2733; box-shadow: 0 4px 0 #0e151c; }
+.component-illustration--led-strip i { top: 7px; width: 18px; height: 18px; border-radius: 4px; box-shadow: 0 0 9px 2px currentColor; }
+.component-illustration--led-strip i:nth-child(1) { left: 8px; background: #ff4d4d; color: #ff4d4d; }
+.component-illustration--led-strip i:nth-child(2) { left: 34px; background: #ffd23f; color: #ffd23f; }
+.component-illustration--led-strip i:nth-child(3) { left: 60px; background: #3ddc84; color: #3ddc84; }
+.component-illustration--led-strip i:nth-child(4) { left: 86px; background: #3f8dff; color: #3f8dff; }
+.component-illustration--ir { width: 60px; height: 78px; }
+.component-illustration--ir span { top: 8px; left: 8px; width: 44px; height: 34px; border-radius: 10px 10px 4px 4px; background: linear-gradient(160deg, #2b2f36, #101215); box-shadow: 0 4px 0 #050607; }
+.component-illustration--ir i { bottom: 0; width: 4px; height: 26px; background: #8a97a3; }
+.component-illustration--ir i:nth-child(2) { left: 12px; }
+.component-illustration--ir i:nth-child(3) { left: 28px; }
+.component-illustration--ir i:nth-child(4) { left: 44px; }
+.component-illustration--potentiometer span { top: 12px; left: 20px; width: 60px; height: 60px; border-radius: 50%; border: 5px solid #4a4f57; background: radial-gradient(circle at 35% 30%, #cfd6dd, #8b929b 60%, #5b6169); box-shadow: 0 6px 0 #33373d; }
+.component-illustration--potentiometer b { top: 24px; left: 48px; width: 4px; height: 24px; border-radius: 2px; background: #1c2733; transform: rotate(25deg); transform-origin: bottom center; }
+.component-illustration--pir span { top: 10px; left: 18px; width: 64px; height: 50px; border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%; background: radial-gradient(circle at 40% 30%, #ffffff, #dfe6ea 55%, #b9c3ca); box-shadow: 0 5px 0 #97a2aa; }
+.component-illustration--pir i { bottom: 0; left: 28px; width: 44px; height: 14px; border-radius: 4px; background: #2f9d63; }
+.component-illustration--relay { width: 108px; height: 68px; border-radius: 8px; background: #1f7a45; box-shadow: 0 6px 0 #13512d; }
+.component-illustration--relay span { top: 10px; left: 12px; width: 46px; height: 48px; border-radius: 4px; background: linear-gradient(160deg, #3f6fd1, #1e3f8f); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.15); }
+.component-illustration--relay i { top: 12px; right: 10px; width: 30px; height: 12px; border-radius: 2px; background: #e7dca0; }
+.component-illustration--relay i:nth-child(3) { top: 34px; }
 
 .components-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 

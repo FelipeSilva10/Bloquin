@@ -2,7 +2,7 @@ import * as Blockly from 'blockly/core';
 import type { BoardKey } from './boards';
 import { LOOP_TYPES, SETUP_ONLY_TYPES, type VariableCppType } from './contracts';
 import { toCppIdentifier } from './identifiers';
-import { synchronizeVariableTypes } from './variableTypes';
+import { synchronizeVariableTypes, synchronizeListTypes } from './variableTypes';
 
 export const cppGenerator = new Blockly.Generator('CPP');
 let targetBoard: BoardKey = 'uno';
@@ -20,6 +20,13 @@ function floatLiteral(value: unknown, fallback = 0): string {
   const parsed = Number(value);
   const number = Number.isFinite(parsed) ? parsed : fallback;
   return Number.isInteger(number) ? `${number}.0f` : `${number}f`;
+}
+
+// IDs de bloco do Blockly podem conter caracteres inválidos num identificador
+// C++ (ex. `-`) — usados para nomear a variável global de estado por
+// instância do bloco "mudou_para_verdadeiro" (um bloco, uma borda lembrada).
+function sanitizeBlockId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_]/g, '_');
 }
 
 function isInsideLoop(block: Blockly.Block): boolean {
@@ -44,18 +51,27 @@ function distinctName(base: string): string {
 
 function variableCppType(block: Blockly.Block): VariableCppType {
   const type = block.getFieldValue('TIPO');
-  return type === 'float' || type === 'bool' ? type : 'int';
+  return type === 'float' || type === 'bool' || type === 'string' ? type : 'int';
+}
+
+// O id interno de tipo ('string') não é uma palavra-chave C++ válida — a
+// classe do Arduino core é `String`, maiúscula. int/float/bool já coincidem
+// com a palavra-chave C++ real, então passam direto.
+function cppTypeKeyword(type: VariableCppType): string {
+  return type === 'string' ? 'String' : type;
 }
 
 function defaultVariableValue(type: VariableCppType): string {
   if (type === 'float') return '0.0f';
   if (type === 'bool') return 'false';
+  if (type === 'string') return '""';
   return '0';
 }
 
 const GLOBAL_INITIALIZER_VALUE_TYPES = new Set([
   'numero_fixo',
   'valor_booleano_fixo',
+  'texto_fixo',
   'operacao_matematica',
   'potencia',
   'minimo_maximo',
@@ -214,6 +230,10 @@ export function initGenerators() {
   cppGenerator.forBlock['nao_logico'] = (b: Blockly.Block) => [`!(${cppGenerator.valueToCode(b, 'VALOR', 0) || 'false'})`, 0];
   cppGenerator.forBlock['numero_para_booleano'] = (b: Blockly.Block) => [`((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}) != 0.0f)`, 0];
   cppGenerator.forBlock['booleano_para_numero'] = (b: Blockly.Block) => [`((${cppGenerator.valueToCode(b, 'VALOR', 0) || 'false'}) ? 1 : 0)`, 0];
+  cppGenerator.forBlock['mudou_para_verdadeiro'] = (b: Blockly.Block) => {
+    const condition = cppGenerator.valueToCode(b, 'VALOR', 0) || 'false';
+    return [`_bloquin_borda(_borda_${sanitizeBlockId(b.id)}, (${condition}))`, 0];
+  };
   cppGenerator.forBlock['mapear_valor'] = (b: Blockly.Block) => [`_bloquin_mapFloat((float)(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}), ${floatLiteral(b.getFieldValue('DE_MIN'))}, ${floatLiteral(b.getFieldValue('DE_MAX'))}, ${floatLiteral(b.getFieldValue('PARA_MIN'))}, ${floatLiteral(b.getFieldValue('PARA_MAX'))})`, 0];
   cppGenerator.forBlock['operacao_matematica'] = (b: Blockly.Block) => {
     const a = cppGenerator.valueToCode(b, 'A', 99) || '0';
@@ -255,13 +275,80 @@ export function initGenerators() {
   // Variáveis
   cppGenerator.forBlock['declarar_variavel_global'] = (b: Blockly.Block) => {
     const type = variableCppType(b);
-    return `${type} ${toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || defaultVariableValue(type)};\n`;
+    return `${cppTypeKeyword(type)} ${toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || defaultVariableValue(type)};\n`;
   };
   cppGenerator.forBlock['atribuir_variavel'] = (b: Blockly.Block) => `  ${toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var')} = ${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'};\n`;
   cppGenerator.forBlock['ler_variavel'] = (b: Blockly.Block) => [toCppIdentifier(b.getFieldValue('NOME'), 'minha_var', 'var'), 0];
   cppGenerator.forBlock['incrementar_variavel'] = (b: Blockly.Block) => `  ${toCppIdentifier(b.getFieldValue('NOME'), 'contador', 'var')} += ${cppGenerator.valueToCode(b, 'VALOR', 99) || '1'};\n`;
+
+  // Listas — fallback para o caso raro do bloco não estar solto no
+  // workspace (o caminho normal é tratado como topBlock em generateCode,
+  // igual a declarar_variavel_global).
+  cppGenerator.forBlock['declarar_lista_global'] = (b: Blockly.Block) => {
+    const type = variableCppType(b);
+    const tamanho = Math.max(1, Math.round(Number(b.getFieldValue('TAMANHO')) || 1));
+    return `${cppTypeKeyword(type)} ${toCppIdentifier(b.getFieldValue('NOME'), 'minha_lista', 'var')}[${tamanho}] = {};\n`;
+  };
+  // sizeof(nome)/sizeof(nome[0]) dá o tamanho declarado em tempo de
+  // compilação — dispensa o gerador JS guardar um mapa nome→tamanho.
+  cppGenerator.forBlock['lista_definir_item'] = (b: Blockly.Block) => {
+    const nome = toCppIdentifier(b.getFieldValue('NOME'), 'minha_lista', 'var');
+    const indice = cppGenerator.valueToCode(b, 'INDICE', 99) || '0';
+    const valor = cppGenerator.valueToCode(b, 'VALOR', 99) || '0';
+    return `  ${nome}[_bloquin_indiceLista((long)(${indice}), sizeof(${nome}) / sizeof(${nome}[0]))] = ${valor};\n`;
+  };
+  cppGenerator.forBlock['lista_ler_item'] = (b: Blockly.Block) => {
+    const nome = toCppIdentifier(b.getFieldValue('NOME'), 'minha_lista', 'var');
+    const indice = cppGenerator.valueToCode(b, 'INDICE', 99) || '0';
+    return [`${nome}[_bloquin_indiceLista((long)(${indice}), sizeof(${nome}) / sizeof(${nome}[0]))]`, 0];
+  };
+  cppGenerator.forBlock['lista_tamanho'] = (b: Blockly.Block) => {
+    const nome = toCppIdentifier(b.getFieldValue('NOME'), 'minha_lista', 'var');
+    return [`(long)(sizeof(${nome}) / sizeof(${nome}[0]))`, 0];
+  };
+
+  // Armazenamento permanente — a chave literal do bloco basta: cada
+  // plataforma resolve o deslocamento/namespace por conta própria dentro
+  // do helper (ver headers em generateCode), sem o gerador JS precisar
+  // de um mapa chave→posição.
+  cppGenerator.forBlock['armazenamento_salvar'] = (b: Blockly.Block) => {
+    const chave = cppStringLiteral(b.getFieldValue('CHAVE'));
+    const valor = cppGenerator.valueToCode(b, 'VALOR', 99) || '0';
+    return `  _bloquin_eepromSalvar(${chave}, (float)(${valor}));\n`;
+  };
+  cppGenerator.forBlock['armazenamento_ler'] = (b: Blockly.Block) => {
+    const chave = cppStringLiteral(b.getFieldValue('CHAVE'));
+    const padrao = cppGenerator.valueToCode(b, 'PADRAO', 99) || '0';
+    return [`_bloquin_eepromLer(${chave}, (float)(${padrao}))`, 0];
+  };
   cppGenerator.forBlock['valor_booleano_fixo'] = (b: Blockly.Block) => [b.getFieldValue('VALOR'), 0];
   cppGenerator.forBlock['texto_fixo'] = (b: Blockly.Block) => [cppStringLiteral(b.getFieldValue('TEXT')), 0];
+
+  // Texto — aceitam Number/Boolean/String nas entradas flexíveis, mesmo
+  // contrato já usado por "O Robô Diz" (escrever_serial_valor): String(x)
+  // resolve para o construtor certo (int/float/bool/String) em cada caso.
+  cppGenerator.forBlock['comparar_texto'] = (b: Blockly.Block) => {
+    const a = cppGenerator.valueToCode(b, 'A', 0) || '""';
+    const bv = cppGenerator.valueToCode(b, 'B', 0) || '""';
+    return [`(String(${a}) ${b.getFieldValue('OP')} String(${bv}))`, 0];
+  };
+  cppGenerator.forBlock['concatenar_texto'] = (b: Blockly.Block) => {
+    const a = cppGenerator.valueToCode(b, 'A', 0) || '""';
+    const bv = cppGenerator.valueToCode(b, 'B', 0) || '""';
+    return [`(String(${a}) + String(${bv}))`, 0];
+  };
+  cppGenerator.forBlock['comprimento_texto'] = (b: Blockly.Block) => [`(String(${cppGenerator.valueToCode(b, 'VALOR', 0) || '""'}).length())`, 0];
+  cppGenerator.forBlock['texto_contem'] = (b: Blockly.Block) => {
+    const a = cppGenerator.valueToCode(b, 'A', 0) || '""';
+    const bv = cppGenerator.valueToCode(b, 'B', 0) || '""';
+    return [`(String(${a}).indexOf(String(${bv})) >= 0)`, 0];
+  };
+  // Wrap com String(): a entrada é tipada como String no Blockly, mas o C++
+  // gerado por "texto_fixo" é um literal `const char[]` puro (sem .toFloat()),
+  // não um objeto String — só blocos como "Ler Texto da Serial"/Bluetooth ou
+  // uma variável de texto já devolvem String de verdade.
+  cppGenerator.forBlock['texto_para_numero'] = (b: Blockly.Block) => [`String(${cppGenerator.valueToCode(b, 'VALOR', 0) || '""'}).toFloat()`, 0];
+  cppGenerator.forBlock['numero_para_texto'] = (b: Blockly.Block) => [`String(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'})`, 0];
 
   // Funções
   cppGenerator.forBlock['definir_funcao'] = (b: Blockly.Block) => {
@@ -369,8 +456,16 @@ export function initGenerators() {
   cppGenerator.forBlock['mostrar_distancia'] = (b: Blockly.Block) => `  Serial.println(_lerDistancia(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}));\n`;
   cppGenerator.forBlock['objeto_esta_perto'] = (b: Blockly.Block) => [`_objetoPerto(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}, ${floatLiteral(b.getFieldValue('CM'))})`, 0];
   cppGenerator.forBlock['distancia_entre'] = (b: Blockly.Block) => [`_distanciaEntre(${b.getFieldValue('TRIG')}, ${b.getFieldValue('ECHO')}, ${floatLiteral(b.getFieldValue('MIN'))}, ${floatLiteral(b.getFieldValue('MAX'))})`, 0];
+  cppGenerator.forBlock['dht_iniciar'] = (b: Blockly.Block) => `  pinMode(${b.getFieldValue('PIN')}, INPUT_PULLUP);\n`;
+  cppGenerator.forBlock['dht_ler_temperatura'] = (_b: Blockly.Block) => [`_bloquin_lerDHTTemperatura()`, 0];
+  cppGenerator.forBlock['dht_ler_umidade'] = (_b: Blockly.Block) => [`_bloquin_lerDHTUmidade()`, 0];
+  cppGenerator.forBlock['ir_iniciar'] = (b: Blockly.Block) => `  pinMode(${b.getFieldValue('PIN')}, INPUT);\n`;
+  cppGenerator.forBlock['ir_disponivel'] = (_b: Blockly.Block) => [`_bloquin_irDisponivel()`, 0];
+  cppGenerator.forBlock['ir_ler_codigo'] = (_b: Blockly.Block) => [`_bloquin_irCodigo()`, 0];
   cppGenerator.forBlock['escrever_serial'] = (b: Blockly.Block) => `  Serial.println(${cppStringLiteral(b.getFieldValue('TEXT'))});\n`;
   cppGenerator.forBlock['escrever_serial_valor'] = (b: Blockly.Block) => `  Serial.println(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'});\n`;
+  cppGenerator.forBlock['serial_disponivel'] = (_b: Blockly.Block) => [`(Serial.available() > 0)`, 0];
+  cppGenerator.forBlock['serial_ler_texto'] = (_b: Blockly.Block) => [`_bloquin_lerSerial()`, 0];
   cppGenerator.forBlock['servo_configurar'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.attach(${b.getFieldValue('PIN')});\n`;
   cppGenerator.forBlock['servo_mover'] = (b: Blockly.Block) => `  _servoObj_${b.getFieldValue('PIN')}.write((int)_bloquin_limitar((float)(${cppGenerator.valueToCode(b, 'ANGULO', 99) || '90'}), 0.0f, 180.0f));\n`;
   cppGenerator.forBlock['servo_ler'] = (b: Blockly.Block) => [`_servoObj_${b.getFieldValue('PIN')}.read()`, 0];
@@ -382,6 +477,40 @@ export function initGenerators() {
     const pin    = b.getFieldValue('PIN');
     return `  _bloquin_tocarMusica(_bloquin_mel_${musica}, _bloquin_notes_${musica}, _bloquin_tempo_${musica}, ${pin});\n`;
   };
+  cppGenerator.forBlock['lcd_iniciar'] = (b: Blockly.Block) =>
+    (targetBoard === 'esp32'
+      ? `  Wire.begin(${b.getFieldValue('SDA')}, ${b.getFieldValue('SCL')});\n`
+      : '  Wire.begin(); // SDA=A4, SCL=A5 no Arduino Uno/Nano\n') +
+    `  _bloquin_lcdInit();\n`;
+  cppGenerator.forBlock['lcd_limpar'] = (_b: Blockly.Block) => `  _bloquin_lcdClear();\n`;
+  cppGenerator.forBlock['lcd_posicionar_cursor'] = (b: Blockly.Block) => {
+    const coluna = cppGenerator.valueToCode(b, 'COLUNA', 99) || '0';
+    const linha = cppGenerator.valueToCode(b, 'LINHA', 99) || '0';
+    // _bloquin_limitar antes do cast: converter um float negativo direto
+    // para uint8_t é comportamento indefinido em C++, não só "dá errado".
+    return `  _bloquin_lcdSetCursor((uint8_t)_bloquin_limitar((float)(${coluna}), 0.0f, 255.0f), (uint8_t)_bloquin_limitar((float)(${linha}), 0.0f, 255.0f));\n`;
+  };
+  cppGenerator.forBlock['lcd_escrever_texto'] = (b: Blockly.Block) => `  _bloquin_lcdPrint(${cppStringLiteral(b.getFieldValue('TEXT'))});\n`;
+  cppGenerator.forBlock['lcd_escrever_valor'] = (b: Blockly.Block) => `  _bloquin_lcdPrint(String(${cppGenerator.valueToCode(b, 'VALOR', 99) || '0'}));\n`;
+  cppGenerator.forBlock['neopixel_iniciar'] = (_b: Blockly.Block) => `  _neopixel.begin();\n  _neopixel.show();\n`;
+  cppGenerator.forBlock['neopixel_definir_cor'] = (b: Blockly.Block) => {
+    const indice = cppGenerator.valueToCode(b, 'INDICE', 99) || '0';
+    const r = cppGenerator.valueToCode(b, 'R', 99) || '0';
+    const g = cppGenerator.valueToCode(b, 'G', 99) || '0';
+    const bv = cppGenerator.valueToCode(b, 'B', 99) || '0';
+    return (
+      // _bloquin_limitar antes do cast do índice pelo mesmo motivo do LCD
+      // acima — um índice grande demais para a tira já é ignorado sozinho
+      // por Adafruit_NeoPixel::setPixelColor, mas um índice negativo
+      // convertido direto para uint16_t é comportamento indefinido.
+      `  _neopixel.setPixelColor((uint16_t)_bloquin_limitar((float)(${indice}), 0.0f, 65535.0f), _neopixel.Color(\n` +
+      `    (uint8_t)_bloquin_limitar((float)(${r}), 0.0f, 255.0f),\n` +
+      `    (uint8_t)_bloquin_limitar((float)(${g}), 0.0f, 255.0f),\n` +
+      `    (uint8_t)_bloquin_limitar((float)(${bv}), 0.0f, 255.0f)));\n`
+    );
+  };
+  cppGenerator.forBlock['neopixel_limpar'] = (_b: Blockly.Block) => `  _neopixel.clear();\n`;
+  cppGenerator.forBlock['neopixel_mostrar'] = (_b: Blockly.Block) => `  _neopixel.show();\n`;
   cppGenerator.forBlock['mpu_iniciar'] = (b: Blockly.Block) => {
     const addr = b.getFieldValue('ADDR') || '0x68';
     return (targetBoard === 'esp32'
@@ -468,6 +597,21 @@ export function initGenerators() {
   cppGenerator.forBlock['wifi_esta_conectado'] = (_b: Blockly.Block) => [`(WiFi.status() == WL_CONNECTED)`, 0];
   cppGenerator.forBlock['wifi_endereco_ip'] = (_b: Blockly.Block) => [`WiFi.localIP().toString()`, 0];
   cppGenerator.forBlock['wifi_desconectar'] = (_b: Blockly.Block) => `  WiFi.disconnect(true);\n`;
+  cppGenerator.forBlock['wifi_http_get'] = (b: Blockly.Block) => {
+    const url = cppGenerator.valueToCode(b, 'URL', 0) || '""';
+    return (
+      `  {\n` +
+      `    HTTPClient _http;\n` +
+      `    _http.begin(${url});\n` +
+      `    int _httpCodigo = _http.GET();\n` +
+      `    _wifi_http_ok = (_httpCodigo >= 200 && _httpCodigo < 300);\n` +
+      `    _wifi_http_resposta = _wifi_http_ok ? _http.getString() : "";\n` +
+      `    _http.end();\n` +
+      `  }\n`
+    );
+  };
+  cppGenerator.forBlock['wifi_http_sucesso'] = (_b: Blockly.Block) => [`_wifi_http_ok`, 0];
+  cppGenerator.forBlock['wifi_http_resposta'] = (_b: Blockly.Block) => [`_wifi_http_resposta`, 0];
 
   // Bluetooth clássico (BluetoothSerial) — mesma filosofia do ESP-NOW/Wi-Fi:
   // iniciar, status, enviar, receber.
@@ -485,6 +629,7 @@ export const generateCode = (
 ): string => {
   targetBoard = board;
   synchronizeVariableTypes(ws);
+  synchronizeListTypes(ws);
   cppGenerator.nameDB_?.reset();
   if (cppGenerator.nameDB_) {
     cppGenerator.nameDB_.setVariableMap(ws.getVariableMap());
@@ -496,6 +641,7 @@ export const generateCode = (
   const hasBlock = (...types: string[]) => types.some((type) => blockTypes.has(type));
 
   const globalVarLines: string[] = [];
+  const globalListLines: string[] = [];
   const deferredGlobalInitializers: DeferredInitializer[] = [];
   const functionPrototypes: string[] = [];
   const funcDefLines: string[] = [];
@@ -513,9 +659,9 @@ export const generateCode = (
       const valueBlock = block.getInputTargetBlock('VALOR');
       const valueCode = cppGenerator.valueToCode(block, 'VALOR', 99);
       if (valueBlock && valueCode && isSafeGlobalInitializer(valueBlock)) {
-        globalVarLines.push(`${type} ${name} = ${valueCode};\n`);
+        globalVarLines.push(`${cppTypeKeyword(type)} ${name} = ${valueCode};\n`);
       } else {
-        globalVarLines.push(`${type} ${name} = ${defaultVariableValue(type)};\n`);
+        globalVarLines.push(`${cppTypeKeyword(type)} ${name} = ${defaultVariableValue(type)};\n`);
         if (valueBlock && valueCode) {
           deferredGlobalInitializers.push({
             name,
@@ -524,6 +670,11 @@ export const generateCode = (
           });
         }
       }
+    } else if (block.type === 'declarar_lista_global') {
+      const type = variableCppType(block);
+      const name = toCppIdentifier(block.getFieldValue('NOME'), 'minha_lista', 'var');
+      const tamanho = Math.max(1, Math.round(Number(block.getFieldValue('TAMANHO')) || 1));
+      globalListLines.push(`${cppTypeKeyword(type)} ${name}[${tamanho}] = {};\n`);
     } else if (block.type === 'definir_funcao' || block.type === 'definir_funcao_retorno') {
       const returnType = block.type === 'definir_funcao_retorno' ? 'float' : 'void';
       functionPrototypes.push(
@@ -563,6 +714,7 @@ export const generateCode = (
   const mainCode = [
     ...functionPrototypes, functionPrototypes.length > 0 ? '\n' : '',
     ...globalVarLines, globalVarLines.length > 0 ? '\n' : '',
+    ...globalListLines, globalListLines.length > 0 ? '\n' : '',
     ...funcDefLines,
     setupCode,
     loopCode,
@@ -617,6 +769,193 @@ export const generateCode = (
     }
   }
 
+  // ── DHT11/DHT22 (temperatura e umidade) ──────────────────────────────────
+  // Protocolo de 1 fio implementado à mão sobre pulseIn(), no mesmo espírito
+  // de _lerDistancia() acima — sem depender de nenhuma biblioteca de DHT,
+  // que o aluno precisaria instalar à parte no Arduino IDE.
+  const needsDHT = hasBlock('dht_iniciar', 'dht_ler_temperatura', 'dht_ler_umidade');
+  let dhtHeader = '';
+  if (needsDHT) {
+    const dhtInitBlock = allBlocks.find((block) => block.type === 'dht_iniciar');
+    const dhtPin = dhtInitBlock ? dhtInitBlock.getFieldValue('PIN') : '2';
+    const dhtIsDht11 = !dhtInitBlock || dhtInitBlock.getFieldValue('TIPO') !== 'DHT22';
+    dhtHeader =
+      `const int _DHT_PIN = ${dhtPin};\n` +
+      `const bool _DHT_TIPO11 = ${dhtIsDht11 ? 'true' : 'false'};\n` +
+      // Começa "vencido" (estouro proposital de unsigned) para a primeira
+      // leitura de verdade acontecer já na primeira chamada, mesmo nos
+      // primeiros 2 s depois de ligar — sem isso, millis() - 0 < 2000 seria
+      // verdadeiro logo no início e devolveria o cache (0.0f) sem nunca ter
+      // lido o sensor.
+      'static unsigned long _dht_lastRead = (unsigned long)-2000;\n' +
+      'static bool _dht_lastOk = false;\n' +
+      'static float _dht_tempCache = 0.0f, _dht_umidCache = 0.0f;\n\n' +
+      'static bool _bloquin_lerDHT() {\n' +
+      '  if (millis() - _dht_lastRead < 2000) return _dht_lastOk;\n' +
+      '  pinMode(_DHT_PIN, OUTPUT);\n' +
+      '  digitalWrite(_DHT_PIN, LOW);\n' +
+      '  delay(18);\n' +
+      '  digitalWrite(_DHT_PIN, HIGH);\n' +
+      '  delayMicroseconds(30);\n' +
+      '  pinMode(_DHT_PIN, INPUT_PULLUP);\n' +
+      '  if (pulseIn(_DHT_PIN, LOW, 1000) == 0) { _dht_lastOk = false; _dht_lastRead = millis(); return false; }\n' +
+      '  if (pulseIn(_DHT_PIN, HIGH, 1000) == 0) { _dht_lastOk = false; _dht_lastRead = millis(); return false; }\n' +
+      '  uint8_t data[5] = {0, 0, 0, 0, 0};\n' +
+      '  for (int i = 0; i < 40; i++) {\n' +
+      '    if (pulseIn(_DHT_PIN, LOW, 1000) == 0) { _dht_lastOk = false; _dht_lastRead = millis(); return false; }\n' +
+      '    unsigned long alto = pulseIn(_DHT_PIN, HIGH, 1000);\n' +
+      '    data[i / 8] <<= 1;\n' +
+      '    if (alto > 40) data[i / 8] |= 1;\n' +
+      '  }\n' +
+      '  uint8_t checksum = (uint8_t)(data[0] + data[1] + data[2] + data[3]);\n' +
+      '  if (checksum != data[4]) { _dht_lastOk = false; _dht_lastRead = millis(); return false; }\n' +
+      '  if (_DHT_TIPO11) {\n' +
+      '    _dht_umidCache = data[0];\n' +
+      '    _dht_tempCache = data[2];\n' +
+      '  } else {\n' +
+      '    _dht_umidCache = ((data[0] << 8) | data[1]) / 10.0f;\n' +
+      '    int16_t rawTemp = ((data[2] & 0x7F) << 8) | data[3];\n' +
+      '    _dht_tempCache = (data[2] & 0x80) ? -(rawTemp / 10.0f) : (rawTemp / 10.0f);\n' +
+      '  }\n' +
+      '  _dht_lastOk = true;\n' +
+      '  _dht_lastRead = millis();\n' +
+      '  return true;\n' +
+      '}\n' +
+      'float _bloquin_lerDHTTemperatura() { _bloquin_lerDHT(); return _dht_tempCache; }\n' +
+      'float _bloquin_lerDHTUmidade() { _bloquin_lerDHT(); return _dht_umidCache; }\n\n';
+  }
+
+  // ── Receptor Infravermelho (protocolo NEC, à mão sobre pulseIn) ─────────
+  // 100% polling (sem interrupção): "disponível?" faz a tentativa de
+  // decodificação de verdade (com timeout curto na primeira marca, para não
+  // travar o resto do AGIR na maioria das voltas em que nada foi recebido);
+  // "código" só devolve o que já foi decodificado. Não decodifica o quadro
+  // de repetição do NEC (botão segurado) — fora de escopo, mesmo espírito
+  // de "ESP-NOW não reinventa retransmissão".
+  const needsIR = hasBlock('ir_iniciar', 'ir_disponivel', 'ir_ler_codigo');
+  let irHeader = '';
+  if (needsIR) {
+    const irInitBlock = allBlocks.find((block) => block.type === 'ir_iniciar');
+    const irPin = irInitBlock ? irInitBlock.getFieldValue('PIN') : '2';
+    irHeader =
+      `const int _IR_PIN = ${irPin};\n` +
+      'static unsigned long _ir_ultimoCodigo = 0;\n\n' +
+      // Confere primeiro se o pino já está em nível baixo antes de comprometer
+      // com o pulseIn: sem isso, cada chamada bloqueava até 20 ms na
+      // enorme maioria das voltas do AGIR (nenhum botão sendo apertado),
+      // travando junto qualquer outra coisa no mesmo loop (LED, buzzer,
+      // outros sensores). Com o pino em repouso (alto), a checagem é quase
+      // instantânea; só quando um sinal já começou é que vale a pena esperar.
+      'static bool _bloquin_irDisponivel() {\n' +
+      '  if (digitalRead(_IR_PIN) == HIGH) return false;\n' +
+      '  unsigned long marcaLider = pulseIn(_IR_PIN, LOW, 20000);\n' +
+      '  if (marcaLider < 8000 || marcaLider > 10500) return false;\n' +
+      '  unsigned long espacoLider = pulseIn(_IR_PIN, HIGH, 6000);\n' +
+      '  if (espacoLider < 3500 || espacoLider > 5500) return false;\n' +
+      '  uint32_t codigo = 0;\n' +
+      '  for (int i = 0; i < 32; i++) {\n' +
+      '    if (pulseIn(_IR_PIN, LOW, 2000) == 0) return false;\n' +
+      '    unsigned long espaco = pulseIn(_IR_PIN, HIGH, 3000);\n' +
+      '    if (espaco == 0) return false;\n' +
+      '    codigo <<= 1;\n' +
+      '    if (espaco > 1000) codigo |= 1UL;\n' +
+      '  }\n' +
+      '  _ir_ultimoCodigo = codigo;\n' +
+      '  return true;\n' +
+      '}\n' +
+      'static unsigned long _bloquin_irCodigo() { return _ir_ultimoCodigo; }\n\n';
+  }
+
+  // ── Display LCD (I²C, HD44780 4 bits via expansor PCF8574) ──────────────
+  // Implementado à mão sobre Wire.h (mesmo espírito do MPU6050 abaixo) —
+  // sem depender de LiquidCrystal_I2C, que o aluno precisaria instalar à
+  // parte no Arduino IDE.
+  const needsLCD = hasBlock(
+    'lcd_iniciar',
+    'lcd_limpar',
+    'lcd_posicionar_cursor',
+    'lcd_escrever_texto',
+    'lcd_escrever_valor',
+  );
+  let lcdHeader = '';
+  if (needsLCD) {
+    const lcdInitBlock = allBlocks.find((block) => block.type === 'lcd_iniciar');
+    const lcdAddr = lcdInitBlock ? (lcdInitBlock.getFieldValue('ADDR') || '0x27') : '0x27';
+    const lcdCols = lcdInitBlock ? (lcdInitBlock.getFieldValue('COLUNAS') || 16) : 16;
+    const lcdRows = lcdInitBlock ? (lcdInitBlock.getFieldValue('LINHAS') || 2) : 2;
+    lcdHeader =
+      // #include <Wire.h> duplicado com o do MPU6050 (quando os dois
+      // coexistem) é inofensivo — Wire.h tem include guard próprio.
+      '#include <Wire.h>\n\n' +
+      `const uint8_t _LCD_ADDR = ${lcdAddr};\n` +
+      `const uint8_t _LCD_COLS = ${lcdCols};\n` +
+      `const uint8_t _LCD_ROWS = ${lcdRows};\n` +
+      'const uint8_t _LCD_BACKLIGHT = 0x08;\n\n' +
+      'void _bloquin_lcdExpanderWrite(uint8_t data) {\n' +
+      '  Wire.beginTransmission(_LCD_ADDR);\n' +
+      '  Wire.write(data | _LCD_BACKLIGHT);\n' +
+      '  Wire.endTransmission();\n' +
+      '}\n' +
+      'void _bloquin_lcdPulseEnable(uint8_t data) {\n' +
+      '  _bloquin_lcdExpanderWrite(data | 0x04);\n' +
+      '  delayMicroseconds(1);\n' +
+      '  _bloquin_lcdExpanderWrite(data & ~0x04);\n' +
+      '  delayMicroseconds(50);\n' +
+      '}\n' +
+      'void _bloquin_lcdSendNibble(uint8_t nibble, uint8_t rs) {\n' +
+      '  _bloquin_lcdPulseEnable((nibble & 0xF0) | rs);\n' +
+      '}\n' +
+      'void _bloquin_lcdSend(uint8_t value, uint8_t rs) {\n' +
+      '  _bloquin_lcdSendNibble(value & 0xF0, rs);\n' +
+      '  _bloquin_lcdSendNibble((value << 4) & 0xF0, rs);\n' +
+      '}\n' +
+      'void _bloquin_lcdCommand(uint8_t cmd) { _bloquin_lcdSend(cmd, 0x00); }\n' +
+      'void _bloquin_lcdData(uint8_t data) { _bloquin_lcdSend(data, 0x01); }\n' +
+      'void _bloquin_lcdInit() {\n' +
+      '  delay(50);\n' +
+      '  _bloquin_lcdSendNibble(0x30, 0x00); delay(5);\n' +
+      '  _bloquin_lcdSendNibble(0x30, 0x00); delayMicroseconds(150);\n' +
+      '  _bloquin_lcdSendNibble(0x30, 0x00);\n' +
+      '  _bloquin_lcdSendNibble(0x20, 0x00);\n' +
+      '  _bloquin_lcdCommand(0x28);\n' +
+      '  _bloquin_lcdCommand(0x08);\n' +
+      '  _bloquin_lcdCommand(0x01); delay(2);\n' +
+      '  _bloquin_lcdCommand(0x06);\n' +
+      '  _bloquin_lcdCommand(0x0C);\n' +
+      '}\n' +
+      'void _bloquin_lcdClear() { _bloquin_lcdCommand(0x01); delay(2); }\n' +
+      'void _bloquin_lcdSetCursor(uint8_t col, uint8_t row) {\n' +
+      '  const uint8_t offsets[] = {0x00, 0x40, 0x14, 0x54};\n' +
+      '  uint8_t r = row < 4 ? row : 3;\n' +
+      '  uint8_t c = col < _LCD_COLS ? col : (_LCD_COLS > 0 ? _LCD_COLS - 1 : 0);\n' +
+      '  _bloquin_lcdCommand(0x80 | (c + offsets[r]));\n' +
+      '}\n' +
+      'void _bloquin_lcdPrint(const String &texto) {\n' +
+      '  for (unsigned int i = 0; i < texto.length(); i++) _bloquin_lcdData((uint8_t)texto[i]);\n' +
+      '}\n\n';
+  }
+
+  // ── LED Endereçável (NeoPixel/WS2812) ────────────────────────────────────
+  // Única família que depende de biblioteca externa (Adafruit_NeoPixel) —
+  // o protocolo exige timing de dezenas de nanossegundos, inviável de
+  // reimplementar à mão de forma confiável entre AVR e ESP32 (mesmo motivo
+  // que já justifica ESP32Servo.h para o Servo).
+  const needsNeopixel = hasBlock(
+    'neopixel_iniciar',
+    'neopixel_definir_cor',
+    'neopixel_limpar',
+    'neopixel_mostrar',
+  );
+  let neopixelHeader = '';
+  if (needsNeopixel) {
+    const neopixelInitBlock = allBlocks.find((block) => block.type === 'neopixel_iniciar');
+    const neopixelPin = neopixelInitBlock ? neopixelInitBlock.getFieldValue('PIN') : '2';
+    const neopixelCount = neopixelInitBlock ? (neopixelInitBlock.getFieldValue('QUANTIDADE') || 8) : 8;
+    neopixelHeader =
+      '#include <Adafruit_NeoPixel.h>\n\n' +
+      `Adafruit_NeoPixel _neopixel(${neopixelCount}, ${neopixelPin}, NEO_GRB + NEO_KHZ800);\n\n`;
+  }
+
   // ── Wi-Fi/ESP-NOW compartilham o mesmo #include <WiFi.h> — emitido uma
   // única vez aqui, nunca dentro de espNowHeader/wifiHeader individualmente.
   const needsGenericWifi = hasBlock(
@@ -624,6 +963,9 @@ export const generateCode = (
     'wifi_esta_conectado',
     'wifi_endereco_ip',
     'wifi_desconectar',
+    'wifi_http_get',
+    'wifi_http_sucesso',
+    'wifi_http_resposta',
   );
 
   // ── ESP-NOW ───────────────────────────────────────────────────────────────
@@ -763,6 +1105,31 @@ export const generateCode = (
     espNowHeader += '\n';
   }
 
+  // ── Leitura de texto por Stream (Serial e Bluetooth compartilham) ───────
+  // Serial e BluetoothSerial são as duas Stream de leitura de texto do
+  // Bloquin; o laço de "esvaziar o que já chegou" é idêntico para as duas,
+  // então mora aqui uma vez só em vez de duplicado em cada header.
+  const needsStreamRead = hasBlock('serial_ler_texto', 'bt_ler_texto');
+  let streamHelperHeader = '';
+  if (needsStreamRead) {
+    streamHelperHeader =
+      'String _bloquin_lerStream(Stream &origem) {\n' +
+      '  String _txt = "";\n' +
+      '  while (origem.available() > 0) {\n' +
+      '    _txt += (char)origem.read();\n' +
+      '  }\n' +
+      '  return _txt;\n' +
+      '}\n\n';
+  }
+
+  // ── Serial (USB) — universal, roda em Uno/Nano/ESP32, sem #include: Serial
+  // já vem sempre disponível e Serial.begin(115200) já roda em setup() (ver
+  // buildSetupCode acima) independente de haver bloco de Serial ou não.
+  let serialHeader = '';
+  if (hasBlock('serial_ler_texto')) {
+    serialHeader = 'String _bloquin_lerSerial() { return _bloquin_lerStream(Serial); }\n\n';
+  }
+
   // ── Wi-Fi (rede comum) ───────────────────────────────────────────────────
   let wifiHeader = '';
   if (needsGenericWifi && targetBoard !== 'esp32') {
@@ -770,6 +1137,18 @@ export const generateCode = (
   }
   const needsWifiInclude = (needsEspNow || needsGenericWifi) && targetBoard === 'esp32';
   const networkHeader = needsWifiInclude ? '#include <WiFi.h>\n\n' : '';
+
+  // ── Wi-Fi: cliente HTTP — HTTPClient.h já vem embutido no core do ESP32,
+  // mesma categoria de WiFi.h/esp_now.h/BluetoothSerial.h (nenhuma
+  // instalação extra no Arduino IDE do aluno).
+  const needsHttp = hasBlock('wifi_http_get', 'wifi_http_sucesso', 'wifi_http_resposta');
+  let httpHeader = '';
+  if (needsHttp && targetBoard === 'esp32') {
+    httpHeader =
+      '#include <HTTPClient.h>\n\n' +
+      'bool _wifi_http_ok = false;\n' +
+      'String _wifi_http_resposta = "";\n\n';
+  }
 
   // ── Bluetooth (clássico, BluetoothSerial) ────────────────────────────────
   const needsBluetooth = hasBlock(
@@ -785,14 +1164,7 @@ export const generateCode = (
   } else if (needsBluetooth) {
     bluetoothHeader = '#include <BluetoothSerial.h>\n\nBluetoothSerial _bloquinBT;\n\n';
     if (hasBlock('bt_ler_texto')) {
-      bluetoothHeader +=
-        'String _bloquin_lerBluetooth() {\n' +
-        '  String _txt = "";\n' +
-        '  while (_bloquinBT.available() > 0) {\n' +
-        '    _txt += (char)_bloquinBT.read();\n' +
-        '  }\n' +
-        '  return _txt;\n' +
-        '}\n\n';
+      bluetoothHeader += 'String _bloquin_lerBluetooth() { return _bloquin_lerStream(_bloquinBT); }\n\n';
     }
   }
 
@@ -874,7 +1246,7 @@ export const generateCode = (
   const mathOperations = allBlocks.filter((block) => block.type === 'operacao_matematica');
   const needsSafeDivision = mathOperations.some((block) => block.getFieldValue('OP') === '/');
   const needsSafeRemainder = mathOperations.some((block) => block.getFieldValue('OP') === '%');
-  const needsSafeLimit = hasBlock('constrain_valor', 'escrever_pino_pwm', 'servo_mover');
+  const needsSafeLimit = hasBlock('constrain_valor', 'escrever_pino_pwm', 'servo_mover', 'neopixel_definir_cor', 'lcd_posicionar_cursor');
   const needsMathLibrary = needsMapFloat
     || needsSafeDivision
     || needsSafeRemainder
@@ -909,6 +1281,108 @@ export const generateCode = (
       'float _bloquin_resto(float a, float b) {\n' +
       '  return fabsf(b) < 0.000001f ? 0.0f : fmodf(a, b);\n' +
       '}\n\n';
+  }
+
+  // ── Detecção de borda ("mudou de falso para verdadeiro?") ────────────────
+  // Cada instância do bloco precisa lembrar o valor da chamada anterior — uma
+  // variável global `bool` por instância (nomeada pelo id do bloco), passada
+  // por referência para uma função auxiliar única. Sem restrição de placa e
+  // sem singleton: várias instâncias convivem, cada uma com seu próprio estado.
+  const edgeBlocks = allBlocks.filter((block) => block.type === 'mudou_para_verdadeiro');
+  let edgeHeader = '';
+  if (edgeBlocks.length > 0) {
+    edgeHeader =
+      'bool _bloquin_borda(bool &anterior, bool atual) {\n' +
+      '  bool subiu = atual && !anterior;\n' +
+      '  anterior = atual;\n' +
+      '  return subiu;\n' +
+      '}\n' +
+      edgeBlocks.map((block) => `bool _borda_${sanitizeBlockId(block.id)} = false;\n`).join('')
+      + '\n';
+  }
+
+  // ── Listas: índice sempre protegido contra estouro ───────────────────────
+  // Cada lista já é um array C++ de verdade — sizeof(nome)/sizeof(nome[0])
+  // dá o tamanho em tempo de compilação, então este helper único (sem
+  // conhecer nome nenhum) resolve o clamp para todas as listas do projeto.
+  const needsListaIndice = hasBlock('lista_definir_item', 'lista_ler_item');
+  let listaHeader = '';
+  if (needsListaIndice) {
+    listaHeader =
+      'long _bloquin_indiceLista(long idx, unsigned long tamanho) {\n' +
+      '  if (idx < 0) return 0;\n' +
+      '  if ((unsigned long)idx >= tamanho) return (long)tamanho - 1;\n' +
+      '  return idx;\n' +
+      '}\n\n';
+  }
+
+  // ── Armazenamento permanente (EEPROM no AVR, Preferences no ESP32) ──────
+  // Só a chave literal do próprio bloco é necessária em cada ponto de
+  // chamada — cada plataforma resolve o "onde guardar" por conta própria
+  // aqui, sem o gerador JS precisar de um mapa chave→posição por bloco.
+  const needsArmazenamento = hasBlock('armazenamento_salvar', 'armazenamento_ler');
+  let armazenamentoHeader = '';
+  if (needsArmazenamento) {
+    if (targetBoard === 'esp32') {
+      armazenamentoHeader =
+        '#include <Preferences.h>\n\n' +
+        'Preferences _bloquinPrefs;\n' +
+        // Só grava se o valor mudou — mesmo cuidado do lado AVR
+        // (EEPROM.update), poupando ciclos de escrita da flash/NVS.
+        'void _bloquin_eepromSalvar(const char* chave, float valor) {\n' +
+        '  _bloquinPrefs.begin("bloquin", false);\n' +
+        '  if (_bloquinPrefs.getFloat(chave, valor + 1.0f) != valor) {\n' +
+        '    _bloquinPrefs.putFloat(chave, valor);\n' +
+        '  }\n' +
+        '  _bloquinPrefs.end();\n' +
+        '}\n' +
+        'float _bloquin_eepromLer(const char* chave, float padrao) {\n' +
+        '  _bloquinPrefs.begin("bloquin", true);\n' +
+        '  float valor = _bloquinPrefs.getFloat(chave, padrao);\n' +
+        '  _bloquinPrefs.end();\n' +
+        '  return valor;\n' +
+        '}\n\n';
+    } else {
+      // Ordenado (não na ordem de percurso do workspace): o deslocamento de
+      // cada chave no EEPROM precisa depender só do CONJUNTO de chaves
+      // usadas no projeto, nunca da ordem/posição dos blocos no workspace —
+      // sem isso, só reorganizar blocos no canvas (sem mudar o significado
+      // do programa) poderia fazer uma chave "roubar" o espaço gravado de
+      // outra na próxima compilação.
+      const chaves = [...new Set(
+        allBlocks
+          .filter((block) => block.type === 'armazenamento_salvar' || block.type === 'armazenamento_ler')
+          .map((block) => String(block.getFieldValue('CHAVE'))),
+      )].sort();
+      armazenamentoHeader =
+        '#include <EEPROM.h>\n' +
+        '#include <string.h>\n\n' +
+        `const char* _bloquin_eepromChaves[] = { ${chaves.map((chave) => cppStringLiteral(chave)).join(', ')} };\n` +
+        `const uint8_t _BLOQUIN_EEPROM_N = ${chaves.length};\n` +
+        'int _bloquin_eepromOffset(const char* chave) {\n' +
+        '  for (uint8_t i = 0; i < _BLOQUIN_EEPROM_N; i++) {\n' +
+        '    if (strcmp(_bloquin_eepromChaves[i], chave) == 0) return (int)i * 5;\n' +
+        '  }\n' +
+        '  return 0;\n' +
+        '}\n' +
+        // Byte de marca (0xA5) distingue "nunca gravado" (EEPROM de fábrica
+        // vem com lixo, não zero) de "gravado de verdade" — sem marca,
+        // devolve o padrão em vez de decodificar bytes aleatórios.
+        // EEPROM.update() só grava se o valor mudou, poupando ciclos de
+        // gravação (a EEPROM tem vida útil limitada).
+        'void _bloquin_eepromSalvar(const char* chave, float valor) {\n' +
+        '  int off = _bloquin_eepromOffset(chave);\n' +
+        '  EEPROM.update(off, 0xA5);\n' +
+        '  EEPROM.put(off + 1, valor);\n' +
+        '}\n' +
+        'float _bloquin_eepromLer(const char* chave, float padrao) {\n' +
+        '  int off = _bloquin_eepromOffset(chave);\n' +
+        '  if (EEPROM.read(off) != 0xA5) return padrao;\n' +
+        '  float valor;\n' +
+        '  EEPROM.get(off + 1, valor);\n' +
+        '  return valor;\n' +
+        '}\n\n';
+    }
   }
 
   let l298nHeader = '';
@@ -1142,8 +1616,10 @@ export const generateCode = (
     }
   }
 
-  const prefix = musicaHeader + mathHeader + networkHeader + espNowHeader + wifiHeader
-    + bluetoothHeader + mpuHeader + l298nHeader
+  const prefix = musicaHeader + mathHeader + edgeHeader + listaHeader + armazenamentoHeader
+    + networkHeader + espNowHeader + wifiHeader
+    + httpHeader + streamHelperHeader + serialHeader + bluetoothHeader + mpuHeader + lcdHeader + neopixelHeader + dhtHeader
+    + irHeader + l298nHeader
     + servoHeader + helperLer + helperEntre + helperPerto
     + (needsUltrass ? '\n' : '');
   return prefix + mainCode;

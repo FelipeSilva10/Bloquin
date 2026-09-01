@@ -30,6 +30,10 @@ export const SETUP_ONLY_TYPES = new Set([
   'mpu_iniciar',
   'l298n_configurar_simples',
   'bt_iniciar',
+  'lcd_iniciar',
+  'dht_iniciar',
+  'neopixel_iniciar',
+  'ir_iniciar',
 ]);
 
 export const ESP_NOW_TYPES = new Set([
@@ -98,6 +102,9 @@ export const WIFI_TYPES = new Set([
   'wifi_esta_conectado',
   'wifi_endereco_ip',
   'wifi_desconectar',
+  'wifi_http_get',
+  'wifi_http_sucesso',
+  'wifi_http_resposta',
 ]);
 
 export const BLUETOOTH_TYPES = new Set([
@@ -159,6 +166,22 @@ export const SINGLETON_BLOCKS: ReadonlyArray<{
     type: 'bt_iniciar',
     message: 'Inicie o Bluetooth apenas uma vez.',
   },
+  {
+    type: 'lcd_iniciar',
+    message: 'Use apenas um bloco para iniciar o Display LCD.',
+  },
+  {
+    type: 'dht_iniciar',
+    message: 'Use apenas um bloco para configurar o Sensor DHT11/DHT22.',
+  },
+  {
+    type: 'neopixel_iniciar',
+    message: 'Use apenas um bloco para configurar a Tira de LEDs.',
+  },
+  {
+    type: 'ir_iniciar',
+    message: 'Use apenas um bloco para configurar o Receptor Infravermelho.',
+  },
 ];
 
 export type PinCapability = 'all' | 'output' | 'pwm' | 'analog' | 'i2cSda' | 'i2cScl';
@@ -190,6 +213,11 @@ export const PIN_RULES: ReadonlyArray<{
   { types: [...ULTRASONIC_TYPES], field: 'ECHO', capability: 'all' },
   { types: ['mpu_iniciar'], field: 'SDA', capability: 'i2cSda' },
   { types: ['mpu_iniciar'], field: 'SCL', capability: 'i2cScl' },
+  { types: ['lcd_iniciar'], field: 'SDA', capability: 'i2cSda' },
+  { types: ['lcd_iniciar'], field: 'SCL', capability: 'i2cScl' },
+  { types: ['dht_iniciar'], field: 'PIN', capability: 'output' },
+  { types: ['neopixel_iniciar'], field: 'PIN', capability: 'output' },
+  { types: ['ir_iniciar'], field: 'PIN', capability: 'all' },
   { types: ['l298n_configurar_simples'], field: 'ENA', capability: 'pwm' },
   { types: ['l298n_configurar_simples'], field: 'ENB', capability: 'pwm' },
   { types: ['l298n_configurar_simples'], field: 'IN1', capability: 'output' },
@@ -211,12 +239,13 @@ export function getPinSets(board: BoardKey): Record<PinCapability, Set<string>> 
 }
 
 export type BlocklyValueType = 'Number' | 'Boolean' | 'String';
-export type VariableCppType = 'int' | 'float' | 'bool';
+export type VariableCppType = 'int' | 'float' | 'bool' | 'string';
 
 export const VARIABLE_VALUE_TYPES: Record<VariableCppType, BlocklyValueType> = {
   int: 'Number',
   float: 'Number',
   bool: 'Boolean',
+  string: 'String',
 };
 
 export function variableValueType(value: unknown): BlocklyValueType {
