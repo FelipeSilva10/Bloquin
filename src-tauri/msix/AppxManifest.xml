@@ -20,7 +20,7 @@
     Version="__MSIX_VERSION__" />
 
   <Properties>
-    <DisplayName>Bloquin</DisplayName>
+    <DisplayName>Bloquin IDE</DisplayName>
     <PublisherDisplayName>Felipe Conceição</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
