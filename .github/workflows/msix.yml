@@ -107,7 +107,7 @@ jobs:
             Copy-Item "src-tauri/resources" "$stage/resources" -Recurse
           }
 
-          foreach ($logo in @("Square44x44Logo", "Square71x71Logo", "Square150x150Logo", "Square310x310Logo", "StoreLogo")) {
+          foreach ($logo in @("Square44x44Logo", "Square71x71Logo", "Square150x150Logo", "StoreLogo")) {
             Copy-Item "src-tauri/icons/$logo.png" "$stage/Assets/$logo.png"
           }
 
