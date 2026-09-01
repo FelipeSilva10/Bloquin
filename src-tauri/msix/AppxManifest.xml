@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifesto MSIX do Bloquin para a Microsoft Store.
+
+  __MSIX_VERSION__ é substituído em CI (.github/workflows/msix.yml) pela
+  versão de package.json + ".0" (MSIX exige 4 números; SemVer usa 3).
+
+  Identity/Name e Identity/Publisher têm que bater exatamente com o que foi
+  reservado no Partner Center — qualquer diferença faz o upload ser rejeitado.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="FelipeConceio.BloquinIDE"
+    Publisher="CN=68DFA182-B7FB-429B-9B65-001C6A5719F9"
+    Version="__MSIX_VERSION__" />
+
+  <Properties>
+    <DisplayName>Bloquin</DisplayName>
+    <PublisherDisplayName>Felipe Conceição</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22631.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="pt-br" />
+  </Resources>
+
+  <Applications>
+    <Application Id="BloquinApp" Executable="Bloquin.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Bloquin"
+        Description="Ambiente visual de programação para Arduino e ESP32 voltado para o ensino."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Square71x71Logo="Assets\Square71x71Logo.png" Square310x310Logo="Assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

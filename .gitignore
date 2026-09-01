@@ -49,3 +49,7 @@ arduino-cli*.zip
 *.deb
 *.dmg
 *.msi
+*.msix
+*.msixbundle
+msix-stage/
+cert.pfx

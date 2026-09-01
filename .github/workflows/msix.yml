@@ -1,0 +1,186 @@
+name: MSIX (Microsoft Store)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DISPARO: manual apenas, enquanto o fluxo de submissão na Store está em teste.
+# Gera um .msix não destinado a instalação local — o Partner Center reassina
+# o pacote com o certificado da própria Store na publicação, então o
+# certificado usado aqui (autoassinado, efêmero) só precisa ter o mesmo
+# Subject que a identidade reservada no Partner Center.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+  # Mantenha em sincronia com .github/workflows/release.yml — mesmo binário
+  # arduino-cli precisa estar embutido no pacote da Store.
+  ARDUINO_CLI_VERSION: "1.4.1"
+  ARDUINO_CLI_WINDOWS_SHA256: "44f506a29d134cb294898d5f729aea85e5498f5d81ff5fc63c549087c45a20a3"
+
+  # Identidade reservada no Partner Center — não altere sem reservar de novo.
+  MSIX_PACKAGE_PUBLISHER_CN: "68DFA182-B7FB-429B-9B65-001C6A5719F9"
+
+jobs:
+  build-msix:
+    name: Build — MSIX
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          key: msix-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Instalar dependências npm
+        run: npm ci
+
+      - name: Configurar ambiente do Supabase
+        shell: bash
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [[ -z "$VITE_SUPABASE_URL" || -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]]; then
+            echo "::error::Os secrets VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY são obrigatórios."
+            exit 1
+          fi
+          {
+            printf 'VITE_SUPABASE_URL=%s\n' "$VITE_SUPABASE_URL"
+            printf 'VITE_SUPABASE_PUBLISHABLE_KEY=%s\n' "$VITE_SUPABASE_PUBLISHABLE_KEY"
+          } > .env
+
+      - name: Baixar arduino-cli (Windows)
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/resources/ | Out-Null
+          $uri = "https://github.com/arduino/arduino-cli/releases/download/v${{ env.ARDUINO_CLI_VERSION }}/arduino-cli_${{ env.ARDUINO_CLI_VERSION }}_Windows_64bit.zip"
+          Invoke-WebRequest -Uri $uri -OutFile arduino-cli.zip
+          $actualHash = (Get-FileHash -Path arduino-cli.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:ARDUINO_CLI_WINDOWS_SHA256) {
+            throw "SHA-256 inesperado para arduino-cli.zip: $actualHash"
+          }
+          Expand-Archive arduino-cli.zip -DestinationPath src-tauri/resources/ -Force
+          Remove-Item arduino-cli.zip
+          if (-not (Test-Path src-tauri/resources/arduino-cli.exe)) {
+            throw "arduino-cli.exe não foi encontrado após a extração."
+          }
+
+      - name: Build Tauri (binário, sem empacotar instalador)
+        run: npm run tauri:windows-binary
+
+      - name: Montar pasta do pacote MSIX
+        id: stage
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Versão inesperada em package.json: $version"
+          }
+          $msixVersion = "$version.0"
+          echo "msix_version=$msixVersion" >> $env:GITHUB_OUTPUT
+
+          $stage = "msix-stage"
+          New-Item -ItemType Directory -Force -Path "$stage/Assets" | Out-Null
+
+          $exe = "src-tauri/target/release/bloquin.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Binário não encontrado: $exe"
+          }
+          Copy-Item $exe "$stage/Bloquin.exe"
+
+          if (Test-Path "src-tauri/resources") {
+            Copy-Item "src-tauri/resources" "$stage/resources" -Recurse
+          }
+
+          foreach ($logo in @("Square44x44Logo", "Square71x71Logo", "Square150x150Logo", "Square310x310Logo", "StoreLogo")) {
+            Copy-Item "src-tauri/icons/$logo.png" "$stage/Assets/$logo.png"
+          }
+
+          (Get-Content "src-tauri/msix/AppxManifest.xml" -Raw) `
+            -replace '__MSIX_VERSION__', $msixVersion |
+            Set-Content -Path "$stage/AppxManifest.xml" -Encoding utf8
+
+          Write-Host "Pacote preparado em $stage (versão MSIX $msixVersion)."
+
+      - name: Empacotar com makeappx
+        shell: pwsh
+        run: |
+          $makeappx = Get-ChildItem `
+            -Path "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter "makeappx.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "x64" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $makeappx) {
+            throw "makeappx.exe não encontrado no runner."
+          }
+          Write-Host "Usando: $makeappx"
+
+          & $makeappx pack /d msix-stage /p BloquinIDE.msix /o
+          if ($LASTEXITCODE -ne 0) {
+            throw "makeappx falhou com código $LASTEXITCODE"
+          }
+
+      - name: Assinar pacote (certificado de teste efêmero)
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem `
+            -Path "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "x64" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $signtool) {
+            throw "signtool.exe não encontrado no runner."
+          }
+
+          $cert = New-SelfSignedCertificate `
+            -Type Custom `
+            -Subject "CN=${{ env.MSIX_PACKAGE_PUBLISHER_CN }}" `
+            -KeyUsage DigitalSignature `
+            -FriendlyName "Bloquin MSIX CI (efêmero)" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+
+          $pfxPassword = [Guid]::NewGuid().ToString("N")
+          $securePwd = ConvertTo-SecureString -String $pfxPassword -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath cert.pfx -Password $securePwd | Out-Null
+
+          & $signtool sign /fd SHA256 /f cert.pfx /p $pfxPassword BloquinIDE.msix
+          if ($LASTEXITCODE -ne 0) {
+            throw "signtool falhou com código $LASTEXITCODE"
+          }
+
+          Remove-Item cert.pfx -Force
+          Write-Host "✅ BloquinIDE.msix assinado (certificado de teste — o Partner Center reassina na publicação)."
+
+      - name: Resumo
+        shell: bash
+        run: |
+          echo "## 📦 MSIX gerado" >> "$GITHUB_STEP_SUMMARY"
+          echo "Versão MSIX: ${{ steps.stage.outputs.msix_version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Este pacote está assinado com um certificado de teste — não instale localmente sem confiar nesse certificado antes. Suba direto para o Partner Center." >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BloquinIDE-msix
+          path: BloquinIDE.msix
+          retention-days: 14
