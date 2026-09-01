@@ -25,6 +25,7 @@ env:
   ARDUINO_ESP32_CORE_VERSION: "3.3.7"
   ARDUINO_SERVO_LIBRARY_VERSION: "1.3.0"
   ARDUINO_ESP32_SERVO_LIBRARY_VERSION: "3.0.9"
+  ARDUINO_NEOPIXEL_LIBRARY_VERSION: "1.15.5"
   ARDUINO_ESP32_INDEX_URL: "https://espressif.github.io/arduino-esp32/package_esp32_index.json"
 
 jobs:
@@ -81,7 +82,7 @@ jobs:
             ~/.cache/bloquin/arduino-cli/${{ env.ARDUINO_CLI_VERSION }}
             ~/.arduino15
             ~/Arduino/libraries
-          key: arduino-cli-${{ runner.os }}-${{ env.ARDUINO_CLI_VERSION }}-avr-${{ env.ARDUINO_AVR_CORE_VERSION }}-esp32-${{ env.ARDUINO_ESP32_CORE_VERSION }}-servo-${{ env.ARDUINO_SERVO_LIBRARY_VERSION }}-esp32servo-${{ env.ARDUINO_ESP32_SERVO_LIBRARY_VERSION }}
+          key: arduino-cli-${{ runner.os }}-${{ env.ARDUINO_CLI_VERSION }}-avr-${{ env.ARDUINO_AVR_CORE_VERSION }}-esp32-${{ env.ARDUINO_ESP32_CORE_VERSION }}-servo-${{ env.ARDUINO_SERVO_LIBRARY_VERSION }}-esp32servo-${{ env.ARDUINO_ESP32_SERVO_LIBRARY_VERSION }}-neopixel-${{ env.ARDUINO_NEOPIXEL_LIBRARY_VERSION }}
 
       - name: Instalar Arduino CLI verificado
         shell: bash
@@ -122,6 +123,7 @@ jobs:
           arduino-cli lib update-index
           arduino-cli lib install "Servo@$ARDUINO_SERVO_LIBRARY_VERSION"
           arduino-cli lib install "ESP32Servo@$ARDUINO_ESP32_SERVO_LIBRARY_VERSION"
+          arduino-cli lib install "Adafruit NeoPixel@$ARDUINO_NEOPIXEL_LIBRARY_VERSION"
           arduino-cli core list
           arduino-cli lib list
 
@@ -129,6 +131,7 @@ jobs:
           arduino-cli core list | grep -Eq "^esp32:esp32[[:space:]]+$ARDUINO_ESP32_CORE_VERSION[[:space:]]"
           arduino-cli lib list | grep -Eq "^Servo[[:space:]]+$ARDUINO_SERVO_LIBRARY_VERSION[[:space:]]"
           arduino-cli lib list | grep -Eq "^ESP32Servo[[:space:]]+$ARDUINO_ESP32_SERVO_LIBRARY_VERSION[[:space:]]"
+          arduino-cli lib list | grep -Eq "^Adafruit NeoPixel[[:space:]]+$ARDUINO_NEOPIXEL_LIBRARY_VERSION[[:space:]]"
 
       - name: Compilar matriz Blockly sem hardware
         run: npm run test:hardware

@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { formatProjectUpdatedAt } from '../src/lib/projectDate.ts';
+// Fixado explicitamente: os testes abaixo comparam strings de horário
+// literal (ex. "14:32") formatadas a partir de timestamps com offset fixo
+// (-03:00) — sem isso, o resultado depende do fuso horário da máquina que
+// roda `npm test` e falha em qualquer ambiente que não seja
+// America/Sao_Paulo (por exemplo, o runner do GitHub Actions, que roda em
+// UTC). Precisa vir antes do import de projectDate.ts, que constrói os
+// Intl.DateTimeFormat na carga do módulo — por isso o import dinâmico: um
+// import estático seria içado (hoisted) e rodaria antes desta linha.
+process.env.TZ = 'America/Sao_Paulo';
+const { formatProjectUpdatedAt } = await import('../src/lib/projectDate.ts');
 
 const REFERENCE = new Date('2026-08-31T18:00:00-03:00').getTime();
 const days = (n) => n * 24 * 60 * 60 * 1000;
