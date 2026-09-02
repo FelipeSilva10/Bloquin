@@ -226,7 +226,6 @@ export function LibraryResourceScreen({ tabId, mode }: { tabId?: string; mode: '
 }
 
 export function LibraryPostReader({ post, onOpenAttachment }: { post: LibraryPost; onOpenAttachment: (attachment: LibraryAttachment) => void }) {
-  const [activeVideo, setActiveVideo] = useState<string | null>(null);
   const [externalError, setExternalError] = useState('');
   const content = typeof post.conteudo_json?.html === 'string' ? sanitizeRichText(post.conteudo_json.html) : '';
 
@@ -291,13 +290,14 @@ export function LibraryPostReader({ post, onOpenAttachment }: { post: LibraryPos
               }
 
               if (item.tipo === 'youtube' && item.external_id) {
-                return activeVideo === item.id ? (
-                  <div className="library-video-frame library-material-wide" key={item.id}>
-                    <iframe title={item.titulo ?? 'Vídeo do YouTube'} src={`https://www.youtube-nocookie.com/embed/${item.external_id}`} loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-                    <div className="library-video-fallback"><span>O vídeo continua disponível no navegador.</span><button type="button" onClick={() => void openExternal(item.external_url ?? `https://www.youtube.com/watch?v=${item.external_id}`)}>Abrir no YouTube ↗</button></div>
-                  </div>
-                ) : (
-                  <button type="button" className="library-video-preview library-material-wide" key={item.id} onClick={() => setActiveVideo(item.id)} aria-label={`Assistir ${item.titulo ?? 'vídeo'}`}>
+                return (
+                  <button
+                    type="button"
+                    className="library-video-preview library-material-wide"
+                    key={item.id}
+                    onClick={() => void openExternal(item.external_url ?? `https://www.youtube.com/watch?v=${item.external_id}`)}
+                    aria-label={`Assistir ${item.titulo ?? 'vídeo'} no YouTube`}
+                  >
                     {item.thumbnail_url && <img src={item.thumbnail_url} alt="" loading="lazy" decoding="async" />}
                     <span className="library-play-button" aria-hidden="true">▶</span><strong>{item.titulo ?? 'Assistir vídeo'}</strong>
                   </button>
