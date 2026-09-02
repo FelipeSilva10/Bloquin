@@ -38,7 +38,7 @@ import { exportLocalProjectFile, isTauriRuntime, saveLocalProjectFile } from '..
 import { persistLocalProject, writeLocalProject } from '../services/localProjectStore';
 
 import { type BoardKey, BOARD_UNSET, BOARDS } from '../blockly/boards';
-import { auditSerializedWorkspace, auditWorkspace } from '../blockly/audit';
+import { auditWorkspace } from '../blockly/audit';
 import { BLOCK_NAMES, getToolboxConfig } from '../blockly/toolbox';
 import { bloquinTheme } from '../blockly/theme';
 
@@ -459,8 +459,6 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
             })()
           : savedData;
         if (raw && Object.keys(raw).length > 0) {
-          const serializedIssues = auditSerializedWorkspace(raw, board);
-          if (serializedIssues.length > 0) throw new Error(serializedIssues.join('\n'));
           Blockly.serialization.workspaces.load(raw, workspace.current);
         }
       } catch (error) {
