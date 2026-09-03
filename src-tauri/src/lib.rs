@@ -1339,6 +1339,25 @@ fn dispose_sag(
     Ok(())
 }
 
+// Pacotes MSIX (Microsoft Store) sempre rodam a partir de
+// C:\Program Files\WindowsApps\<PackageFamilyName>\ — é o Windows quem
+// instala lá, nenhum outro canal de distribuição do Bloquin (NSIS
+// per-user, AppImage) usa esse caminho. Isso permite diferenciar os dois
+// binários em runtime sem precisar de uma build separada: o auto-updater
+// nunca deve rodar sob a Store, já que ela tem seu próprio mecanismo de
+// atualização e um app se atualizando por fora dela viola a política da
+// própria Microsoft.
+#[tauri::command]
+fn is_store_package() -> bool {
+    std::env::current_exe()
+        .map(|path| {
+            path.to_string_lossy()
+                .to_ascii_lowercase()
+                .contains("\\windowsapps\\")
+        })
+        .unwrap_or(false)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = AppState {
@@ -1355,6 +1374,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(app_state)
         .manage(SagWebviewGate(Mutex::new(())))
         .invoke_handler(tauri::generate_handler![
@@ -1367,6 +1388,7 @@ pub fn run() {
             hide_sag,
             reload_sag,
             dispose_sag,
+            is_store_package,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

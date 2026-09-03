@@ -211,6 +211,35 @@ jobs:
 
           Write-Host "✅ Assinado: $installer"
 
+      - name: Gerar assinatura do updater (Tauri)
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $installer = Join-Path `
+            "src-tauri/target/release/bundle/nsis" `
+            "${{ needs.metadata.outputs.windows_asset }}"
+          if (-not (Test-Path $installer)) {
+            throw "Instalador NSIS não encontrado para assinar: $installer"
+          }
+
+          # Precisa rodar DEPOIS da assinatura Authenticode acima: ela
+          # reescreve os bytes do .exe ao embutir o certificado, então uma
+          # assinatura do updater gerada antes não bateria mais com o
+          # arquivo que de fato será publicado e baixado pelos usuários.
+          npx tauri signer sign `
+            --private-key "$env:TAURI_SIGNING_PRIVATE_KEY" `
+            --password "$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" `
+            $installer
+          if ($LASTEXITCODE -ne 0) {
+            throw "Falha ao gerar a assinatura do updater."
+          }
+          if (-not (Test-Path "$installer.sig")) {
+            throw "Assinatura do updater não foi gerada: $installer.sig"
+          }
+          Write-Host "✅ Assinatura do updater gerada: $installer.sig"
+
       - name: Renomear instalador para nome fixo
         id: rename
         shell: powershell
@@ -228,11 +257,21 @@ jobs:
           Write-Host "Asset final: $dest ($sizeMB MB)"
           echo "path=$dest" >> $env:GITHUB_OUTPUT
 
+          $sigSource = "$installer.sig"
+          if (-not (Test-Path $sigSource)) {
+            throw "Assinatura do updater não encontrada: $sigSource"
+          }
+          $sigDest = "$dest.sig"
+          Copy-Item $sigSource $sigDest
+          echo "sig_path=$sigDest" >> $env:GITHUB_OUTPUT
+
       - name: Upload artifact — Windows
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: ${{ steps.rename.outputs.path }}
+          path: |
+            ${{ steps.rename.outputs.path }}
+            ${{ steps.rename.outputs.sig_path }}
           retention-days: 1
 
   # ═══════════════════════════════════════════════════════════════════════════
@@ -430,6 +469,7 @@ jobs:
           echo "Assets prontos:"
           ls -lh ./dist/
           [ -f "dist/${{ needs.metadata.outputs.windows_asset }}" ] || { echo "::error::${{ needs.metadata.outputs.windows_asset }} ausente!"; exit 1; }
+          [ -f "dist/${{ needs.metadata.outputs.windows_asset }}.sig" ] || { echo "::error::${{ needs.metadata.outputs.windows_asset }}.sig ausente!"; exit 1; }
           [ -f "dist/$ASSET_LINUX" ] || { echo "::error::$ASSET_LINUX ausente!"; exit 1; }
 
       # ─────────────────────────────────────────────────────
@@ -453,10 +493,20 @@ jobs:
             echo "Consulte o [histórico de commits](https://github.com/${{ github.repository }}/commits/${{ needs.metadata.outputs.tag }}) para detalhes das mudanças." >> RELEASE_NOTES.md
           fi
 
+      - name: Gerar manifesto do updater (latest.json)
+        run: |
+          node scripts/generate-updater-manifest.mjs \
+            --version "${{ needs.metadata.outputs.version }}" \
+            --notes-file RELEASE_NOTES.md \
+            --signature-file "dist/${{ needs.metadata.outputs.windows_asset }}.sig" \
+            --windows-url "https://github.com/${{ github.repository }}/releases/download/${{ needs.metadata.outputs.tag }}/${{ needs.metadata.outputs.windows_asset }}" \
+            --out dist/latest.json
+          cat dist/latest.json
+
       - name: Montar corpo final da release
         run: |
           cd dist
-          sha256sum "${{ needs.metadata.outputs.windows_asset }}" "$ASSET_LINUX" > SHA256SUMS.txt
+          sha256sum "${{ needs.metadata.outputs.windows_asset }}" "${{ needs.metadata.outputs.windows_asset }}.sig" "$ASSET_LINUX" "latest.json" > SHA256SUMS.txt
           cd ..
 
           REPO="${{ github.repository }}"
@@ -506,7 +556,9 @@ jobs:
           make_latest: ${{ needs.metadata.outputs.is_stable == 'true' }}
           files: |
             dist/${{ needs.metadata.outputs.windows_asset }}
+            dist/${{ needs.metadata.outputs.windows_asset }}.sig
             dist/${{ env.ASSET_LINUX }}
+            dist/latest.json
             dist/SHA256SUMS.txt
           fail_on_unmatched_files: true
         env:

@@ -123,3 +123,165 @@ arquivos que não podem ser distribuídos sob os termos verificados.
 No ambiente Linux atual foi possível validar a configuração, o nome, os testes
 estáticos e o build AppImage, mas não compilar nem executar o NSIS/UAC ou
 inspecionar o conteúdo de um `.exe` Windows.
+
+## Atualização automática (Tauri Updater)
+
+A partir da primeira versão publicada com essa mudança, o canal Windows/NSIS
+(download direto, fora da Microsoft Store) tem auto-update nativo via
+`tauri-plugin-updater` + `tauri-plugin-process`. Isso substitui, só nesse
+canal, o fluxo antigo de "avisa que existe versão nova → abre o site → baixa
+manualmente". **Antes de publicar essa primeira versão como release estável,
+valide numa máquina Windows real com uma tag de pré-lançamento** (ex.:
+`vX.Y.Z-beta.1` — o `release.yml` já suporta esse canal) — ver limitações no
+fim desta seção.
+
+### Por que só o canal NSIS, nunca o MSIX/Store
+
+O Bloquin é distribuído por dois canais totalmente separados (ver seções
+acima e `.github/workflows/msix.yml`): o NSIS deste documento, e um MSIX
+hand-rolled pra Microsoft Store. **O updater nunca deve rodar sob o MSIX** —
+a Store tem seu próprio mecanismo de atualização, e um app se atualizando
+por fora dela viola a política da própria Microsoft (já tivemos uma rejeição
+de certificação por outro motivo; não vale a pena arriscar outra).
+
+Em vez de compilar dois binários diferentes (o que arriscaria o pipeline do
+MSIX, que já é frágil), a distinção é feita em runtime: pacotes MSIX sempre
+rodam a partir de `C:\Program Files\WindowsApps\<PackageFamilyName>\` — é o
+Windows quem instala lá, e nenhum outro canal usa esse caminho. O comando
+Rust `is_store_package` (`src-tauri/src/lib.rs`) checa isso, e
+`src/services/appUpdaterService.ts::isStorePackage()` faz o front-end nunca
+chamar `check()` quando esse comando retorna `true`. O plugin do updater é
+registrado incondicionalmente nos dois binários — a garantia de que ele não
+age vem inteiramente dessa checagem, não de uma feature flag de build.
+
+### Como funciona, ponta a ponta
+
+1. No boot do app (`src/App.tsx`, `AppContent`), uma vez por sessão
+   (`sessionStorage['bloquin.update-check']`, mesmo padrão de antes):
+   - Se `isStorePackage()` → não faz nada.
+   - Senão, chama `checkForNativeUpdate()`, que baixa e verifica a
+     assinatura de `https://github.com/FelipeSilva10/Bloquin/releases/latest/download/latest.json`
+     contra a chave pública embutida em `tauri.conf.json`
+     (`plugins.updater.pubkey`). Isso já compara semver: só retorna algo se
+     a versão remota for maior — sem downgrade acidental.
+   - Se não estiver rodando dentro do Tauri (preview de navegador/dev), cai
+     no fluxo antigo (`checkForUpdate()`/`openOfficialSite()`,
+     inalterado) — só pra manter o preview útil, sem qualquer efeito no app
+     real.
+2. Se há atualização: aparece o banner (`NativeUpdateNotice`, mesmo visual
+   do aviso antigo) — "Nova atualização disponível" com
+   **Atualizar agora**/**Depois**.
+3. **Atualizar agora** chama `update.download(onProgress)` — só baixa,
+   não instala nem fecha o app. A barra de progresso usa os eventos
+   `Started`/`Progress`/`Finished` do próprio plugin; quando o tamanho total
+   não vem informado, mostra uma barra indeterminada em vez de travar em 0%.
+4. Download concluído → "Atualização pronta" com
+   **Reiniciar agora**/**Mais tarde**. Fechar ("Mais tarde") não descarta o
+   download nem cancela nada — só esconde o aviso; o objeto `Update`
+   continua vivo em memória enquanto a aba não for recarregada.
+5. **Reiniciar agora** chama `update.install()`. No Windows isso **fecha o
+   Bloquin ao lançar o instalador com sucesso** (o resto do fluxo, incluindo
+   reabrir o app, é responsabilidade do próprio instalador NSIS rodando em
+   modo `passive`) — por isso não há um `relaunch()` manual nesse caminho.
+   `tauri-plugin-process` está registrado mesmo assim, pensando numa
+   eventual expansão pra Linux/macOS, onde `install()` exige relançar o app
+   manualmente.
+6. Qualquer falha (sem internet, GitHub fora do ar, `latest.json` ausente,
+   download interrompido, assinatura inválida) faz `check()`/`download()`
+   rejeitar; o app trata isso retornando `null`/mostrando um aviso de erro
+   dispensável — nunca quebra a inicialização nem deixa a instalação atual
+   pela metade. Uma assinatura que não bate é recusada pelo próprio plugin
+   antes de tocar em qualquer arquivo instalado.
+
+### Privilégios administrativos
+
+`bundle.windows.nsis.installMode` nunca foi definido em `tauri.conf.json`,
+então vale o padrão do Tauri 2: **`currentUser`** — instala em
+`%LOCALAPPDATA%`, sem UAC, registro em HKCU. Isso já era assim antes do
+updater. A própria documentação/issues do Tauri confirmam que os modos
+silenciosos do updater (`quiet`/`passive`, configurado aqui como
+`plugins.updater.windows.installMode: "passive"`) só funcionam sem elevação
+quando a instalação já é per-user — exatamente o caso do Bloquin. Ou seja:
+**a atualização inteira roda sem senha de administrador**, preservando a
+característica que interessa pra laboratórios escolares com contas sem
+admin.
+
+### Assinatura: o que é público, o que é secreto
+
+- **Chave pública** (`plugins.updater.pubkey` em `tauri.conf.json`): fica
+  commitada no repositório sem problema — ela só serve pra *verificar*
+  assinaturas, nunca pra criar.
+- **Chave privada**: existe *apenas* como os secrets do GitHub Actions
+  `TAURI_SIGNING_PRIVATE_KEY` (conteúdo do arquivo `.key`) e
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Nunca deve entrar no repositório.
+  Felipe também tem uma cópia local de custódia (fora do repo) — se os dois
+  sumirem juntos, nenhum Bloquin já instalado aceita mais uma atualização
+  assinada com uma chave nova, sem uma versão-ponte pra trocar de chave.
+- A assinatura Ed25519 do updater é **separada** da assinatura Authenticode
+  (`WINDOWS_CERTIFICATE`) que já existia. São duas cadeias de confiança
+  diferentes: uma pro Windows/SmartScreen confiar no executável, outra pro
+  próprio Bloquin confiar que um `.exe` baixado veio de fato do build oficial.
+- **Ordem importa**: a assinatura do updater é gerada *depois* da assinatura
+  Authenticode (job `build-windows` de `release.yml`, passo "Gerar
+  assinatura do updater (Tauri)"), porque o Authenticode reescreve os bytes
+  do `.exe` ao embutir o certificado — assinar antes geraria uma assinatura
+  que não bate mais com o arquivo publicado.
+- Rotação de chave: gerar um novo par (`npx tauri signer generate`),
+  atualizar os dois secrets do GitHub e o `pubkey` em `tauri.conf.json`, e
+  publicar uma versão nova. Instalações antigas (com o `pubkey` velho) não
+  reconhecem `latest.json` assinado com a chave nova — a rotação só é segura
+  se você aceita que quem está numa versão muito antiga vai precisar baixar
+  o instalador manualmente uma última vez.
+
+### O que o SmartScreen ainda faz (e o updater não muda isso)
+
+O auto-update não elimina o aviso do SmartScreen na *primeira* instalação —
+isso é reputação de publisher, não assinatura (ver a seção sobre certificado
+EV mencionada na conversa que originou essa funcionalidade: nem certificado
+EV garante confiança instantânea hoje em dia). O que o updater evita é ter
+que passar por esse fluxo manual de novo a cada nova versão sobre uma
+instalação que já existe — o `.exe` novo é baixado e lançado pelo próprio
+app, não por um duplo-clique manual no Explorer.
+
+### Como publicar uma nova versão (fluxo inalterado + 1 passo automático)
+
+O processo de release continua o mesmo de sempre — `node
+scripts/sync-version.mjs X.Y.Z`, commit, `git tag vX.Y.Z`, `git push --tags`.
+O workflow `release.yml` agora inclui, sem passo manual adicional:
+
+1. Build + assinatura Authenticode do `.exe` (como já era).
+2. **Novo:** assina o `.exe` já finalizado com a chave do updater, gerando
+   `BloquinIDE_X.Y.Z.exe.sig`.
+3. **Novo:** `scripts/generate-updater-manifest.mjs` monta `latest.json`
+   (versão, notas do git-cliff, assinatura, URL de download) e publica junto
+   dos demais assets da release.
+4. Usuários com o Bloquin já instalado detectam a atualização no próximo
+   boot, sem qualquer ação manual do professor/aluno além de clicar em
+   "Atualizar agora" e depois "Reiniciar agora".
+
+Não é preciso gerar `latest.json` manualmente nem rodar `tauri signer sign`
+à mão — os dois passos novos do workflow cuidam disso a partir dos secrets
+já configurados.
+
+### Limitações atuais / próximos passos
+
+- **Só Windows/NSIS.** Linux (AppImage) não recebeu updater nesta entrega —
+  o plugin suporta, mas exigiria pesquisar o formato de update do AppImage
+  (`.tar.gz` + `.sig`) e um novo bloco `platforms.linux-x86_64` no
+  manifesto; ficou fora de escopo deliberadamente.
+- **MSIX/Store nunca atualiza por conta própria** — por design (ver acima).
+- Não foi possível testar em uma VM/máquina Windows real neste ambiente
+  (Linux, sem Windows disponível) — a verificação foi: `cargo check` limpo
+  com os plugins novos, build de produção do frontend limpo, os 4 estados de
+  UI (disponível/baixando/pronto/erro) conferidos visualmente com o serviço
+  do updater simulado, e o roundtrip completo de geração de chave → assinar
+  um arquivo → gerar `latest.json` testado localmente com a CLI real do
+  Tauri. **O primeiro teste em produção precisa ser: publicar uma versão de
+  teste (ex. um pré-release `-beta.1`) e confirmar, numa máquina Windows
+  real com uma versão anterior instalada, que o fluxo completo funciona,
+  incluindo o `install()` fechando e reabrindo o Bloquin sozinho.**
+- O aviso "Mais tarde" depois do download não persiste entre reinícios do
+  app — fechar e reabrir o Bloquin descarta o download em memória e refaz a
+  checagem (uma vez por sessão, como sempre foi). Aceitável pra uma primeira
+  versão; poderia evoluir pra download em segundo plano persistente se
+  virar um incômodo real.

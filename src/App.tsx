@@ -38,6 +38,13 @@ import {
   openOfficialSite,
   type AppUpdateInfo,
 } from './services/appVersionService';
+import {
+  checkForNativeUpdate,
+  isStorePackage,
+  type DownloadEvent,
+  type Update,
+} from './services/appUpdaterService';
+import { isTauriRuntime } from './services/localProjectService';
 import './App.css';
 
 const IdeScreen = lazy(() => import('./screens/IdeScreen').then(({ IdeScreen: screen }) => ({ default: screen })));
@@ -542,6 +549,70 @@ function UpdateNotice({ update, onClose, onUpdate }: {
   );
 }
 
+function NativeUpdateNotice({ state, onDownload, onDismiss, onRestart }: {
+  state: NativeUpdateState;
+  onDownload: () => void;
+  onDismiss: () => void;
+  onRestart: () => void;
+}) {
+  const version = state.stage === 'error' ? null : state.update.version;
+
+  return (
+    <aside className="update-notice" role="status" aria-live="polite" aria-label="Atualização disponível">
+      {state.stage !== 'downloading' && (
+        <button type="button" className="update-notice-close" onClick={onDismiss} aria-label="Fechar aviso de atualização">
+          ×
+        </button>
+      )}
+
+      {state.stage === 'available' && (
+        <>
+          <strong>Nova atualização disponível</strong>
+          <span>Bloquin v{version} — esta atualização contém correções e melhorias.</span>
+          <div className="update-notice-actions">
+            <button type="button" className="btn-primary" onClick={onDownload}>Atualizar agora</button>
+            <button type="button" className="btn-text" onClick={onDismiss}>Depois</button>
+          </div>
+        </>
+      )}
+
+      {state.stage === 'downloading' && (
+        <>
+          <strong>Baixando atualização…</strong>
+          <span>Bloquin v{version}</span>
+          <div className="update-notice-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={state.progress ?? undefined}>
+            <div
+              className={`update-notice-progress-fill${state.progress === null ? ' update-notice-progress-indeterminate' : ''}`}
+              style={state.progress !== null ? { width: `${state.progress}%` } : undefined}
+            />
+          </div>
+        </>
+      )}
+
+      {state.stage === 'ready' && (
+        <>
+          <strong>Atualização pronta</strong>
+          <span>O Bloquin precisa reiniciar para concluir a atualização para v{version}.</span>
+          <div className="update-notice-actions">
+            <button type="button" className="btn-primary" onClick={onRestart}>Reiniciar agora</button>
+            <button type="button" className="btn-text" onClick={onDismiss}>Mais tarde</button>
+          </div>
+        </>
+      )}
+
+      {state.stage === 'error' && (
+        <>
+          <strong>Não foi possível atualizar</strong>
+          <span>{state.message}</span>
+          <div className="update-notice-actions">
+            <button type="button" className="btn-text" onClick={onDismiss}>Fechar</button>
+          </div>
+        </>
+      )}
+    </aside>
+  );
+}
+
 function IdeScreenWrapper({
   role,
   userId,
@@ -690,10 +761,19 @@ function UnsavedTabDialog({ title, onCancel, onConfirm }: { title: string; onCan
   );
 }
 
+type NativeUpdateState =
+  | { stage: 'available'; update: Update }
+  | { stage: 'downloading'; update: Update; progress: number | null }
+  | { stage: 'ready'; update: Update }
+  | { stage: 'error'; message: string };
+
 function AppContent() {
   const [splashVisible, setSplashVisible] = useState(true);
   const [installedVersion, setInstalledVersion] = useState(APP_BUILD_VERSION);
+  // Aviso "legado" (aponta pro site oficial): único caminho fora do runtime
+  // Tauri, onde o updater nativo não existe (preview de navegador/dev).
   const [availableUpdate, setAvailableUpdate] = useState<AppUpdateInfo | null>(null);
+  const [nativeUpdate, setNativeUpdate] = useState<NativeUpdateState | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -711,20 +791,86 @@ function AppContent() {
     }
 
     if (shouldCheck) {
-      void checkForUpdate().then((update) => {
-        if (!disposed && update) setAvailableUpdate(update);
-      });
+      void (async () => {
+        // A Microsoft Store cuida das próprias atualizações do pacote MSIX —
+        // nunca mostrar aviso nem tentar o updater nativo nesse canal.
+        if (await isStorePackage()) return;
+
+        const update = await checkForNativeUpdate();
+        if (disposed) return;
+        if (update) {
+          setNativeUpdate({ stage: 'available', update });
+          return;
+        }
+
+        // Sem updater nativo (fora do Tauri, ex.: preview de navegador):
+        // mantém o aviso antigo, que só aponta pro site oficial.
+        if (!isTauriRuntime()) {
+          void checkForUpdate().then((legacyUpdate) => {
+            if (!disposed && legacyUpdate) setAvailableUpdate(legacyUpdate);
+          });
+        }
+      })();
     }
 
     return () => { disposed = true; };
   }, []);
 
-  const handleUpdate = () => {
+  const handleLegacyUpdate = () => {
     void openOfficialSite().catch(() => {
       // Opening the external browser is best effort and must not interrupt the
       // user's current session if the operating system rejects the request.
     });
     setAvailableUpdate(null);
+  };
+
+  const handleNativeDownload = () => {
+    if (!nativeUpdate || nativeUpdate.stage !== 'available') return;
+    const { update } = nativeUpdate;
+    let contentLength = 0;
+    let receivedLength = 0;
+    setNativeUpdate({ stage: 'downloading', update, progress: null });
+
+    const onProgress = (event: DownloadEvent) => {
+      if (event.event === 'Started') {
+        contentLength = event.data.contentLength ?? 0;
+        receivedLength = 0;
+      } else if (event.event === 'Progress') {
+        receivedLength += event.data.chunkLength;
+        setNativeUpdate({
+          stage: 'downloading',
+          update,
+          progress: contentLength > 0 ? Math.min(100, Math.round((receivedLength / contentLength) * 100)) : null,
+        });
+      }
+    };
+
+    update.download(onProgress)
+      .then(() => setNativeUpdate({ stage: 'ready', update }))
+      .catch((error) => setNativeUpdate({
+        stage: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível baixar a atualização.',
+      }));
+  };
+
+  const handleNativeDismiss = () => {
+    if (nativeUpdate?.stage === 'available' || nativeUpdate?.stage === 'error') {
+      if (nativeUpdate.stage === 'available') void nativeUpdate.update.close().catch(() => {});
+      setNativeUpdate(null);
+    }
+    // Durante o download ou com a atualização pronta, fechar só esconde o
+    // aviso — nunca cancela um download em andamento nem descarta uma
+    // atualização já baixada; o usuário pode reiniciar depois normalmente.
+  };
+
+  const handleNativeRestart = () => {
+    if (!nativeUpdate || nativeUpdate.stage !== 'ready') return;
+    // No Windows, install() fecha o Bloquin ao lançar o instalador com
+    // sucesso — não há relaunch() manual a fazer aqui nesse canal.
+    void nativeUpdate.update.install().catch((error) => setNativeUpdate({
+      stage: 'error',
+      message: error instanceof Error ? error.message : 'Não foi possível instalar a atualização.',
+    }));
   };
 
   return (
@@ -734,11 +880,20 @@ function AppContent() {
         <AppRoutes installedVersion={installedVersion} />
       </Router>
 
-      {!splashVisible && availableUpdate && (
+      {!splashVisible && nativeUpdate && (
+        <NativeUpdateNotice
+          state={nativeUpdate}
+          onDownload={handleNativeDownload}
+          onDismiss={handleNativeDismiss}
+          onRestart={handleNativeRestart}
+        />
+      )}
+
+      {!splashVisible && !nativeUpdate && availableUpdate && (
         <UpdateNotice
           update={availableUpdate}
           onClose={() => setAvailableUpdate(null)}
-          onUpdate={handleUpdate}
+          onUpdate={handleLegacyUpdate}
         />
       )}
 

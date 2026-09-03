@@ -18,6 +18,8 @@
     "fs:allow-write-file",
     "fs:allow-applocaldata-read-recursive",
     "fs:allow-applocaldata-write-recursive",
-    "core:path:default"
+    "core:path:default",
+    "updater:default",
+    "process:default"
   ]
 }
