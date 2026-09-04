@@ -1,5 +1,5 @@
 // src/App.tsx
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -651,6 +651,24 @@ function WorkspaceTabs() {
   const location = useLocation();
   const { tabs, activeTabId, activateTab, closeTab } = useTabs();
   const [pendingClose, setPendingClose] = useState<{ id: string; title: string } | null>(null);
+  // Fechar a aba ativa mexe em dois estados que não commitam no mesmo
+  // ciclo de render: o TabsProvider (fonte da lista de abas) e o router
+  // (fonte de location). Se closeTab() rodasse imediatamente, a aba
+  // sumiria da lista num render em que location ainda aponta pra rota
+  // dela — e o efeito de reconciliação de rotas em AppRoutes, vendo essa
+  // URL "órfã", reabre a aba (como se fosse um link direto). Guardar o id
+  // aqui e só chamar closeTab() depois que location.key mudar garante que
+  // a navegação para a aba de fallback já se refletiu antes de remover a
+  // aba — sem essa janela, sem precisar de um segundo clique.
+  const deferredCloseIdRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const pendingId = deferredCloseIdRef.current;
+    if (!pendingId) return;
+    deferredCloseIdRef.current = null;
+    closeTab(pendingId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   if (location.pathname === '/login') return null;
 
@@ -671,13 +689,17 @@ function WorkspaceTabs() {
 
   const closeTabAndNavigate = (id: string) => {
     const wasActive = id === activeTabId;
+    if (!wasActive) {
+      // Fechar uma aba que não está ativa não move a navegação atual —
+      // fecha na hora, sem depender do efeito acima.
+      closeTab(id);
+      return;
+    }
     const index = tabs.findIndex((tab) => tab.id === id);
     const fallbackId = tabs[Math.max(0, index - 1)]?.id ?? 'dashboard';
-    closeTab(id);
-    if (wasActive) {
-      const fallbackTab = tabs.find((tab) => tab.id === fallbackId);
-      navigate(getWorkspaceTabPath(fallbackTab), { state: getWorkspaceTabState(fallbackTab) });
-    }
+    const fallbackTab = tabs.find((tab) => tab.id === fallbackId);
+    deferredCloseIdRef.current = id;
+    navigate(getWorkspaceTabPath(fallbackTab), { state: getWorkspaceTabState(fallbackTab) });
   };
 
   return (
