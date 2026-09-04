@@ -31,7 +31,7 @@
     "supabase": "supabase",
     "tauri": "tauri",
     "tauri:windows": "tauri build --bundles nsis && node scripts/rename-windows-installer.mjs",
-    "tauri:windows-binary": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml",
+    "tauri:windows-binary": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml --features tauri/custom-protocol",
     "icons:generate": "tauri icon src/assets/LogoSimples.png"
   },
   "dependencies": {

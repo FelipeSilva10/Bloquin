@@ -80,6 +80,14 @@ jobs:
             throw "arduino-cli.exe não foi encontrado após a extração."
           }
 
+      # `tauri:windows-binary` roda `cargo build` direto (sem passar pela CLI
+      # `tauri build`) e por isso precisa habilitar manualmente a feature
+      # `tauri/custom-protocol`. Sem ela, `tauri::is_dev()` fica true
+      # (compilado, não runtime — vem de `cfg!(feature = "custom-protocol")`
+      # em tauri-2.x/src/lib.rs) e o binário tenta abrir devUrl
+      # (http://localhost:1420) em vez dos assets embutidos de `dist/` — foi
+      # o motivo exato da rejeição de certificação "Hmm...can't reach this
+      # page" (ver docs/windows-installer.md).
       - name: Build Tauri (binário, sem empacotar instalador)
         run: npm run tauri:windows-binary
 

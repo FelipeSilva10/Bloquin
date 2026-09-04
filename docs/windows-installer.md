@@ -285,3 +285,79 @@ já configurados.
   checagem (uma vez por sessão, como sempre foi). Aceitável pra uma primeira
   versão; poderia evoluir pra download em segundo plano persistente se
   virar um incômodo real.
+
+## Segunda rejeição de certificação (03/09/2026)
+
+Depois da primeira rejeição (política de auto-update sob MSIX, ver seção
+acima), o Bloquin IDE (Product ID `9N3MJX3CVHW4`) foi rejeitado de novo, por
+dois motivos independentes:
+
+### 1. 10.1.2.10 Functionality — app não abre ("Hmm...can't reach this page")
+
+O testador da Microsoft não conseguiu nem abrir o app: a WebView2 mostrava
+`localhost refused to connect` / `ERR_CONNECTION_REFUSED`, em dois
+dispositivos diferentes (ASUS Expertbook e Microsoft Surface Laptop).
+
+**Causa raiz:** `npm run tauri:windows-binary` (usado só pelo
+`.github/workflows/msix.yml`, para gerar o `.exe` cru que vai dentro do
+`.msix`) chamava `cargo build --release` **direto**, sem passar pela CLI
+`tauri build`. A CLI, quando builda de verdade, sempre passa
+`--features tauri/custom-protocol` pro cargo — é isso que faz
+`tauri::is_dev()` (`tauri-2.x/src/lib.rs`, `pub const fn is_dev() -> bool {
+!cfg!(feature = "custom-protocol") }`) virar `false` em tempo de
+**compilação**. Sem essa feature, `is_dev()` fica hard-coded como `true` no
+binário final, e o app — não importa em qual máquina rode — sempre tenta
+carregar `build.devUrl` (`http://localhost:1420`, do `tauri.conf.json`) em
+vez dos assets de `dist/` que já estão embutidos nele. Como nenhuma máquina
+de certificação tem o servidor Vite do desenvolvedor rodando, a conexão é
+sempre recusada. É por isso que "funcionava perfeitamente" nos testes locais
+(rodados via `tauri dev`/`tauri build`, que sempre setam a feature
+corretamente) e falhava só no pacote MSIX.
+
+Isso é ortogonal à checagem `is_store_package()` do updater (seção acima):
+aquela é 100% runtime (olha o caminho de instalação), essa aqui é 100%
+compile-time (decide de onde o binário carrega o frontend). As duas
+distinções coexistem sem conflito.
+
+**Correção:** `package.json` agora builda com a feature explícita:
+
+```
+"tauri:windows-binary": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml --features tauri/custom-protocol"
+```
+
+(`tauri/custom-protocol` habilita a feature `custom-protocol` do crate
+`tauri`, dependência direta do `bloquin`; não precisa de nenhum `[features]`
+extra no `Cargo.toml` do app pra isso funcionar — é sintaxe padrão do
+cargo para features de dependência direta.)
+
+Antes de reenviar ao Partner Center, **valide isto numa máquina Windows
+real** (não só localmente): instale o `.msix` gerado pelo workflow, feche
+qualquer servidor Vite local que porventura esteja rodando na 1420, e
+confirme que o app abre normalmente com a rede desconectada — se abrir
+offline, é prova de que não está mais tentando falar com um dev server.
+
+### 2. 10.2.4.1 Security - Software Dependencies — dependência não divulgada
+
+O binário do Bloquin (compilado com o toolchain MSVC) depende em tempo de
+execução do **Microsoft Visual C++ Redistributable**. Isso é permitido pela
+política da Store, mas precisa estar divulgado **nas duas primeiras linhas**
+da descrição do app no Partner Center — e não estava.
+
+**Correção:** não é uma mudança de código, é de texto da ficha da Store.
+Ao editar a descrição em Partner Center → Bloquin IDE → Store listings →
+Description, comece com algo como:
+
+```
+O Bloquin IDE depende do Microsoft Visual C++ Redistributable, normalmente
+já presente no Windows 10/11 atualizado. Ambiente visual de programação por
+blocos, em português, para o ensino de Arduino e ESP32 em sala de aula.
+
+[... resto da descrição atual, sem mudanças ...]
+```
+
+O importante é que a string "Microsoft Visual C++ Redistributable" apareça
+dentro das duas primeiras linhas — o resto do texto pode ser ajustado
+livremente. Não prometa instalação automática do redistribuível: o pacote
+MSIX hand-rolled (`.github/workflows/msix.yml`) não embute nem bootstrap
+nenhum instalador de dependência, só copia o `.exe` — a frase acima só
+declara a dependência, não afirma que o Bloquin a instala sozinho.
