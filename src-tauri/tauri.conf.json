@@ -25,7 +25,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "appimage"],
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "publisher": "Felipe da Conceição Silva",
     "shortDescription": "Bloquin IDE",
     "longDescription": "Ambiente visual de programação para Arduino e ESP32 voltado para o ensino.",
