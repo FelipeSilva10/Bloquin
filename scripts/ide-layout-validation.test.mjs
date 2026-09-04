@@ -7,6 +7,7 @@ const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8
 const cssSource = readFileSync(new URL('../src/App.css', import.meta.url), 'utf8');
 const ideSource = readFileSync(new URL('../src/screens/IdeScreen.tsx', import.meta.url), 'utf8');
 const tauriConfig = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
+const toolboxSource = readFileSync(new URL('../src/blockly/toolbox.ts', import.meta.url), 'utf8');
 
 function cssRule(selector, occurrence = 0) {
   const marker = `${selector} {`;
@@ -116,7 +117,7 @@ test('seletor de porta USB contém textos longos sem invadir a ação de atualiz
 });
 
 test('ações da IDE usam uma única família de ícones vetoriais', () => {
-  for (const icon of ['Upload', 'Code2', 'Save', 'SaveAll', 'FileJson', 'MessageCircle', 'LogOut', 'Ellipsis']) {
+  for (const icon of ['Upload', 'Code2', 'Save', 'FileJson', 'MessageCircle', 'LogOut', 'Ellipsis']) {
     assert.match(ideSource, new RegExp(`<${icon} className="ide-action-icon"`));
   }
 
@@ -294,4 +295,127 @@ test('Blockly mantém flyout e controles dentro do host ao redimensionar', async
     workspace.dispose();
     dom.window.close();
   }
+});
+
+test('"Salvar como" foi removido da UI sem afetar "Salvar" ou "Exportar JSON"', () => {
+  // Comentários que explicam o comportamento interno de handleSaveProject(saveAs)
+  // ainda citam "Salvar como" de propósito — só o botão/rótulo de UI precisa sumir.
+  assert.doesNotMatch(ideSource, /label="Salvar como"/u);
+  assert.doesNotMatch(ideSource, /Salvar como…/u);
+  assert.doesNotMatch(ideSource, /<SaveAll/u);
+  assert.doesNotMatch(ideSource, /\bSaveAll\b/u, 'import não utilizado deveria ter sido removido');
+  assert.match(ideSource, /label=\{isSaving \? 'Salvando…' : 'Salvar'\}/u);
+  assert.match(ideSource, /Exportar JSON/u);
+  // handleSaveProject(saveAs) continua existindo e testado por
+  // local-project-persistence-validation.test.mjs — só o botão some.
+  assert.match(ideSource, /const handleSaveProject = async \(saveAs = false\)/u);
+});
+
+test('a barra da IDE nunca deixa o título com largura zero: controles quebram de linha, não o título', () => {
+  const main = cssRule('.ide-toolbar-main');
+  assert.match(main, /display:\s*flex/);
+  assert.match(main, /flex-wrap:\s*wrap/);
+
+  const projectContext = cssRule('.ide-project-context');
+  assert.match(projectContext, /min-width:\s*160px/);
+
+  const controls = cssRule('.ide-toolbar-controls');
+  assert.match(controls, /flex:\s*0\s+0\s+auto/);
+});
+
+test('.ide-toolbar fica acima das camadas internas do Blockly (toolbox/flyout/drag-surface, z-index até 80)', () => {
+  const toolbar = cssRule('.ide-toolbar');
+  const match = toolbar.match(/z-index:\s*(\d+)/);
+  assert.ok(match, '.ide-toolbar precisa de um z-index explícito');
+  assert.ok(
+    Number(match[1]) > 80,
+    `.ide-toolbar z-index (${match[1]}) precisa superar o maior z-index interno do Blockly (.blocklyToolbox = 70, .blocklyBlockDragSurface = 80) para que dropdowns como o seletor de porta e o menu "Mais" não fiquem atrás das categorias`,
+  );
+});
+
+test('modal de "Mudanças não salvas" quebra os três botões em vez de estourar a largura', () => {
+  const actions = cssRule('.unsaved-changes-actions');
+  assert.match(actions, /display:\s*flex/);
+  assert.match(actions, /flex-wrap:\s*wrap/);
+
+  const buttons = cssRule('.unsaved-changes-actions .btn-secondary,\n.unsaved-changes-actions .btn-primary,\n.unsaved-changes-actions .btn-danger');
+  assert.match(buttons, /flex:\s*1\s+1\s+140px/);
+  assert.match(buttons, /white-space:\s*normal/);
+
+  assert.match(ideSource, /className="unsaved-changes-actions"/u);
+  assert.doesNotMatch(ideSource, /style=\{\{\s*flex:\s*1\s*\}\}/u);
+});
+
+test('toda categoria da toolbox tem um ícone próprio (cssConfig.icon), sem depender só da cor pra diferenciar', () => {
+  // Blockly reserva um <span> vazio por categoria (originalmente pro
+  // chevron de subcategorias — nossas categorias são todas "folha", então
+  // ele nunca é usado). cssConfig.icon troca a classe desse span, o que
+  // deixamos ligado ao conteúdo (::before) em App.css. Sem um ícone
+  // próprio, o modo recolhido dependeria só da faixa de cor — e várias
+  // categorias reaproveitam o mesmo hue (Controle/Tempo/Motor DC = 120;
+  // Receptor Infravermelho/LED Endereçável = 285; Listas/Armazenamento =
+  // 345), o que tornaria a sidebar compacta ambígua.
+  const categoryNames = [...toolboxSource.matchAll(/kind: 'category', name: '([^']+)'/g)].map((m) => m[1]);
+  assert.ok(categoryNames.length >= 20, 'esperava pelo menos 20 categorias no toolbox canônico');
+
+  const iconClasses = [...toolboxSource.matchAll(/cssConfig: \{ icon: 'toolbox-cat-icon (toolbox-cat-icon--[a-z0-9-]+)' \}/g)].map((m) => m[1]);
+  assert.equal(iconClasses.length, categoryNames.length, 'cada categoria precisa de exatamente um cssConfig.icon');
+  assert.equal(new Set(iconClasses).size, iconClasses.length, 'as classes de ícone por categoria devem ser todas distintas');
+
+  for (const iconClass of iconClasses) {
+    const rule = cssRule(`.${iconClass}::before`);
+    assert.match(rule, /content:\s*'.+'/u, `${iconClass} precisa definir um glifo visível via content`);
+  }
+});
+
+test('a toolbox tem uma largura fixa própria (não o shrink-to-fit nativo do Blockly) controlada por uma única custom property', () => {
+  // O shrink-to-fit nativo do Blockly deixava a toolbox com a largura do
+  // rótulo mais longo ("Sensor de Temperatura e Umidade", ~300px). Fixar a
+  // largura via CSS var é o que permite (a) reduzir esse espaço de forma
+  // previsível e (b) posicionar o botão de recolher/expandir sem medir a
+  // toolbox em JS: os dois sempre concordam porque leem a mesma variável.
+  const workspaceArea = cssRule('.workspace-area', 1);
+  assert.match(workspaceArea, /--bloquin-toolbox-w:\s*\d+px/);
+
+  const collapsedOverride = cssRule('.workspace-area.bloquin-toolbox-collapsed');
+  assert.match(collapsedOverride, /--bloquin-toolbox-w:\s*\d+px/);
+
+  const container = cssRule('.blocklyToolboxCategoryContainer');
+  assert.match(container, /width:\s*var\(--bloquin-toolbox-w\)/);
+
+  const toggle = cssRule('.bloquin-toolbox-toggle');
+  assert.match(toggle, /position:\s*absolute/);
+  assert.match(toggle, /left:\s*var\(--bloquin-toolbox-w\)/);
+  const toggleZIndex = Number(toggle.match(/z-index:\s*(\d+)/)?.[1]);
+  assert.ok(toggleZIndex > 80, 'o botão de recolher/expandir precisa ficar acima do z-index interno máximo do Blockly (80) pra nunca ficar atrás da toolbox/flyout');
+
+  // Rótulos que não cabem na largura fixa truncam com reticências em vez
+  // de estourar — o nome completo continua acessível pelo title nativo
+  // (setado em IdeScreen.tsx logo após o Blockly.inject).
+  const label = cssRule('.blocklyToolboxCategoryLabel');
+  assert.match(label, /overflow:\s*hidden/);
+  assert.match(label, /text-overflow:\s*ellipsis/);
+});
+
+test('recolher/expandir a toolbox aciona Blockly.svgResize (o canvas precisa recuperar o espaço, não só encolher visualmente)', () => {
+  // Forçar a largura via CSS sem avisar o Blockly deixaria a área do
+  // canvas com um vão vazio: svgResize é quem remede a largura real da
+  // toolbox e reposiciona o canvas. Reusar o efeito de ResizeObserver já
+  // existente (em vez de escrever um novo) também evita duplicar a lógica
+  // de resize já testada acima.
+  assert.match(ideSource, /\[boardLoadState, isCodeVisible, isFullscreenCode, isToolboxCollapsed, role\]/u);
+});
+
+test('preferência de toolbox recolhida persiste por navegador (não é dado de projeto) com leitura e escrita protegidas por try/catch', () => {
+  assert.match(ideSource, /localStorage\.getItem\('bloquin\.toolboxCollapsed'\)/u);
+  assert.match(ideSource, /localStorage\.setItem\('bloquin\.toolboxCollapsed'/u);
+  const initializer = ideSource.slice(
+    ideSource.indexOf('const [isToolboxCollapsed, setIsToolboxCollapsed] = useState('),
+  );
+  assert.match(initializer.slice(0, 200), /try \{ return localStorage\.getItem/u);
+});
+
+test('nome completo da categoria fica acessível via title nativo em ambos os modos (recolhido e expandido)', () => {
+  assert.match(ideSource, /querySelectorAll<HTMLElement>\('\.blocklyToolboxCategoryContainer'\)/u);
+  assert.match(ideSource, /row\.title = name/u);
 });

@@ -10,7 +10,7 @@ export const toolboxConfig = {
   kind: 'categoryToolbox',
   contents: [
     {
-      kind: 'category', name: 'Lógica', colour: '210',
+      kind: 'category', name: 'Lógica', colour: '210', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--logica' },
       contents: [
         { kind: 'block', type: 'se_entao' },
         { kind: 'block', type: 'se_entao_senao' },
@@ -24,7 +24,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Controle', colour: '120',
+      kind: 'category', name: 'Controle', colour: '120', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--controle' },
       contents: [
         { kind: 'block', type: 'repetir_vezes' },
         { kind: 'block', type: 'repetir_quantidade', inputs: { TIMES: { block: { type: 'numero_fixo', fields: { VALOR: 5 } } } } },
@@ -33,7 +33,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Matemática', colour: '255',
+      kind: 'category', name: 'Matemática', colour: '255', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--matematica' },
       contents: [
         { kind: 'block', type: 'numero_fixo' },
         { kind: 'block', type: 'operacao_matematica', inputs: { A: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, B: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
@@ -47,7 +47,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Variáveis', colour: '330',
+      kind: 'category', name: 'Variáveis', colour: '330', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--variaveis' },
       contents: [
         { kind: 'block', type: 'declarar_variavel_global', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
         { kind: 'block', type: 'atribuir_variavel', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
@@ -56,7 +56,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Listas', colour: '345',
+      kind: 'category', name: 'Listas', colour: '345', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--listas' },
       contents: [
         { kind: 'block', type: 'declarar_lista_global' },
         { kind: 'block', type: 'lista_definir_item', inputs: { INDICE: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } }, VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
@@ -65,14 +65,14 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Armazenamento', colour: '345',
+      kind: 'category', name: 'Armazenamento', colour: '345', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--armazenamento' },
       contents: [
         { kind: 'block', type: 'armazenamento_salvar', inputs: { VALOR: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
         { kind: 'block', type: 'armazenamento_ler', inputs: { PADRAO: { block: { type: 'numero_fixo', fields: { VALOR: 0 } } } } },
       ],
     },
     {
-      kind: 'category', name: 'Funções', colour: '270',
+      kind: 'category', name: 'Funções', colour: '270', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--funcoes' },
       contents: [
         { kind: 'block', type: 'definir_funcao' },
         { kind: 'block', type: 'chamar_funcao' },
@@ -81,7 +81,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Tempo', colour: '120',
+      kind: 'category', name: 'Tempo', colour: '120', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--tempo' },
       contents: [
         { kind: 'block', type: 'esperar' },
         { kind: 'block', type: 'esperar_duracao', inputs: { TIME: { block: { type: 'numero_fixo', fields: { VALOR: 1000 } } } } },
@@ -90,7 +90,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Entradas e Saídas', colour: '165',
+      kind: 'category', name: 'Entradas e Saídas', colour: '165', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--entradas-saidas' },
       contents: [
         { kind: 'block', type: 'configurar_pino' },
         { kind: 'block', type: 'escrever_pino' },
@@ -101,7 +101,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Sensor de Distância', colour: '30',
+      kind: 'category', name: 'Sensor de Distância', colour: '30', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--sensor-distancia' },
       contents: [
         { kind: 'block', type: 'configurar_ultrassonico' },
         { kind: 'block', type: 'ler_distancia_cm' },
@@ -111,7 +111,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Sensor de Temperatura e Umidade', colour: '15',
+      kind: 'category', name: 'Sensor de Temperatura e Umidade', colour: '15', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--sensor-temp-umidade' },
       contents: [
         { kind: 'block', type: 'dht_iniciar' },
         { kind: 'block', type: 'dht_ler_temperatura' },
@@ -119,7 +119,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Receptor Infravermelho', colour: '285',
+      kind: 'category', name: 'Receptor Infravermelho', colour: '285', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--receptor-ir' },
       contents: [
         { kind: 'block', type: 'ir_iniciar' },
         { kind: 'block', type: 'ir_disponivel' },
@@ -127,7 +127,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'MPU6050', colour: '310',
+      kind: 'category', name: 'MPU6050', colour: '310', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--mpu6050' },
       contents: [
         { kind: 'block', type: 'mpu_iniciar' },
         { kind: 'block', type: 'mpu_ler_pitch' },
@@ -143,7 +143,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Servo', colour: '170',
+      kind: 'category', name: 'Servo', colour: '170', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--servo' },
       contents: [
         { kind: 'block', type: 'servo_configurar' },
         { kind: 'block', type: 'servo_mover', inputs: { ANGULO: { block: { type: 'numero_fixo', fields: { VALOR: 90 } } } } },
@@ -151,7 +151,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Buzzer', colour: '75',
+      kind: 'category', name: 'Buzzer', colour: '75', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--buzzer' },
       contents: [
         { kind: 'block', type: 'buzzer_tocar' },
         { kind: 'block', type: 'buzzer_tocar_tempo' },
@@ -160,7 +160,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Display LCD', colour: '45',
+      kind: 'category', name: 'Display LCD', colour: '45', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--display-lcd' },
       contents: [
         { kind: 'block', type: 'lcd_iniciar' },
         { kind: 'block', type: 'lcd_limpar' },
@@ -170,7 +170,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'LED Endereçável', colour: '285',
+      kind: 'category', name: 'LED Endereçável', colour: '285', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--led-enderecavel' },
       contents: [
         { kind: 'block', type: 'neopixel_iniciar' },
         {
@@ -187,7 +187,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Motor DC', colour: '120',
+      kind: 'category', name: 'Motor DC', colour: '120', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--motor-dc' },
       contents: [
         { kind: 'block', type: 'l298n_configurar_simples' },
         { kind: 'block', type: 'l298n_mover_robo', inputs: { FORCA: { block: { type: 'numero_fixo', fields: { VALOR: 200 } } } } },
@@ -203,7 +203,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Texto', colour: '160',
+      kind: 'category', name: 'Texto', colour: '160', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--texto' },
       contents: [
         { kind: 'block', type: 'texto_fixo' },
         { kind: 'block', type: 'comparar_texto', inputs: { A: { block: { type: 'texto_fixo', fields: { TEXT: 'texto' } } }, B: { block: { type: 'texto_fixo', fields: { TEXT: 'texto' } } } } },
@@ -215,7 +215,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Serial', colour: '135',
+      kind: 'category', name: 'Serial', colour: '135', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--serial' },
       contents: [
         { kind: 'block', type: 'escrever_serial' },
         { kind: 'block', type: 'escrever_serial_valor' },
@@ -228,7 +228,7 @@ export const toolboxConfig = {
       // controle de robô. A mensagem tipo/valor A/B/C/sinal serve para
       // sensor, comando, LED ou telemetria; pitch/roll/parar é só um alias
       // legado sobre os mesmos campos, mantido para projetos salvos.
-      kind: 'category', name: 'ESP-NOW', colour: '300',
+      kind: 'category', name: 'ESP-NOW', colour: '300', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--esp-now' },
       contents: [
         { kind: 'block', type: 'espnow_iniciar_wifi' },
         { kind: 'block', type: 'espnow_mac_serial' },
@@ -273,7 +273,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Wi-Fi', colour: '200',
+      kind: 'category', name: 'Wi-Fi', colour: '200', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--wifi' },
       contents: [
         { kind: 'block', type: 'wifi_conectar' },
         { kind: 'block', type: 'wifi_esta_conectado' },
@@ -286,7 +286,7 @@ export const toolboxConfig = {
       ],
     },
     {
-      kind: 'category', name: 'Bluetooth', colour: '230',
+      kind: 'category', name: 'Bluetooth', colour: '230', cssConfig: { icon: 'toolbox-cat-icon toolbox-cat-icon--bluetooth' },
       contents: [
         { kind: 'block', type: 'bt_iniciar' },
         { kind: 'block', type: 'bt_conectado' },

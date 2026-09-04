@@ -508,7 +508,13 @@ input::-webkit-credentials-auto-fill-button {
   background: var(--white);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 2px 8px rgba(0,0,0,0.035);
-  z-index: 10;
+  /* Blockly's own toolbox/flyout/drag-surface layers (z-index up to 80,
+     see .blocklyToolbox in blockly_compressed.js) live in the sibling
+     .workspace-area. Because this toolbar is a flex item with an explicit
+     z-index, it forms its own stacking context, so its descendants (port
+     select menu, "Mais" panel) can never outrank Blockly's layers no matter
+     how high their own z-index is unless this value clears Blockly's max. */
+  z-index: 100;
   flex-shrink: 0;
   min-width: 0;
   overflow: visible;
@@ -516,10 +522,17 @@ input::-webkit-credentials-auto-fill-button {
 }
 
 .ide-toolbar-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* A grid with minmax(0, 1fr) auto let the controls column claim any
+     width it wanted (its "auto" track is sized to max-content) and shrink
+     the title column to zero instead of wrapping — a long project name
+     could end up completely invisible next to a full row of toolbar
+     buttons, well before the container-query breakpoints kicked in. Flex
+     wrap lets the controls cluster drop to its own row instead, so the
+     title always keeps its guaranteed minimum width. */
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 10px 16px;
   width: 100%;
   min-width: 0;
 }
@@ -528,7 +541,8 @@ input::-webkit-credentials-auto-fill-button {
   display: flex;
   align-items: center;
   gap: 9px;
-  min-width: 0;
+  flex: 1 1 160px;
+  min-width: 160px;
 }
 .ide-project-context img { flex: 0 0 auto; }
 .ide-project-title {
@@ -565,7 +579,7 @@ input::-webkit-credentials-auto-fill-button {
   align-items: center;
   justify-content: flex-end;
   gap: clamp(6px, 0.6vw, 10px);
-  min-width: 0;
+  flex: 0 0 auto;
   white-space: nowrap;
   overflow: visible;
 }
@@ -862,6 +876,127 @@ input::-webkit-credentials-auto-fill-button {
   overflow: hidden;
 }
 
+/* ── Toolbox de categorias: sidebar compacta e recolhível ──
+   O Blockly mede a largura da toolbox pelo shrink-to-fit nativo do rótulo
+   mais longo (~300px, "Sensor de Temperatura e Umidade"). Fixamos uma
+   largura própria em vez disso — rótulos longos truncam com reticências e
+   o nome completo continua acessível via title nativo (setado em
+   IdeScreen.tsx logo após o Blockly.inject). Uma única custom property
+   guia tanto a largura real da toolbox quanto a posição do botão de
+   recolher/expandir, então os dois nunca ficam dessincronizados. */
+.workspace-area { --bloquin-toolbox-w: 250px; }
+.workspace-area.bloquin-toolbox-collapsed { --bloquin-toolbox-w: 54px; }
+
+.blocklyToolboxCategoryContainer { width: var(--bloquin-toolbox-w); box-sizing: border-box; }
+.blocklyToolboxCategory { overflow: hidden; box-sizing: border-box; }
+.blocklyToolboxCategoryLabel {
+  display: inline-block;
+  max-width: calc(var(--bloquin-toolbox-w) - 60px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  transition: max-width 0.15s ease, opacity 0.15s ease;
+}
+
+/* Ícone por categoria: reaproveita o slot que o Blockly reserva pro
+   chevron de subcategorias (vazio aqui — nossas categorias não têm
+   subcategorias) como indicador visual compacto, complementando a cor
+   nativa (a faixa colorida da borda esquerda). */
+.toolbox-cat-icon {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-size: 13px;
+  vertical-align: middle;
+  margin-right: 2px;
+  transition: font-size 0.15s ease;
+}
+.toolbox-cat-icon--logica::before { content: '🧠'; }
+.toolbox-cat-icon--controle::before { content: '🔁'; }
+.toolbox-cat-icon--matematica::before { content: '➗'; }
+.toolbox-cat-icon--variaveis::before { content: '🔖'; }
+.toolbox-cat-icon--listas::before { content: '📋'; }
+.toolbox-cat-icon--armazenamento::before { content: '💾'; }
+.toolbox-cat-icon--funcoes::before { content: '⚙️'; }
+.toolbox-cat-icon--tempo::before { content: '⏱️'; }
+.toolbox-cat-icon--entradas-saidas::before { content: '🔌'; }
+.toolbox-cat-icon--sensor-distancia::before { content: '📏'; }
+.toolbox-cat-icon--sensor-temp-umidade::before { content: '🌡️'; }
+.toolbox-cat-icon--receptor-ir::before { content: '📡'; }
+.toolbox-cat-icon--mpu6050::before { content: '🧭'; }
+.toolbox-cat-icon--servo::before { content: '🦾'; }
+.toolbox-cat-icon--buzzer::before { content: '🔊'; }
+.toolbox-cat-icon--display-lcd::before { content: '🖥️'; }
+.toolbox-cat-icon--led-enderecavel::before { content: '💡'; }
+.toolbox-cat-icon--motor-dc::before { content: '🌀'; }
+.toolbox-cat-icon--texto::before { content: '🔤'; }
+.toolbox-cat-icon--serial::before { content: '🔗'; }
+.toolbox-cat-icon--esp-now::before { content: '🛰️'; }
+.toolbox-cat-icon--wifi::before { content: '📶'; }
+.toolbox-cat-icon--bluetooth::before { content: '🔵'; }
+
+/* Reserva o topo pro botão de recolher/expandir; o scroll vertical já é
+   nativo do Blockly (.blocklyToolbox tem overflow-y:auto) — só afinamos a
+   barra pra combinar com o fundo escuro da toolbox. */
+.blocklyToolbox { padding-top: 40px !important; }
+.blocklyToolbox::-webkit-scrollbar { width: 5px; }
+.blocklyToolbox::-webkit-scrollbar-track { background: transparent; }
+.blocklyToolbox::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 4px; }
+.blocklyToolbox::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+
+.bloquin-toolbox-toggle {
+  position: absolute;
+  top: 20px;
+  left: var(--bloquin-toolbox-w);
+  transform: translate(-50%, -50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid #1a2035;
+  border-radius: 50%;
+  background: #2a3350;
+  color: #cfd8ea;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: background 0.15s ease, left 0.18s ease;
+}
+.bloquin-toolbox-toggle:hover { background: #384268; color: #fff; }
+.bloquin-toolbox-toggle:active { transform: translate(-50%, -50%) scale(0.92); }
+.bloquin-toolbox-toggle:focus-visible { outline: 3px solid rgba(0, 168, 255, 0.5); outline-offset: 1px; }
+.bloquin-toolbox-toggle svg { width: 14px; height: 14px; flex: none; }
+
+/* ── Modo recolhido: só ícone + cor; o nome completo continua acessível
+   via tooltip nativo (title) ao passar o mouse. A linha também cresce
+   (22px → 36px) — sem isso o emoji não tem altura de linha suficiente
+   pra aparecer em tamanho legível, e linhas muito baixas com cores
+   parecidas na faixa esquerda (ex.: Listas e Armazenamento, mesmo hue)
+   ficavam visualmente coladas, como se uma categoria tivesse sumido. */
+.bloquin-toolbox-collapsed .blocklyToolboxCategoryLabel { max-width: 0; opacity: 0; }
+.bloquin-toolbox-collapsed .blocklyToolboxCategory {
+  height: 36px;
+  line-height: 36px;
+  padding-left: 0 !important;
+  text-align: center;
+}
+.bloquin-toolbox-collapsed .toolbox-cat-icon {
+  width: 100%;
+  height: 36px;
+  line-height: 36px;
+  margin-right: 0;
+  font-size: 22px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blocklyToolboxCategoryLabel, .toolbox-cat-icon, .bloquin-toolbox-toggle { transition: none; }
+}
+
 .code-panel {
   width: min(350px, calc(100vw - 32px)); min-width: min(250px, calc(100vw - 32px)); max-width: calc(100vw - 32px);
   background-color: var(--dark); border-left: 2px solid #1a252f;
@@ -984,6 +1119,26 @@ pre {
 .friendly-error-tip { display: flex; align-items: flex-start; gap: 10px; width: 100%; background: linear-gradient(135deg, #e8f5e9, #f0fdf0); border: 2px solid #a5d6a7; border-radius: 14px; padding: 14px 16px; text-align: left; }
 .friendly-error-tip span:first-child { font-size: 1.3rem; flex-shrink: 0; }
 .friendly-error-tip span:last-child { font-size: 0.95rem; font-weight: 700; color: #2e7d32; line-height: 1.5; }
+
+/* Três botões de ação com texto fixo (nowrap) e flex:1 num modal estreito
+   somam mais largura mínima do que o modal tem — eles ultrapassavam a borda.
+   Deixando o texto quebrar e a linha envolver, o próprio flexbox decide
+   quantos botões cabem por linha em vez de um valor fixo por breakpoint. */
+.unsaved-changes-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+.unsaved-changes-actions .btn-secondary,
+.unsaved-changes-actions .btn-primary,
+.unsaved-changes-actions .btn-danger {
+  flex: 1 1 140px;
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
+}
 
 /* ═══════════════════════════════════════════════════
    MONITOR SERIAL (repaginado)
@@ -1861,7 +2016,6 @@ pre {
 @container ide-toolbar (max-width: 767px) {
   .ide-toolbar { min-height: 96px; padding: 7px 8px; }
   .ide-toolbar-main {
-    grid-template-columns: minmax(0, 1fr);
     gap: 7px;
   }
   .ide-toolbar-controls {

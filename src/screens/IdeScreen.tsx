@@ -12,9 +12,10 @@ import {
   FileJson,
   LogOut,
   MessageCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Save,
-  SaveAll,
   Upload,
   Usb,
 } from 'lucide-react';
@@ -125,6 +126,12 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
   const trackChanges                            = useRef(false); 
   const [isCodeVisible, setIsCodeVisible]       = useState(false);
   const [isFullscreenCode, setIsFullscreenCode] = useState(false);
+  // Preferência de UI pura (não é dado de projeto): persiste por navegador,
+  // não por projeto, pra quem já conhece o Bloquin não precisar re-recolher
+  // a toolbox toda vez que abre um projeto.
+  const [isToolboxCollapsed, setIsToolboxCollapsed] = useState(() => {
+    try { return localStorage.getItem('bloquin.toolboxCollapsed') === '1'; } catch { return false; }
+  });
   const [uploadStage, setUploadStage]           = useState<UploadStage | null>(null);
   const [orphanWarning, setOrphanWarning]       = useState<string[]>([]);
   const isUploadingRef                          = useRef(false);
@@ -368,6 +375,19 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
     });
     bindBundledBlocklyControlSprites(blocklyDiv.current);
 
+    // Tooltip nativo com o nome completo da categoria: essencial no modo
+    // recolhido (só ícone), mas também ajuda no expandido, já que rótulos
+    // longos truncam com reticências (ver .blocklyToolboxCategoryLabel em
+    // App.css). getToolboxItems() não está na interface pública do
+    // Blockly, então lemos os nomes da própria config (mesma ordem) em vez
+    // de depender de uma API interna.
+    const toolboxRows = blocklyDiv.current.querySelectorAll<HTMLElement>('.blocklyToolboxCategoryContainer');
+    const categoryNames = getToolboxConfig(board).contents.map((entry) => entry.name);
+    toolboxRows.forEach((row, index) => {
+      const name = categoryNames[index];
+      if (name) row.title = name;
+    });
+
     const generateCurrentCode = () => {
       if (!workspace.current || !codeGeneratorRef.current) return;
       try {
@@ -569,7 +589,7 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
       document.removeEventListener('fullscreenchange', scheduleWorkspaceResize);
       if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
     };
-  }, [boardLoadState, isCodeVisible, isFullscreenCode, role]);
+  }, [boardLoadState, isCodeVisible, isFullscreenCode, isToolboxCollapsed, role]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -898,6 +918,18 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
   };
 
   const handleCloseError = () => { setFriendlyError(null); };
+
+  const toggleToolboxCollapsed = () => {
+    setIsToolboxCollapsed((collapsed) => {
+      const next = !collapsed;
+      try { localStorage.setItem('bloquin.toolboxCollapsed', next ? '1' : '0'); } catch {
+        // Preferência de UI não persistida (ex.: navegação privada) — a
+        // toolbox continua funcionando normalmente nesta sessão.
+      }
+      return next;
+    });
+  };
+
   const projectTitle = activeTab.type === 'project'
     ? projectId
       ? readOnly ? `Inspecionando: ${projectName}` : `Meu Projeto: ${projectName}`
@@ -997,17 +1029,6 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
             )}
 
             <div className="ide-toolbar-secondary-actions">
-              {!readOnly && !projectId && (
-                <ResponsiveToolbarButton
-                  icon={<SaveAll className="ide-action-icon" />}
-                  label="Salvar como"
-                  tooltip="Salvar como"
-                  variant="secondary"
-                  onClick={() => { void handleSaveProject(true); }}
-                  disabled={isSaving}
-                  className="ide-toolbar-save-as-action"
-                />
-              )}
               {!readOnly && (
                 <ResponsiveToolbarButton
                   icon={<FileJson className="ide-action-icon" />}
@@ -1066,11 +1087,6 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
                   role="group"
                   aria-label="Mais ações do projeto"
                 >
-                  {!readOnly && !projectId && (
-                  <button type="button" disabled={isSaving} onClick={() => { closeMoreMenu(true); void handleSaveProject(true); }}>
-                    <SaveAll className="ide-action-icon" aria-hidden="true" /> Salvar como…
-                  </button>
-                  )}
                   {!readOnly && (
                   <button type="button" disabled={isExporting} onClick={() => { closeMoreMenu(true); void handleDownloadProject(); }}>
                     <FileJson className="ide-action-icon" aria-hidden="true" /> {isExporting ? 'Exportando…' : 'Exportar JSON…'}
@@ -1100,9 +1116,21 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
       )}
 
       {/* WORKSPACE */}
-      <div className="workspace-area">
+      <div className={`workspace-area ${isToolboxCollapsed ? 'bloquin-toolbox-collapsed' : ''}`}>
         <div ref={blocklyDiv} id="blocklyDiv" />
-        
+        {boardLoadState === 'ready' && (
+          <button
+            type="button"
+            className="bloquin-toolbox-toggle"
+            onClick={toggleToolboxCollapsed}
+            aria-expanded={!isToolboxCollapsed}
+            aria-label={isToolboxCollapsed ? 'Expandir categorias de blocos' : 'Recolher categorias de blocos'}
+            title={isToolboxCollapsed ? 'Expandir categorias' : 'Recolher categorias'}
+          >
+            {isToolboxCollapsed ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
+          </button>
+        )}
+
         {isCodeVisible && (
           <div className={`code-panel ${isFullscreenCode ? 'fullscreen' : ''}`}>
             <div className="code-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1167,10 +1195,10 @@ export function IdeScreen({ role, userId, readOnly = false, onBack, projectId, i
             <p className="friendly-error-message">
               Você tem alterações que ainda não foram salvas. Se sair agora, seu progresso será perdido.
             </p>
-            <div style={{ display: 'flex', gap: '10px', width: '100%', marginTop: '10px' }}>
-              <button type="button" className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowExitConfirm(false)}>Continuar editando</button>
-              <button type="button" className="btn-primary" style={{ flex: 1 }} onClick={async () => { const saved = await handleSaveProject(); if (saved) { setShowExitConfirm(false); onBack(); } }}>💾 Salvar e Sair</button>
-              <button type="button" className="btn-danger" style={{ flex: 1 }} onClick={() => { setShowExitConfirm(false); onBack(); }}>Sair sem salvar</button>
+            <div className="unsaved-changes-actions">
+              <button type="button" className="btn-secondary" onClick={() => setShowExitConfirm(false)}>Continuar editando</button>
+              <button type="button" className="btn-primary" onClick={async () => { const saved = await handleSaveProject(); if (saved) { setShowExitConfirm(false); onBack(); } }}>💾 Salvar e Sair</button>
+              <button type="button" className="btn-danger" onClick={() => { setShowExitConfirm(false); onBack(); }}>Sair sem salvar</button>
             </div>
           </div>
         </div>
