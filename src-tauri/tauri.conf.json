@@ -1,6 +1,6 @@
 {
   "productName": "Bloquin",
-  "version": "2.7.3",
+  "version": "2.7.4",
   "identifier": "com.bloquin.app",
   "build": {
     "beforeDevCommand": "npm run dev",
